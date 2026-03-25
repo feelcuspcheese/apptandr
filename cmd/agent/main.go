@@ -10,6 +10,7 @@ import (
     "agent/pkg/scraper"
     "agent/pkg/state"
     "context"
+    "fmt"
     "os"
     "os/signal"
     "syscall"
@@ -49,16 +50,16 @@ func main() {
     ntfy := notifier.NewNtfy(cfg.NtfyTopic)
     scraperInst := scraper.NewScraper(client, cfg.Site.AvailabilityEndpoint, cfg.RequestJitter, logger)
 
-    // Task to run at strike time
-    task := func(ctx context.Context) error {
+    // Task that returns (stop bool, error)
+    task := func(ctx context.Context) (bool, error) {
         availabilities, err := scraperInst.FetchAvailability(ctx)
         if err != nil {
             logger.WithError(err).Error("Failed to fetch availability")
-            return err
+            return false, err // don't stop on transient errors
         }
         if len(availabilities) == 0 {
             logger.Info("No availabilities found")
-            return nil
+            return false, nil
         }
 
         // Filter unseen
@@ -70,7 +71,7 @@ func main() {
         }
         if len(newAvails) == 0 {
             logger.Info("No new availabilities")
-            return nil
+            return false, nil
         }
 
         if cfg.Mode == "alert" {
@@ -90,6 +91,8 @@ func main() {
                     stateManager.MarkSeen(a.Date)
                 }
             }
+            // In alert mode, continue checking until window expires
+            return false, nil
         } else if cfg.Mode == "booking" {
             // Try to book first preferred day
             bookerInst := booker.NewBooker(client, cfg.Site, stateManager, logger)
@@ -106,28 +109,37 @@ func main() {
                                 notifier.PriorityHigh,
                                 nil,
                             )
+                            // Continue checking for other dates
+                            return false, nil
                         } else {
-                            // Success notification sent inside booker, but we can send an extra
+                            // Success: send notification and stop checking
                             _ = ntfy.SendNotification(
                                 "Booking Successful",
                                 fmt.Sprintf("Successfully booked %s", a.Date),
                                 notifier.PriorityUrgent,
                                 nil,
                             )
-                            // Mark as seen and break
                             stateManager.MarkSeen(a.Date)
-                            return nil
+                            return true, nil // stop further checks in this window
                         }
                     }
                 }
             }
-            // If no preferred day found among new availabilities, optionally alert
+            // No preferred day found, continue checking
             logger.Info("No preferred day found in new availabilities")
+            return false, nil
         }
-        return nil
+        return false, nil
     }
 
-    sched, err := scheduler.NewScheduler(cfg.StrikeTime, cfg.RequestJitter, logger, task)
+    sched, err := scheduler.NewScheduler(
+        cfg.StrikeTime,
+        cfg.RequestJitter,
+        cfg.CheckWindow,
+        cfg.CheckInterval,
+        logger,
+        task,
+    )
     if err != nil {
         logger.Fatalf("Failed to create scheduler: %v", err)
     }
