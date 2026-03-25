@@ -23,82 +23,171 @@
             <div class="col s12 m6">
                 <div class="card">
                     <div class="card-content">
-                        <span class="card-title">Configuration</span>
-                        <div id="config-loading">Loading...</div>
-                        <form id="config-form">
-                            <!-- Museums pills will be dynamically inserted -->
+                        <span class="card-title">Global Settings</span>
+                        <form id="global-settings-form">
                             <div class="row">
-                                <div class="col s12">
-                                    <label>Select Preferred Museum</label>
-                                    <div id="museums-pills"></div>
-                                    <small class="grey-text">Click a museum to set it as preferred for booking/alerts.</small>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col s12">
-                                    <label>Preferred Days (click to select)</label>
-                                    <div id="days-pills">
-                                        <div class="chip" data-day="Monday">Monday</div>
-                                        <div class="chip" data-day="Tuesday">Tuesday</div>
-                                        <div class="chip" data-day="Wednesday">Wednesday</div>
-                                        <div class="chip" data-day="Thursday">Thursday</div>
-                                        <div class="chip" data-day="Friday">Friday</div>
-                                        <div class="chip" data-day="Saturday">Saturday</div>
-                                        <div class="chip" data-day="Sunday">Sunday</div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="input-field col s12 m6">
-                                    <input id="strike-time" type="text" class="timepicker">
-                                    <label for="strike-time">Strike Time (HH:MM)</label>
-                                </div>
-                                <div class="input-field col s12 m6">
-                                    <select id="timezone">
-                                        <option value="America/Los_Angeles">PST/PDT (Los Angeles)</option>
-                                        <option value="America/New_York">EST/EDT (New York)</option>
-                                        <option value="UTC">UTC</option>
-                                        <option value="Asia/Kolkata">IST (Kolkata)</option>
-                                    </select>
-                                    <label>Timezone for Scheduled Run</label>
+                                <div class="input-field col s12">
+                                    <input id="base-url" type="text" value="https://spl.libcal.com">
+                                    <label for="base-url">Base URL</label>
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="input-field col s12">
-                                    <input id="check-window" type="number" step="1" value="1">
-                                    <label for="check-window">Check Window (minutes)</label>
+                                    <input id="availability-endpoint" type="text" value="/pass/availability/institution">
+                                    <label for="availability-endpoint">Availability Endpoint</label>
                                 </div>
                             </div>
                             <div class="row">
-                                <div class="col s12">
-                                    <label>Mode</label>
-                                    <p>
-                                        <label>
-                                            <input name="mode" type="radio" value="alert" checked>
-                                            <span>Alert Only</span>
-                                        </label>
-                                    </p>
-                                    <p>
-                                        <label>
-                                            <input name="mode" type="radio" value="booking">
-                                            <span>Automatic Booking</span>
-                                        </label>
-                                    </p>
+                                <div class="col s6">
+                                    <label>
+                                        <input type="checkbox" id="digital" checked>
+                                        <span>Digital</span>
+                                    </label>
+                                </div>
+                                <div class="col s6">
+                                    <label>
+                                        <input type="checkbox" id="physical">
+                                        <span>Physical</span>
+                                    </label>
                                 </div>
                             </div>
                             <div class="row">
-                                <div class="col s12">
-                                    <button class="btn waves-effect waves-light" type="submit">Save Configuration</button>
+                                <div class="input-field col s12">
+                                    <input id="location" type="text" value="0">
+                                    <label for="location">Location</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="login-username" type="text">
+                                    <label for="login-username">Login Username</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="login-password" type="password">
+                                    <label for="login-password">Login Password</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="ntfy-topic" type="text" value="myappointments">
+                                    <label for="ntfy-topic">ntfy Topic</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="check-interval" type="number" step="1" value="2">
+                                    <label for="check-interval">Check Interval (seconds)</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="request-jitter" type="number" step="0.5" value="2">
+                                    <label for="request-jitter">Request Jitter (seconds)</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="months-to-check" type="number" step="1" value="2">
+                                    <label for="months-to-check">Months to Check</label>
                                 </div>
                             </div>
                         </form>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Museums Configuration</span>
+                        <div class="row">
+                            <div class="col s12">
+                                <label>Museums (one per line, format: slug:id or name:slug:id)</label>
+                                <textarea id="museums-list" rows="5" class="materialize-textarea" placeholder="Example:&#10;SAM:7f2ac5c414b2&#10;Zoo:033bbf08993f&#10;Pacific Science Center:PacSci:63ea409f9fab"></textarea>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col s12">
+                                <button id="load-museums" class="btn waves-effect waves-light">Load Museums</button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col s12">
+                                <label>Select Preferred Museum</label>
+                                <div id="museums-pills"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Booking Preferences</span>
+                        <div class="row">
+                            <div class="col s12">
+                                <label>Preferred Days (click to select)</label>
+                                <div id="days-pills">
+                                    <div class="chip" data-day="Monday">Monday</div>
+                                    <div class="chip" data-day="Tuesday">Tuesday</div>
+                                    <div class="chip" data-day="Wednesday">Wednesday</div>
+                                    <div class="chip" data-day="Thursday">Thursday</div>
+                                    <div class="chip" data-day="Friday">Friday</div>
+                                    <div class="chip" data-day="Saturday">Saturday</div>
+                                    <div class="chip" data-day="Sunday">Sunday</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col s12">
+                                <label>Mode</label>
+                                <p>
+                                    <label>
+                                        <input name="mode" type="radio" value="alert" checked>
+                                        <span>Alert Only</span>
+                                    </label>
+                                </p>
+                                <p>
+                                    <label>
+                                        <input name="mode" type="radio" value="booking">
+                                        <span>Automatic Booking</span>
+                                    </label>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="input-field col s12 m6">
+                                <input id="strike-time" type="text" class="timepicker" value="09:00">
+                                <label for="strike-time">Strike Time (HH:MM)</label>
+                            </div>
+                            <div class="input-field col s12 m6">
+                                <select id="timezone">
+                                    <option value="America/Los_Angeles">PST/PDT (Los Angeles)</option>
+                                    <option value="America/New_York">EST/EDT (New York)</option>
+                                    <option value="UTC">UTC</option>
+                                    <option value="Asia/Kolkata">IST (Kolkata)</option>
+                                </select>
+                                <label>Timezone for Scheduled Run</label>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="input-field col s12">
+                                <input id="check-window" type="number" step="1" value="1">
+                                <label for="check-window">Check Window (minutes)</label>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col s12">
+                                <button id="save-config" class="btn waves-effect waves-light green">Save Configuration</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-content">
                         <span class="card-title">Actions</span>
-                        <button id="run-now" class="btn waves-effect waves-light green">▶ Run Now (in 30 seconds)</button>
-                        <button id="schedule" class="btn waves-effect waves-light blue">📅 Schedule</button>
+                        <button id="run-now" class="btn waves-effect waves-light blue">▶ Run Now (in 30s)</button>
+                        <button id="schedule" class="btn waves-effect waves-light indigo">📅 Schedule</button>
                         <div id="schedule-panel" style="display:none; margin-top:10px;">
                             <input type="datetime-local" id="scheduled-time">
                             <button id="confirm-schedule" class="btn">Confirm Schedule</button>
