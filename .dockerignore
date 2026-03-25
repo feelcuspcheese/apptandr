@@ -8,7 +8,7 @@ dist/
 *.exe
 *.test
 
-# Config files (secrets) – do not copy them into the image
+# Config files (secrets) – do not copy into the image
 configs/*.yaml
 configs/*.yml
 
@@ -25,7 +25,7 @@ configs/*.yml
 # Test files
 *_test.go
 
-# Docker related (optional, but not needed in image)
+# Docker related (optional)
 Dockerfile
 .dockerignore
 .github/
