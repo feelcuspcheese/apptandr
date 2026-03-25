@@ -10,7 +10,7 @@ dist/
 
 # Config files (secrets) – do not copy into the image
 configs/config.yaml
-#configs/*.yml
+configs/*.yml
 
 # IDE files
 .vscode/
@@ -25,7 +25,7 @@ configs/config.yaml
 # Test files
 *_test.go
 
-# Docker related (optional)
+# Docker related
 Dockerfile
 .dockerignore
 .github/
