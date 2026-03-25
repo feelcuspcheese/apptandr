@@ -55,7 +55,7 @@ func main() {
         availabilities, err := scraperInst.FetchAvailability(ctx)
         if err != nil {
             logger.WithError(err).Error("Failed to fetch availability")
-            return false, err // don't stop on transient errors
+            return false, err
         }
         if len(availabilities) == 0 {
             logger.Info("No availabilities found")
@@ -86,15 +86,12 @@ func main() {
             if err != nil {
                 logger.WithError(err).Error("Failed to send notification")
             } else {
-                // Mark as seen after notification sent
                 for _, a := range newAvails {
                     stateManager.MarkSeen(a.Date)
                 }
             }
-            // In alert mode, continue checking until window expires
             return false, nil
         } else if cfg.Mode == "booking" {
-            // Try to book first preferred day
             bookerInst := booker.NewBooker(client, cfg.Site, stateManager, logger)
             for _, prefDay := range cfg.PreferredDays {
                 for _, a := range newAvails {
@@ -102,17 +99,14 @@ func main() {
                         logger.WithField("date", a.Date).Info("Attempting to book preferred day")
                         if err := bookerInst.Book(ctx, a); err != nil {
                             logger.WithError(err).Error("Booking failed")
-                            // Send failure notification
                             _ = ntfy.SendNotification(
                                 "Booking Failed",
                                 fmt.Sprintf("Failed to book %s: %v", a.Date, err),
                                 notifier.PriorityHigh,
                                 nil,
                             )
-                            // Continue checking for other dates
                             return false, nil
                         } else {
-                            // Success: send notification and stop checking
                             _ = ntfy.SendNotification(
                                 "Booking Successful",
                                 fmt.Sprintf("Successfully booked %s", a.Date),
@@ -120,16 +114,41 @@ func main() {
                                 nil,
                             )
                             stateManager.MarkSeen(a.Date)
-                            return true, nil // stop further checks in this window
+                            return true, nil // stop further checks
                         }
                     }
                 }
             }
-            // No preferred day found, continue checking
             logger.Info("No preferred day found in new availabilities")
             return false, nil
         }
         return false, nil
+    }
+
+    // Pre‑warm task: make a warm‑up request to the base URL (or any endpoint) and if booking mode, log in.
+    preWarmTask := func(ctx context.Context) error {
+        logger.Info("Performing pre‑warm tasks")
+        // Warm up connection with a request to the base URL
+        req, err := http.NewRequestWithContext(ctx, "GET", cfg.Site.BaseURL, nil)
+        if err != nil {
+            return err
+        }
+        resp, err := client.Do(req)
+        if err != nil {
+            return fmt.Errorf("warm‑up request failed: %w", err)
+        }
+        defer resp.Body.Close()
+        logger.WithField("status", resp.StatusCode).Info("Warm‑up request completed")
+
+        // If booking mode, perform login pre‑warm
+        if cfg.Mode == "booking" {
+            bookerInst := booker.NewBooker(client, cfg.Site, stateManager, logger)
+            if err := bookerInst.PreLogin(ctx); err != nil {
+                return fmt.Errorf("pre‑login failed: %w", err)
+            }
+            logger.Info("Pre‑login completed")
+        }
+        return nil
     }
 
     sched, err := scheduler.NewScheduler(
@@ -137,8 +156,10 @@ func main() {
         cfg.RequestJitter,
         cfg.CheckWindow,
         cfg.CheckInterval,
+        cfg.PreWarmOffset,
         logger,
         task,
+        preWarmTask,
     )
     if err != nil {
         logger.Fatalf("Failed to create scheduler: %v", err)
