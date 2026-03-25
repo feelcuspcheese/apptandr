@@ -8,14 +8,9 @@ dist/
 *.exe
 *.test
 
-# Config files (if they contain secrets, exclude; we will mount config at runtime)
+# Config files (secrets) – do not copy them into the image
 configs/*.yaml
 configs/*.yml
-
-# Go module cache
-go.sum
-go.mod
-vendor/
 
 # IDE files
 .vscode/
@@ -29,3 +24,8 @@ vendor/
 
 # Test files
 *_test.go
+
+# Docker related (optional, but not needed in image)
+Dockerfile
+.dockerignore
+.github/
