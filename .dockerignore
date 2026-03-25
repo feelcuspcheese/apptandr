@@ -29,3 +29,7 @@ configs/*.yml
 Dockerfile
 .dockerignore
 .github/
+
+#project files
+Requirement
+projectstructure
