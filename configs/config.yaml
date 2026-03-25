@@ -25,6 +25,8 @@ site:
 mode: "alert"
 preferred_days: ["Saturday", "Sunday"]
 strike_time: "09:00:00"
+check_window: "1m"          # Check for 1 minute after strike time
+check_interval: "2s"        # Wait ~2 seconds between checks (with jitter)
 ntfy_topic: "myappointments"
 max_workers: 2
-request_jitter: "2s"
+request_jitter: "2s"        # Random jitter before each request (mimics human)
