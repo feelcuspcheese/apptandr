@@ -12,10 +12,10 @@ import (
     "context"
     "fmt"
     "math/rand"
+    "net/http"
     "net/url"
     "os"
     "os/signal"
-    "strings"
     "syscall"
     "time"
 
@@ -143,8 +143,15 @@ func main() {
         }
 
         if cfg.Mode == "alert" {
-            // Send ntfy notification with buttons
-            actions := notifier.PrioritizeActions(newAvails)
+            // Convert to notifier.AvailabilityWithLink
+            notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+            for i, a := range newAvails {
+                notifyAvails[i] = notifier.AvailabilityWithLink{
+                    Date:       a.Date,
+                    BookingURL: a.BookingURL,
+                }
+            }
+            actions := notifier.PrioritizeActions(notifyAvails)
             err := ntfy.SendNotification(
                 "Appointment Available!",
                 "Found new appointment dates",
