@@ -13,17 +13,16 @@ import (
     "net/http"
     "net/url"
     "strings"
-    "time"
 )
 
 type Booker struct {
     client     *httpclient.Client
-    siteConfig config.SiteConfig
+    siteConfig config.SiteInfo
     state      *state.State
     logger     *logrus.Logger
 }
 
-func NewBooker(client *httpclient.Client, cfg config.SiteConfig, state *state.State, logger *logrus.Logger) *Booker {
+func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.State, logger *logrus.Logger) *Booker {
     return &Booker{
         client:     client,
         siteConfig: cfg,
@@ -67,7 +66,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         return err
     }
     // Set referer header to mimic browser
-    req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.siteConfig.MuseumID) // adjust
+    req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.siteConfig.Slug)
     resp, err := b.client.Do(req)
     if err != nil {
         return fmt.Errorf("initial booking request failed: %w", err)
@@ -88,15 +87,15 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         b.logger.Info("Login required, performing login")
         // Extract hidden fields from the login form
         authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
-        loginURL := loginForm.Find("input[name='login_url']").AttrOr("value", "")
-        if authID == "" || loginURL == "" {
+        loginURLField := loginForm.Find("input[name='login_url']").AttrOr("value", "")
+        if authID == "" || loginURLField == "" {
             return fmt.Errorf("could not extract auth_id or login_url from login form")
         }
 
         // Prepare login POST data
         loginData := url.Values{}
         loginData.Set("auth_id", authID)
-        loginData.Set("login_url", loginURL)
+        loginData.Set("login_url", loginURLField)
         loginData.Set(b.siteConfig.LoginForm.UsernameField, b.siteConfig.LoginForm.Username)
         loginData.Set(b.siteConfig.LoginForm.PasswordField, b.siteConfig.LoginForm.Password)
 
@@ -130,10 +129,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         // After successful login, we should be redirected to the original booking URL with a token.
         // The client will follow the redirect automatically.
         // So we need to read the final response after login.
-        // However, we need to get that final response's body to proceed to booking form.
-        // The loginResp may be a redirect (302) with Location header. The client will follow it,
-        // but we have the final response in loginResp after redirects.
-        // Now we should parse that final response to get the booking form.
+        // The loginResp is the final response after redirects.
         finalResp := loginResp // after redirects
         doc, err = goquery.NewDocumentFromReader(finalResp.Body)
         if err != nil {
@@ -165,7 +161,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
     })
     // Add email field
-    email := b.siteConfig.BookingForm.EmailField // we need to configure this
+    email := b.siteConfig.BookingForm.EmailField
     if email == "" {
         email = "email" // default
     }
@@ -188,7 +184,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         return err
     }
     submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-    submitReq.Header.Set("Referer", finalResp.Request.URL.String())
+    submitReq.Header.Set("Referer", resp.Request.URL.String())
     submitResp, err := b.client.Do(submitReq)
     if err != nil {
         return fmt.Errorf("booking submission failed: %w", err)
@@ -205,8 +201,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     // Success indicator: "Thank you!" or "The following Digital Pass reservation was made:"
     if strings.Contains(bodyStr, "Thank you!") || strings.Contains(bodyStr, "The following Digital Pass reservation was made:") {
         b.logger.Info("Booking successful")
-        // Extract the actual date from the booking URL for marking seen
-        // We'll mark the date from avail
+        // Mark the date from avail
         b.state.MarkSeen(avail.Date)
         return nil
     }
