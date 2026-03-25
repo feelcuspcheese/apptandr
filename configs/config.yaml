@@ -30,3 +30,4 @@ check_interval: "2s"        # Wait ~2 seconds between checks (with jitter)
 ntfy_topic: "myappointments"
 max_workers: 2
 request_jitter: "2s"        # Random jitter before each request (mimics human)
+pre_warm_seconds: "30s"
