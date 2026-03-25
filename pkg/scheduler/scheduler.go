@@ -2,19 +2,22 @@ package scheduler
 
 import (
     "context"
+    "math/rand"
     "time"
+
     "github.com/sirupsen/logrus"
 )
 
 type Scheduler struct {
-    strikeTime time.Time
-    jitter     time.Duration
-    logger     *logrus.Logger
-    task       func(context.Context) error
+    strikeTime    time.Time
+    jitter        time.Duration
+    checkWindow   time.Duration
+    checkInterval time.Duration
+    logger        *logrus.Logger
+    task          func(context.Context) (bool, error) // returns stop flag and error
 }
 
-func NewScheduler(strikeTimeStr string, jitter time.Duration, logger *logrus.Logger, task func(context.Context) error) (*Scheduler, error) {
-    // Parse strike time (format "HH:MM:SS")
+func NewScheduler(strikeTimeStr string, jitter, checkWindow, checkInterval time.Duration, logger *logrus.Logger, task func(context.Context) (bool, error)) (*Scheduler, error) {
     t, err := time.Parse("15:04:05", strikeTimeStr)
     if err != nil {
         return nil, err
@@ -25,10 +28,12 @@ func NewScheduler(strikeTimeStr string, jitter time.Duration, logger *logrus.Log
         strike = strike.Add(24 * time.Hour)
     }
     return &Scheduler{
-        strikeTime: strike,
-        jitter:     jitter,
-        logger:     logger,
-        task:       task,
+        strikeTime:    strike,
+        jitter:        jitter,
+        checkWindow:   checkWindow,
+        checkInterval: checkInterval,
+        logger:        logger,
+        task:          task,
     }, nil
 }
 
@@ -45,20 +50,54 @@ func (s *Scheduler) Run(ctx context.Context) {
             }
         }
 
-        // Apply jitter (random delay before executing)
-        if s.jitter > 0 {
-            jitter := time.Duration(rand.Int63n(int64(s.jitter)))
-            s.logger.WithField("jitter", jitter).Debug("Applying jitter")
+        // Start checking window
+        deadline := time.Now().Add(s.checkWindow)
+        s.logger.WithFields(logrus.Fields{
+            "window":   s.checkWindow,
+            "deadline": deadline,
+        }).Info("Starting check window")
+
+        for {
+            // Apply jitter before each check (including the first)
+            if s.jitter > 0 {
+                jitter := time.Duration(rand.Int63n(int64(s.jitter)))
+                s.logger.WithField("jitter", jitter).Debug("Applying jitter")
+                select {
+                case <-time.After(jitter):
+                case <-ctx.Done():
+                    return
+                }
+            }
+
+            // Execute the task
+            stop, err := s.task(ctx)
+            if err != nil {
+                s.logger.WithError(err).Error("Task failed")
+            }
+            if stop {
+                s.logger.Info("Task requested stop; ending check window")
+                break
+            }
+
+            // Check if window expired
+            if time.Now().After(deadline) {
+                s.logger.Info("Check window expired")
+                break
+            }
+
+            // Wait for next interval (with jitter)
+            interval := s.checkInterval
+            if s.jitter > 0 {
+                // Add random jitter to interval to mimic human variation
+                jitter := time.Duration(rand.Int63n(int64(s.jitter)))
+                interval += jitter
+            }
+            s.logger.WithField("next_in", interval).Debug("Waiting before next check")
             select {
-            case <-time.After(jitter):
+            case <-time.After(interval):
             case <-ctx.Done():
                 return
             }
-        }
-
-        s.logger.Info("Executing task")
-        if err := s.task(ctx); err != nil {
-            s.logger.WithError(err).Error("Task failed")
         }
 
         // Schedule next strike (tomorrow)
