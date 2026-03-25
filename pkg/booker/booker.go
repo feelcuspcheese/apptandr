@@ -1,13 +1,14 @@
 package booker
 
 import (
+    "agent/pkg/config"
     "agent/pkg/httpclient"
-    "agent/pkg/parser"
     "agent/pkg/state"
     "context"
     "fmt"
     "github.com/PuerkitoBio/goquery"
     "github.com/sirupsen/logrus"
+    "io"
     "net/http"
     "net/url"
     "strings"
@@ -29,14 +30,20 @@ func NewBooker(client *httpclient.Client, cfg config.SiteConfig, state *state.St
     }
 }
 
-func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
+// PreLogin performs login to establish session before strike time.
+func (b *Booker) PreLogin(ctx context.Context) error {
+    b.logger.Info("Pre‑warming login")
+    return b.login(ctx)
+}
+
+func (b *Booker) Book(ctx context.Context, avail Availability) error {
     if !b.state.StartProcessing(avail.Date) {
         b.logger.WithField("date", avail.Date).Info("Already processing this date")
         return nil
     }
     defer b.state.StopProcessing(avail.Date)
 
-    // Step 1: Login if needed
+    // Step 1: Ensure logged in (login may have been pre‑warmed, but re‑call in case session expired)
     if err := b.login(ctx); err != nil {
         return fmt.Errorf("login failed: %w", err)
     }
@@ -56,7 +63,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer resp.Body.Close()
 
-    // Step 3: Extract form data (CSRF, hidden fields)
+    // Step 3: Extract form data
     formData, err := b.extractFormData(resp.Body)
     if err != nil {
         return err
@@ -72,7 +79,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         form.Set(k, v)
     }
     // Add the selected date (if needed)
-    form.Set("date", avail.Date) // adjust field name as per config
+    form.Set("date", avail.Date) // adjust field name as needed
 
     req, err = http.NewRequestWithContext(ctx, "POST", actionURL, strings.NewReader(form.Encode()))
     if err != nil {
@@ -92,7 +99,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     if success {
         b.logger.WithField("date", avail.Date).Info("Booking successful")
-        b.state.MarkSeen(avail.Date) // mark so we don't try again
+        b.state.MarkSeen(avail.Date)
         return nil
     }
     return fmt.Errorf("booking failed (response indicated failure)")
@@ -138,10 +145,11 @@ func (b *Booker) login(ctx context.Context) error {
     }
     defer resp.Body.Close()
 
-    // Check if login succeeded (e.g., redirect or specific element)
+    // Check if login succeeded
     if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusFound {
         return fmt.Errorf("login returned status %d", resp.StatusCode)
     }
+    b.logger.Info("Login successful")
     return nil
 }
 
