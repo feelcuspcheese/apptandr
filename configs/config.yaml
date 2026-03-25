@@ -1,27 +1,50 @@
-site:
-  name: "spl_zoo"
-  base_url: "https://spl.libcal.com"
-  museum_id: "033bbf08993f"       # replace with actual Zoo museum ID
-  slug: "Zoo"
-  pass_id: "xxxxxxxx"             # actual pass ID for Zoo
-  digital: true
-  physical: false
-  location: "0"
-  target_date: "2026-04-24"       # date to check (will also fetch next month)
-  availability_endpoint: "/pass/availability/institution"
-  booking_link_selector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
-  login_form:
-    username_field: "username"
-    password_field: "password"
-    username: "your_username"
-    password: "your_password"
-    auth_id_selector: "input[name='auth_id']"
-    login_url_selector: "input[name='login_url']"
-  booking_form:
-    action_url: "/passes/033bbf08993f/book"
-    email_field: "email"
-  success_indicator: "Thank you!"
+sites:
+  SAM:
+    name: "Seattle Art Museum"
+    base_url: "https://spl.libcal.com"
+    museum_id: "7f2ac5c414b2"
+    slug: "SAM"
+    pass_id: "63ea409f9fab"
+    digital: true
+    physical: false
+    location: "0"
+    availability_endpoint: "/pass/availability/institution"
+    booking_link_selector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
+    login_form:
+      username_field: "username"
+      password_field: "password"
+      username: "your_username"
+      password: "your_password"
+      auth_id_selector: "input[name='auth_id']"
+      login_url_selector: "input[name='login_url']"
+    booking_form:
+      action_url: "/passes/7f2ac5c414b2/book"
+      email_field: "email"
+    success_indicator: "Thank you!"
+  Zoo:
+    name: "Woodland Park Zoo"
+    base_url: "https://spl.libcal.com"
+    museum_id: "033bbf08993f"
+    slug: "Zoo"
+    pass_id: "xxxxxxxx"
+    digital: true
+    physical: false
+    location: "0"
+    availability_endpoint: "/pass/availability/institution"
+    booking_link_selector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
+    login_form:
+      username_field: "username"
+      password_field: "password"
+      username: "your_username"
+      password: "your_password"
+      auth_id_selector: "input[name='auth_id']"
+      login_url_selector: "input[name='login_url']"
+    booking_form:
+      action_url: "/passes/033bbf08993f/book"
+      email_field: "email"
+    success_indicator: "Thank you!"
 
+preferred_slug: "SAM"
 mode: "alert"
 preferred_days: ["Saturday", "Sunday"]
 strike_time: "09:00:00"
@@ -31,3 +54,4 @@ pre_warm_offset: "30s"
 ntfy_topic: "myappointments"
 max_workers: 2
 request_jitter: "2s"
+months_to_check: 2
