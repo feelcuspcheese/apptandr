@@ -42,6 +42,8 @@ type AppConfig struct {
     Mode          string       `mapstructure:"mode"` // alert or booking
     PreferredDays []string     `mapstructure:"preferred_days"`
     StrikeTime    string       `mapstructure:"strike_time"`
+    CheckWindow   time.Duration `mapstructure:"check_window"`   // e.g., "1m", "30s"
+    CheckInterval time.Duration `mapstructure:"check_interval"` // e.g., "2s", "500ms"
     NtfyTopic     string       `mapstructure:"ntfy_topic"`
     MaxWorkers    int          `mapstructure:"max_workers"`
     RequestJitter time.Duration `mapstructure:"request_jitter"`
