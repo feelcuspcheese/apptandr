@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.21-alpine AS builder
 
+# Install git (required for go mod download)
+RUN apk add --no-cache git
+
 WORKDIR /app
 
 # Copy only go.mod (go.sum may be missing)
