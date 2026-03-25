@@ -5,9 +5,11 @@ import (
     "agent/pkg/parser"
     "context"
     "fmt"
-    "github.com/sirupsen/logrus"
+    "math/rand"
     "net/http"
     "time"
+
+    "github.com/sirupsen/logrus"
 )
 
 type Scraper struct {
@@ -24,6 +26,11 @@ func NewScraper(client *httpclient.Client, endpoint string, jitter time.Duration
         logger:   logger,
         jitter:   jitter,
     }
+}
+
+// SetEndpoint allows changing the endpoint URL dynamically (e.g., with a date).
+func (s *Scraper) SetEndpoint(endpoint string) {
+    s.endpoint = endpoint
 }
 
 func (s *Scraper) FetchAvailability(ctx context.Context) ([]parser.Availability, error) {
