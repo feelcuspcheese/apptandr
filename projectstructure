@@ -1,0 +1,28 @@
+agent/
+├── cmd/
+│   └── agent/
+│       └── main.go
+├── pkg/
+│   ├── config/
+│   │   └── config.go
+│   ├── httpclient/
+│   │   └── client.go
+│   ├── scraper/
+│   │   └── scraper.go
+│   ├── parser/
+│   │   └── parser.go
+│   ├── state/
+│   │   └── state.go
+│   ├── notifier/
+│   │   └── ntfy.go
+│   ├── booker/
+│   │   └── booker.go
+│   ├── scheduler/
+│   │   └── scheduler.go
+│   └── utils/
+│       └── utils.go
+├── configs/
+│   └── config.yaml
+├── go.mod
+├── go.sum
+└── README.md
