@@ -1,0 +1,30 @@
+site:
+  name: "clinic"
+  base_url: "https://example.com"
+  availability_endpoint: "https://example.com/api/availability"
+  booking_link_selector: "a.book-link"
+  login_url: "https://example.com/login"
+  login_form:
+    username_field: "email"
+    password_field: "password"
+    submit_button: "submit"
+    csrf_token_selector: "input[name='csrf_token']"
+    username: "myuser@example.com"
+    password: "mypassword"
+  booking_form:
+    action_url: "/book"
+    fields:
+      - name: "date"
+        type: "hidden"
+        selector: "input[name='date']"
+      - name: "time_slot"
+        type: "select"
+        selector: "select[name='time']"
+  success_indicator: "Your appointment is confirmed"
+
+mode: "alert"
+preferred_days: ["Saturday", "Sunday"]
+strike_time: "09:00:00"
+ntfy_topic: "myappointments"
+max_workers: 2
+request_jitter: "2s"
