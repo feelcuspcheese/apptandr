@@ -4,7 +4,7 @@ import (
     "agent/pkg/agent"
     "agent/pkg/config"
     "embed"
-    "fmt"
+    "encoding/json"
     "io/fs"
     "net/http"
     "time"
