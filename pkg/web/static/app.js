@@ -1,7 +1,12 @@
 let ws;
+let currentConfig = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
+    // Initialize timepicker
+    const timepicker = document.getElementById('strike-time');
+    M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
+
     loadConfig();
 
     document.getElementById('config-form').addEventListener('submit', saveConfig);
@@ -16,54 +21,62 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadConfig() {
-    const res = await fetch('/api/config');
-    const cfg = await res.json();
-    document.getElementById('config-loading').style.display = 'none';
-    document.getElementById('strike-time').value = cfg.StrikeTime;
-    document.getElementById('check-window').value = cfg.CheckWindow / 60; // minutes
-    document.querySelector(`input[name="mode"][value="${cfg.Mode}"]`).checked = true;
+    try {
+        const res = await fetch('/api/config');
+        currentConfig = await res.json();
+        document.getElementById('config-loading').style.display = 'none';
+        document.getElementById('strike-time').value = currentConfig.StrikeTime;
+        document.getElementById('check-window').value = (currentConfig.CheckWindow / 60).toFixed(0);
+        const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
+        if (modeRadio) modeRadio.checked = true;
 
-    // Populate museum pills
-    const pillsDiv = document.getElementById('museums-pills');
-    pillsDiv.innerHTML = '';
-    for (const [slug, info] of Object.entries(cfg.Sites)) {
-        const chip = document.createElement('div');
-        chip.className = 'chip';
-        chip.textContent = info.Name || slug;
-        chip.dataset.slug = slug;
-        if (cfg.PreferredSlug === slug) {
-            chip.classList.add('active');
+        // Populate museums pills
+        const pillsDiv = document.getElementById('museums-pills');
+        pillsDiv.innerHTML = '';
+        for (const [slug, info] of Object.entries(currentConfig.Sites)) {
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.textContent = info.Name || slug;
+            chip.dataset.slug = slug;
+            if (currentConfig.PreferredSlug === slug) {
+                chip.classList.add('active');
+            }
+            chip.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Remove active class from all
+                document.querySelectorAll('#museums-pills .chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                currentConfig.PreferredSlug = slug;
+                // Optionally auto-save? We'll wait for explicit save.
+            });
+            pillsDiv.appendChild(chip);
         }
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('#museums-pills .chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            cfg.PreferredSlug = slug;
-            // Optionally save immediately
+
+        // Highlight preferred days
+        const preferredDays = currentConfig.PreferredDays || [];
+        document.querySelectorAll('#days-pills .chip').forEach(chip => {
+            const day = chip.dataset.day;
+            if (preferredDays.includes(day)) {
+                chip.classList.add('active');
+            }
+            chip.addEventListener('click', (e) => {
+                chip.classList.toggle('active');
+                updatePreferredDays();
+            });
         });
-        pillsDiv.appendChild(chip);
+    } catch (err) {
+        console.error(err);
+        document.getElementById('config-loading').innerHTML = 'Failed to load config';
     }
-
-    // Highlight preferred days
-    const days = cfg.PreferredDays;
-    document.querySelectorAll('#days-pills .chip').forEach(chip => {
-        if (days.includes(chip.dataset.day)) {
-            chip.classList.add('active');
-        }
-        chip.addEventListener('click', () => {
-            chip.classList.toggle('active');
-            updatePreferredDays();
-        });
-    });
 }
 
 function updatePreferredDays() {
     const selected = Array.from(document.querySelectorAll('#days-pills .chip.active')).map(c => c.dataset.day);
-    document.getElementById('preferred-days-input').value = JSON.stringify(selected);
+    // We'll store in currentConfig later when saving
 }
 
 async function saveConfig(e) {
     e.preventDefault();
-    const formData = new FormData(document.getElementById('config-form'));
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const preferredSlug = document.querySelector('#museums-pills .chip.active')?.dataset.slug;
     const preferredDays = Array.from(document.querySelectorAll('#days-pills .chip.active')).map(c => c.dataset.day);
@@ -71,25 +84,26 @@ async function saveConfig(e) {
     const checkWindowMinutes = parseInt(document.getElementById('check-window').value);
     const checkWindow = checkWindowMinutes * 60; // seconds
 
-    const newCfg = {
+    const updatedConfig = {
+        ...currentConfig,
         Mode: mode,
         PreferredSlug: preferredSlug,
         PreferredDays: preferredDays,
         StrikeTime: strikeTime,
         CheckWindow: checkWindow,
-        // other fields we keep as is (from current config)
-        // In a full implementation we'd fetch and merge
     };
 
     const res = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCfg)
+        body: JSON.stringify(updatedConfig)
     });
     if (res.ok) {
-        M.toast({html: 'Config saved'});
+        M.toast({html: 'Configuration saved'});
+        currentConfig = updatedConfig; // update local copy
     } else {
-        M.toast({html: 'Error saving config', classes: 'red'});
+        const err = await res.json();
+        M.toast({html: err.error || 'Error saving config', classes: 'red'});
     }
 }
 
@@ -106,7 +120,10 @@ async function runNow() {
 async function schedule() {
     const dateTime = document.getElementById('scheduled-time').value;
     const timezone = document.getElementById('timezone').value;
-    if (!dateTime) return;
+    if (!dateTime) {
+        M.toast({html: 'Please select a date and time', classes: 'red'});
+        return;
+    }
     const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -133,11 +150,16 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
         const logsDiv = document.getElementById('logs');
         const line = document.createElement('div');
-        line.textContent = new Date().toLocaleTimeString() + ' ' + event.data;
+        const timestamp = new Date().toLocaleTimeString();
+        line.textContent = `[${timestamp}] ${event.data}`;
         logsDiv.appendChild(line);
         logsDiv.scrollTop = logsDiv.scrollHeight;
     };
     ws.onclose = () => {
+        console.log('WebSocket closed, reconnecting in 3s...');
         setTimeout(connectWebSocket, 3000);
+    };
+    ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
     };
 }
