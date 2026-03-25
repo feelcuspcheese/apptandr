@@ -9,8 +9,8 @@ dist/
 *.test
 
 # Config files (secrets) – do not copy into the image
-configs/*.yaml
-configs/*.yml
+configs/config.yaml
+#configs/*.yml
 
 # IDE files
 .vscode/
