@@ -3,11 +3,14 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
+# Copy only go.mod (go.sum may be missing)
+COPY go.mod ./
 RUN go mod download
 
+# Now copy the rest of the source (including any existing go.sum)
 COPY . .
 
+# Build the agent
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o agent ./cmd/agent
 
 # Final stage
@@ -17,21 +20,8 @@ RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
-# Copy the binary
 COPY --from=builder /app/agent .
 
-# Copy default config (will be used if none exists in mounted volume)
-COPY configs/default-config.yaml ./default-config.yaml
-
-# Create directory for configs
-RUN mkdir -p /root/configs
-
-# Entrypoint script to ensure config file exists
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# Expose web port
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["./agent", "--web"]
