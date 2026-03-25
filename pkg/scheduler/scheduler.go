@@ -13,11 +13,19 @@ type Scheduler struct {
     jitter        time.Duration
     checkWindow   time.Duration
     checkInterval time.Duration
+    preWarmOffset time.Duration
     logger        *logrus.Logger
     task          func(context.Context) (bool, error) // returns stop flag and error
+    preWarmTask   func(context.Context) error
 }
 
-func NewScheduler(strikeTimeStr string, jitter, checkWindow, checkInterval time.Duration, logger *logrus.Logger, task func(context.Context) (bool, error)) (*Scheduler, error) {
+func NewScheduler(
+    strikeTimeStr string,
+    jitter, checkWindow, checkInterval, preWarmOffset time.Duration,
+    logger *logrus.Logger,
+    task func(context.Context) (bool, error),
+    preWarmTask func(context.Context) error,
+) (*Scheduler, error) {
     t, err := time.Parse("15:04:05", strikeTimeStr)
     if err != nil {
         return nil, err
@@ -32,13 +40,64 @@ func NewScheduler(strikeTimeStr string, jitter, checkWindow, checkInterval time.
         jitter:        jitter,
         checkWindow:   checkWindow,
         checkInterval: checkInterval,
+        preWarmOffset: preWarmOffset,
         logger:        logger,
         task:          task,
+        preWarmTask:   preWarmTask,
     }, nil
+}
+
+// PreWarm runs the pre‑warm task once, before the first waiting cycle.
+func (s *Scheduler) PreWarm(ctx context.Context) error {
+    if s.preWarmTask == nil {
+        return nil
+    }
+    s.logger.Info("Starting pre‑warm phase")
+    // Apply jitter before pre‑warm to mimic human browsing
+    if s.jitter > 0 {
+        jitter := time.Duration(rand.Int63n(int64(s.jitter)))
+        s.logger.WithField("jitter", jitter).Debug("Applying jitter before pre‑warm")
+        select {
+        case <-time.After(jitter):
+        case <-ctx.Done():
+            return ctx.Err()
+        }
+    }
+    return s.preWarmTask(ctx)
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
     for {
+        // Wait until strike time minus pre‑warm offset (but only if pre‑warm is needed again tomorrow)
+        // Actually, we already did pre‑warm once before this loop. For subsequent days, we should re‑warm.
+        // We'll handle re‑warm each day before the strike.
+        // So we need to recalc the strike time for the next day after each cycle.
+
+        // Compute next strike time (today's strike if not passed, else tomorrow)
+        now := time.Now()
+        if s.strikeTime.Before(now) {
+            s.strikeTime = s.strikeTime.Add(24 * time.Hour)
+        }
+
+        // Pre‑warm for this day
+        warmTime := s.strikeTime.Add(-s.preWarmOffset)
+        if warmTime.After(now) {
+            wait := warmTime.Sub(now)
+            s.logger.WithFields(logrus.Fields{
+                "warm_time": warmTime,
+                "wait":      wait,
+            }).Info("Waiting for pre‑warm time")
+            select {
+            case <-time.After(wait):
+            case <-ctx.Done():
+                return
+            }
+        }
+        // Execute pre‑warm task
+        if err := s.PreWarm(ctx); err != nil {
+            s.logger.WithError(err).Error("Pre‑warm failed")
+        }
+
         // Wait until strike time
         wait := s.strikeTime.Sub(time.Now())
         if wait > 0 {
@@ -58,10 +117,10 @@ func (s *Scheduler) Run(ctx context.Context) {
         }).Info("Starting check window")
 
         for {
-            // Apply jitter before each check (including the first)
+            // Apply jitter before each check
             if s.jitter > 0 {
                 jitter := time.Duration(rand.Int63n(int64(s.jitter)))
-                s.logger.WithField("jitter", jitter).Debug("Applying jitter")
+                s.logger.WithField("jitter", jitter).Debug("Applying jitter before check")
                 select {
                 case <-time.After(jitter):
                 case <-ctx.Done():
@@ -69,7 +128,7 @@ func (s *Scheduler) Run(ctx context.Context) {
                 }
             }
 
-            // Execute the task
+            // Execute task
             stop, err := s.task(ctx)
             if err != nil {
                 s.logger.WithError(err).Error("Task failed")
@@ -88,7 +147,6 @@ func (s *Scheduler) Run(ctx context.Context) {
             // Wait for next interval (with jitter)
             interval := s.checkInterval
             if s.jitter > 0 {
-                // Add random jitter to interval to mimic human variation
                 jitter := time.Duration(rand.Int63n(int64(s.jitter)))
                 interval += jitter
             }
@@ -100,7 +158,7 @@ func (s *Scheduler) Run(ctx context.Context) {
             }
         }
 
-        // Schedule next strike (tomorrow)
+        // Move to next day (tomorrow's strike)
         s.strikeTime = s.strikeTime.Add(24 * time.Hour)
     }
 }
