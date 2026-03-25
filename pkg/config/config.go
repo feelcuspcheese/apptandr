@@ -6,14 +6,14 @@ import (
 )
 
 type SiteConfig struct {
-    Name                 string            `mapstructure:"name"`
-    BaseURL              string            `mapstructure:"base_url"`
-    AvailabilityEndpoint string            `mapstructure:"availability_endpoint"`
-    BookingLinkSelector  string            `mapstructure:"booking_link_selector"`
-    LoginURL             string            `mapstructure:"login_url"`
-    LoginForm            LoginFormConfig   `mapstructure:"login_form"`
-    BookingForm          BookingFormConfig `mapstructure:"booking_form"`
-    SuccessIndicator     string            `mapstructure:"success_indicator"`
+    Name                  string            `mapstructure:"name"`
+    BaseURL               string            `mapstructure:"base_url"`
+    AvailabilityEndpoint  string            `mapstructure:"availability_endpoint"`
+    BookingLinkSelector   string            `mapstructure:"booking_link_selector"`
+    LoginURL              string            `mapstructure:"login_url"`
+    LoginForm             LoginFormConfig   `mapstructure:"login_form"`
+    BookingForm           BookingFormConfig `mapstructure:"booking_form"`
+    SuccessIndicator      string            `mapstructure:"success_indicator"`
 }
 
 type LoginFormConfig struct {
@@ -31,23 +31,23 @@ type BookingFormConfig struct {
 }
 
 type FormFieldConfig struct {
-    Name  string `mapstructure:"name"`
-    Type  string `mapstructure:"type"` // hidden, select, etc.
-    Value string `mapstructure:"value"` // optional static value
-    Selector string `mapstructure:"selector"` // CSS selector for dynamic value extraction
+    Name     string `mapstructure:"name"`
+    Type     string `mapstructure:"type"`
+    Value    string `mapstructure:"value"`
+    Selector string `mapstructure:"selector"`
 }
 
 type AppConfig struct {
-    Site          SiteConfig   `mapstructure:"site"`
-    Mode          string       `mapstructure:"mode"` // alert or booking
-    PreferredDays []string     `mapstructure:"preferred_days"`
-    StrikeTime    string       `mapstructure:"strike_time"`
-    CheckWindow   time.Duration `mapstructure:"check_window"`   // e.g., "1m", "30s"
-    CheckInterval time.Duration `mapstructure:"check_interval"` // e.g., "2s", "500ms"
-    NtfyTopic     string       `mapstructure:"ntfy_topic"`
-    MaxWorkers    int          `mapstructure:"max_workers"`
-    RequestJitter time.Duration `mapstructure:"request_jitter"`
-    PreWarmSeconds time.Duration `mapstructure:"pre_warm_seconds"` // e.g., "30s"
+    Site           SiteConfig    `mapstructure:"site"`
+    Mode           string        `mapstructure:"mode"` // alert or booking
+    PreferredDays  []string      `mapstructure:"preferred_days"`
+    StrikeTime     string        `mapstructure:"strike_time"`
+    CheckWindow    time.Duration `mapstructure:"check_window"`
+    CheckInterval  time.Duration `mapstructure:"check_interval"`
+    PreWarmOffset  time.Duration `mapstructure:"pre_warm_offset"` // e.g., "30s"
+    NtfyTopic      string        `mapstructure:"ntfy_topic"`
+    MaxWorkers     int           `mapstructure:"max_workers"`
+    RequestJitter  time.Duration `mapstructure:"request_jitter"`
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
