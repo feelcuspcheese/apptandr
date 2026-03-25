@@ -4,7 +4,6 @@ import (
     "agent/pkg/agent"
     "agent/pkg/config"
     "embed"
-    "encoding/json"
     "io/fs"
     "net/http"
     "time"
@@ -76,6 +75,8 @@ func (s *Server) setupRoutes() {
 func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
+
+// --- Handlers ---
 
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
