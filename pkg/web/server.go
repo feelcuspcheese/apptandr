@@ -4,12 +4,11 @@ import (
     "agent/pkg/agent"
     "agent/pkg/config"
     "embed"
-    "encoding/json"
     "fmt"
+    "io/fs"
     "net/http"
     "time"
 
-    "github.com/gin-contrib/static"
     "github.com/gin-gonic/gin"
     "github.com/gorilla/websocket"
     "github.com/sirupsen/logrus"
@@ -44,8 +43,22 @@ func (s *Server) setupRoutes() {
     s.router = gin.New()
     s.router.Use(gin.Recovery())
 
-    // Serve embedded static files
-    s.router.Use(static.Serve("/", static.EmbedFolder(staticFS, "static")))
+    // Serve static files from embedded FS
+    staticSub, err := fs.Sub(staticFS, "static")
+    if err != nil {
+        panic(err)
+    }
+    s.router.StaticFS("/static", http.FS(staticSub))
+
+    // Serve index.html for root
+    s.router.GET("/", func(c *gin.Context) {
+        data, err := staticFS.ReadFile("static/index.html")
+        if err != nil {
+            c.String(http.StatusInternalServerError, "Internal error")
+            return
+        }
+        c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+    })
 
     // API endpoints
     api := s.router.Group("/api")
