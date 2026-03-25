@@ -1,6 +1,7 @@
 package notifier
 
 import (
+    "agent/pkg/parser"
     "bytes"
     "encoding/json"
     "fmt"
@@ -10,8 +11,8 @@ import (
 )
 
 type Ntfy struct {
-    Topic string
-    URL   string
+    Topic  string
+    URL    string
     client *http.Client
 }
 
@@ -26,20 +27,20 @@ func NewNtfy(topic string) *Ntfy {
 type Priority int
 
 const (
-    PriorityMin Priority = 1
-    PriorityLow Priority = 2
+    PriorityMin     Priority = 1
+    PriorityLow     Priority = 2
     PriorityDefault Priority = 3
-    PriorityHigh Priority = 4
-    PriorityUrgent Priority = 5
+    PriorityHigh    Priority = 4
+    PriorityUrgent  Priority = 5
 )
 
 type Message struct {
-    Topic    string            `json:"topic"`
-    Title    string            `json:"title"`
-    Message  string            `json:"message"`
-    Priority Priority          `json:"priority"`
-    Actions  []Action          `json:"actions,omitempty"`
-    Tags     []string          `json:"tags,omitempty"`
+    Topic    string   `json:"topic"`
+    Title    string   `json:"title"`
+    Message  string   `json:"message"`
+    Priority Priority `json:"priority"`
+    Actions  []Action `json:"actions,omitempty"`
+    Tags     []string `json:"tags,omitempty"`
 }
 
 type Action struct {
@@ -78,9 +79,9 @@ func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []
 }
 
 // Helper to prioritize weekends
-func PrioritizeActions(availabilities []AvailabilityWithLink) []Action {
+func PrioritizeActions(availabilities []parser.Availability) []Action {
     // Separate weekends and weekdays
-    var weekends, weekdays []AvailabilityWithLink
+    var weekends, weekdays []parser.Availability
     for _, a := range availabilities {
         if isWeekend(a.Date) {
             weekends = append(weekends, a)
@@ -111,7 +112,6 @@ func PrioritizeActions(availabilities []AvailabilityWithLink) []Action {
 }
 
 func isWeekend(dateStr string) bool {
-    // Assuming dateStr is "YYYY-MM-DD" or similar; parse and check
     t, err := time.Parse("2006-01-02", dateStr)
     if err != nil {
         return false
