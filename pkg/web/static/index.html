@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Appointment Agent Dashboard</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="blue-grey darken-1">
+        <div class="nav-wrapper container">
+            <a href="#" class="brand-logo">📅 Appointment Agent</a>
+            <ul id="nav-mobile" class="right hide-on-med-and-down">
+                <li><a href="#" id="stop-btn" class="waves-effect waves-light btn red">Stop Agent</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col s12 m6">
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Configuration</span>
+                        <div id="config-loading">Loading...</div>
+                        <form id="config-form">
+                            <!-- Museums pills will be dynamically inserted -->
+                            <div class="row">
+                                <div class="col s12">
+                                    <label>Museums (click to select preferred)</label>
+                                    <div id="museums-pills"></div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col s12">
+                                    <label>Preferred Days</label>
+                                    <div id="days-pills">
+                                        <div class="chip" data-day="Monday">Monday</div>
+                                        <div class="chip" data-day="Tuesday">Tuesday</div>
+                                        <div class="chip" data-day="Wednesday">Wednesday</div>
+                                        <div class="chip" data-day="Thursday">Thursday</div>
+                                        <div class="chip" data-day="Friday">Friday</div>
+                                        <div class="chip" data-day="Saturday">Saturday</div>
+                                        <div class="chip" data-day="Sunday">Sunday</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12 m6">
+                                    <input id="strike-time" type="text" class="timepicker">
+                                    <label for="strike-time">Strike Time (HH:MM)</label>
+                                </div>
+                                <div class="input-field col s12 m6">
+                                    <select id="timezone">
+                                        <option value="America/Los_Angeles">PST/PDT</option>
+                                        <option value="America/New_York">EST/EDT</option>
+                                        <option value="UTC">UTC</option>
+                                        <option value="Asia/Kolkata">IST</option>
+                                    </select>
+                                    <label>Timezone</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input id="check-window" type="number" step="1" value="1">
+                                    <label for="check-window">Check Window (minutes)</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col s12">
+                                    <label>Mode</label>
+                                    <p>
+                                        <label>
+                                            <input name="mode" type="radio" value="alert" checked>
+                                            <span>Alert Only</span>
+                                        </label>
+                                    </p>
+                                    <p>
+                                        <label>
+                                            <input name="mode" type="radio" value="booking">
+                                            <span>Automatic Booking</span>
+                                        </label>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col s12">
+                                    <button class="btn waves-effect waves-light" type="submit">Save Config</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Actions</span>
+                        <button id="run-now" class="btn waves-effect waves-light green">▶ Run Now (in 30s)</button>
+                        <button id="schedule" class="btn waves-effect waves-light blue">📅 Schedule</button>
+                        <div id="schedule-panel" style="display:none; margin-top:10px;">
+                            <input type="datetime-local" id="scheduled-time">
+                            <button id="confirm-schedule" class="btn">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col s12 m6">
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Live Logs</span>
+                        <div id="logs" style="height: 400px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 8px; font-family: monospace;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
