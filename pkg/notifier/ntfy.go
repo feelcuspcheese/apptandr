@@ -1,7 +1,6 @@
 package notifier
 
 import (
-    "agent/pkg/parser"
     "bytes"
     "encoding/json"
     "fmt"
@@ -11,8 +10,8 @@ import (
 )
 
 type Ntfy struct {
-    Topic  string
-    URL    string
+    Topic string
+    URL   string
     client *http.Client
 }
 
@@ -27,26 +26,32 @@ func NewNtfy(topic string) *Ntfy {
 type Priority int
 
 const (
-    PriorityMin     Priority = 1
-    PriorityLow     Priority = 2
+    PriorityMin Priority = 1
+    PriorityLow Priority = 2
     PriorityDefault Priority = 3
-    PriorityHigh    Priority = 4
-    PriorityUrgent  Priority = 5
+    PriorityHigh Priority = 4
+    PriorityUrgent Priority = 5
 )
 
 type Message struct {
-    Topic    string   `json:"topic"`
-    Title    string   `json:"title"`
-    Message  string   `json:"message"`
-    Priority Priority `json:"priority"`
-    Actions  []Action `json:"actions,omitempty"`
-    Tags     []string `json:"tags,omitempty"`
+    Topic    string            `json:"topic"`
+    Title    string            `json:"title"`
+    Message  string            `json:"message"`
+    Priority Priority          `json:"priority"`
+    Actions  []Action          `json:"actions,omitempty"`
+    Tags     []string          `json:"tags,omitempty"`
 }
 
 type Action struct {
     Action string `json:"action"`
     Label  string `json:"label"`
     URL    string `json:"url"`
+}
+
+// AvailabilityWithLink is a struct to hold availability data for notifications
+type AvailabilityWithLink struct {
+    Date       string
+    BookingURL string
 }
 
 func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []Action) error {
@@ -79,9 +84,9 @@ func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []
 }
 
 // Helper to prioritize weekends
-func PrioritizeActions(availabilities []parser.Availability) []Action {
+func PrioritizeActions(availabilities []AvailabilityWithLink) []Action {
     // Separate weekends and weekdays
-    var weekends, weekdays []parser.Availability
+    var weekends, weekdays []AvailabilityWithLink
     for _, a := range availabilities {
         if isWeekend(a.Date) {
             weekends = append(weekends, a)
