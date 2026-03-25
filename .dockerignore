@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.test
+
+# Config files (if they contain secrets, exclude; we will mount config at runtime)
+configs/*.yaml
+configs/*.yml
+
+# Go module cache
+go.sum
+go.mod
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS metadata
+.DS_Store
+
+# Logs
+*.log
+
+# Test files
+*_test.go
