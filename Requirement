@@ -1,0 +1,217 @@
+1. Requirement Document
+1.1 Overview
+A Go-based agent that monitors a web page for appointment availability (via AJAX requests) and can operate in two modes:
+
+Alert Mode: detects availability, sends notifications with action buttons to book, but does not automatically book.
+
+Booking Mode: automatically books an appointment based on configurable preferred days after detection.
+
+The agent must mimic a real browser to evade WAF/bot detection, use lightweight HTTP clients, manage cookies/sessions per site, and be efficient with concurrency (max 2 threads per site). It should avoid duplicate notifications and duplicate booking attempts.
+
+1.2 Functional Requirements
+1.2.1 Mode Configuration
+Configurable via config file (e.g., YAML) to switch between alert and booking mode.
+
+Booking mode includes preferred days (e.g., ["Saturday", "Sunday"]) and optionally specific dates.
+
+1.2.2 Availability Detection
+Perform HTTP requests to a given AJAX endpoint that returns HTML containing availability information.
+
+Parse HTML to extract available dates and corresponding booking links.
+
+Must be able to handle multiple available dates.
+
+Must be able to schedule checks at a specific "strike time" (e.g., 9:00 AM) with random jitter before the check (e.g., ±2 seconds) to mimic human behavior.
+
+1.2.3 Notification (ntfy)
+Send ntfy notifications to a configured topic when availability is found.
+
+Notifications must include:
+
+List of available dates.
+
+For each date, a button linking directly to its booking page.
+
+Buttons should be prioritized: weekends (Saturday, Sunday) first, then weekdays.
+
+Clearly label weekend vs weekday buttons (e.g., "Weekend: Date").
+
+1.2.4 Booking Automation
+When in booking mode, after detecting availability:
+
+Select the first preferred day (based on priority list) that is available.
+
+Navigate to the booking link (may require login).
+
+Handle login form (username/password) with proper session cookies.
+
+Extract CSRF tokens or other hidden form fields from the page.
+
+Submit the booking form with all required fields.
+
+Parse the response to determine success or failure (based on HTML content or redirect).
+
+Send a separate ntfy notification with the result.
+
+1.2.5 Concurrency & State Management
+Max 2 goroutines per site for concurrent availability checks (if multiple checks needed, e.g., polling).
+
+Reuse a shared HTTP client per site with cookie jar and common headers.
+
+Prevent duplicate availability notifications: track seen dates.
+
+Prevent duplicate booking attempts: mark a day as "processing" while booking.
+
+1.2.6 Stealth & Anti‑Detection
+Use realistic browser headers (User-Agent, Accept-Language, etc.).
+
+Add random delays between requests (jitter) to mimic human behavior.
+
+Use TLS fingerprint mimicking (optional, but can use standard net/http with typical ciphers).
+
+Rotate User-Agent only per session (not per request) to look consistent.
+
+1.3 Non‑Functional Requirements
+Performance: lightweight, fast, low memory footprint.
+
+Modularity: components (scraper, booker, notifier, state) must be independent and replaceable.
+
+Configurability: all site‑specific details (URLs, selectors, form fields) must be configurable without code changes.
+
+Resilience: handle transient errors with retries, timeouts.
+
+Logging: detailed logs for debugging.
+
+1.4 Configuration Structure (Example)
+yaml
+site:
+  name: "clinic"
+  base_url: "https://example.com"
+  availability_endpoint: "/api/availability"
+  booking_link_selector: "a.booking-link"  # CSS selector for link extraction
+  login_url: "https://example.com/login"
+  login_form:
+    username_field: "email"
+    password_field: "password"
+    submit_button: "submit"
+    csrf_token_selector: "input[name='csrf_token']"
+  booking_form:
+    action_url: "https://example.com/book"
+    fields:
+      - name: "date"
+        type: "hidden"
+        value_selector: "input[name='date']"
+      - name: "time"
+        type: "select"
+        options: "option[value]"
+  success_indicator: "Congratulations"  # text on success page
+
+mode: "alert"  # or "booking"
+preferred_days: ["Saturday", "Sunday"]
+strike_time: "09:00:00"
+ntfy_topic: "myappointments"
+max_workers: 2
+request_jitter: "2s"
+2. Architecture Design
+2.1 High‑Level Components
+text
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   Config    │─────▶│  Scheduler   │─────▶│   Scraper   │
+└─────────────┘      └──────────────┘      └──────┬──────┘
+                                                   │
+                                                   ▼
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   Notifier  │◀─────│  State       │◀─────│   Parser    │
+└─────────────┘      │  Manager     │      └─────────────┘
+                     └──────┬───────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │   Booker     │
+                     └──────────────┘
+Config: loads configuration from file and environment.
+
+Scheduler: runs at strike time with jitter, triggers availability check.
+
+HTTP Client Manager: provides pre‑configured HTTP clients per site (cookie jar, headers, timeouts).
+
+Scraper: performs requests, parses HTML using goquery.
+
+Parser: extracts available dates and booking links.
+
+State Manager: stores seen dates and booking status, ensures no duplicates.
+
+Notifier: sends ntfy messages with buttons.
+
+Booker: handles login and booking submission, uses shared HTTP client.
+
+2.2 Concurrency Model
+Use a worker pool (size = max_workers) per site to process availability checks.
+
+Each check is a goroutine that acquires a token from a semaphore.
+
+All checks for the same site reuse the same HTTP client (thread‑safe).
+
+State management uses sync.Map or mutex‑protected maps.
+
+2.3 Request Flow
+Alert Mode
+Scheduler triggers at strike time.
+
+Scraper sends AJAX request → gets HTML.
+
+Parser extracts dates & links.
+
+For each new date, send ntfy notification with buttons (weekends prioritized).
+
+Mark dates as seen.
+
+Booking Mode
+Scheduler triggers.
+
+Scraper checks availability → returns dates & links.
+
+For each preferred day (in order) that is available:
+
+Check if already booked or processing (state).
+
+If not, start booking:
+
+Load login page (if needed) → extract CSRF token.
+
+Post login credentials → get session cookies.
+
+Navigate to booking link → extract form fields.
+
+Submit booking form.
+
+Parse result → send success/failure notification.
+
+Update state.
+
+2.4 Stealth Implementation
+Each site gets its own HTTP client with:
+
+Custom Transport that adds headers per request.
+
+CookieJar (default net/http/cookiejar).
+
+Custom RoundTripper to log requests and add jitter delays (optional).
+
+Headers mimic a real browser:
+
+text
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ...
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,...
+Accept-Language: en-US,en;q=0.9
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+Referer: <base_url>
+Add random delays (jitter) before sending the request using time.Sleep.
+
+2.5 Error Handling & Retries
+Retry transient errors (timeout, 5xx) with exponential backoff.
+
+Max retries configurable.
+
+Log all failures.
