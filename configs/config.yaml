@@ -1,27 +1,29 @@
 site:
-  name: "spl_libcal"
+  name: "zoo_libcal"
   base_url: "https://spl.libcal.com"
-  museum_id: "7f2ac5c414b2"
+  museum_id: "033bbf08993f"       # replace with actual Zoo museum ID
+  slug: "Zoo"                     # the pass slug
+  pass_id: "xxxxxxxx"             # actual pass ID for Zoo
   digital: true
   physical: false
   location: "0"
-  target_date: "2026-04-24"   # The date to check for availability
+  target_date: "2026-04-24"       # date to check
   availability_endpoint: "/pass/availability/institution"
   booking_link_selector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
-  login_url: "https://spl.libcal.com/passes/SAM/book?date=2026-04-24&pass=63ea409f9fab&digital=1&physical=0&location=0"  # dummy; actually dynamic
+  login_url: ""                   # not used
   login_form:
     username_field: "username"
     password_field: "password"
     submit_button: "submit"
-    csrf_token_selector: ""   # not used
+    csrf_token_selector: ""
     username: "your_username"
     password: "your_password"
     auth_id_selector: "input[name='auth_id']"
     login_url_selector: "input[name='login_url']"
   booking_form:
-    action_url: "/passes/7f2ac5c414b2/book"
+    action_url: "/passes/033bbf08993f/book"   # derived from museum_id, but we extract from page anyway
     email_field: "email"
-    fields: []   # we will extract all hidden fields dynamically
+    fields: []   # will be extracted dynamically
   success_indicator: "Thank you!"
 
 mode: "alert"
