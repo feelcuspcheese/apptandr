@@ -3,6 +3,7 @@ package config
 import (
     "github.com/spf13/viper"
     "time"
+    "os"
 )
 
 type SiteInfo struct {
@@ -74,4 +75,22 @@ func LoadConfig(path string) (*AppConfig, error) {
         cfg.MonthsToCheck = 2 // default
     }
     return &cfg, nil
+}
+
+
+func SaveConfig(path string, cfg *AppConfig) error {
+    viper.SetConfigFile(path)
+    viper.Set("sites", cfg.Sites)
+    viper.Set("preferred_slug", cfg.PreferredSlug)
+    viper.Set("mode", cfg.Mode)
+    viper.Set("preferred_days", cfg.PreferredDays)
+    viper.Set("strike_time", cfg.StrikeTime)
+    viper.Set("check_window", cfg.CheckWindow)
+    viper.Set("check_interval", cfg.CheckInterval)
+    viper.Set("pre_warm_offset", cfg.PreWarmOffset)
+    viper.Set("ntfy_topic", cfg.NtfyTopic)
+    viper.Set("max_workers", cfg.MaxWorkers)
+    viper.Set("request_jitter", cfg.RequestJitter)
+    viper.Set("months_to_check", cfg.MonthsToCheck)
+    return viper.WriteConfig()
 }
