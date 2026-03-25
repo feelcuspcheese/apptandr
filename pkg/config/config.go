@@ -3,7 +3,6 @@ package config
 import (
     "github.com/spf13/viper"
     "time"
-    "os"
 )
 
 type SiteInfo struct {
@@ -47,9 +46,9 @@ type FormFieldConfig struct {
 }
 
 type AppConfig struct {
-    Sites          map[string]SiteInfo `mapstructure:"sites"` // keyed by slug
+    Sites          map[string]SiteInfo `mapstructure:"sites"`
     PreferredSlug  string              `mapstructure:"preferred_slug"`
-    Mode           string              `mapstructure:"mode"` // alert or booking
+    Mode           string              `mapstructure:"mode"`
     PreferredDays  []string            `mapstructure:"preferred_days"`
     StrikeTime     string              `mapstructure:"strike_time"`
     CheckWindow    time.Duration       `mapstructure:"check_window"`
@@ -58,7 +57,7 @@ type AppConfig struct {
     NtfyTopic      string              `mapstructure:"ntfy_topic"`
     MaxWorkers     int                 `mapstructure:"max_workers"`
     RequestJitter  time.Duration       `mapstructure:"request_jitter"`
-    MonthsToCheck  int                 `mapstructure:"months_to_check"` // default 2
+    MonthsToCheck  int                 `mapstructure:"months_to_check"`
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
@@ -72,11 +71,10 @@ func LoadConfig(path string) (*AppConfig, error) {
         return nil, err
     }
     if cfg.MonthsToCheck == 0 {
-        cfg.MonthsToCheck = 2 // default
+        cfg.MonthsToCheck = 2
     }
     return &cfg, nil
 }
-
 
 func SaveConfig(path string, cfg *AppConfig) error {
     viper.SetConfigFile(path)
