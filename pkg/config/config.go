@@ -47,6 +47,7 @@ type AppConfig struct {
     NtfyTopic     string       `mapstructure:"ntfy_topic"`
     MaxWorkers    int          `mapstructure:"max_workers"`
     RequestJitter time.Duration `mapstructure:"request_jitter"`
+    PreWarmSeconds time.Duration `mapstructure:"pre_warm_seconds"` // e.g., "30s"
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
