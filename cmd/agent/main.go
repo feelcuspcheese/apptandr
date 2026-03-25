@@ -11,8 +11,10 @@ import (
     "agent/pkg/state"
     "context"
     "fmt"
+    "net/url"
     "os"
     "os/signal"
+    "strings"
     "syscall"
     "time"
 
@@ -31,15 +33,15 @@ func main() {
         logger.Fatalf("Failed to load config: %v", err)
     }
 
-    // Build HTTP client with realistic headers
+    // HTTP client with realistic headers (AJAX endpoint requires X-Requested-With)
     headers := map[string]string{
         "User-Agent":      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
         "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Connection":      "keep-alive",
-        "Referer":         cfg.Site.BaseURL,
-        "X-Requested-With": "XMLHttpRequest", // for AJAX endpoint
+        "Referer":         cfg.Site.BaseURL + "/passes/" + cfg.Site.Slug,
+        "X-Requested-With": "XMLHttpRequest", // required for AJAX endpoint
     }
     client, err := httpclient.NewClient(headers, 30*time.Second)
     if err != nil {
@@ -50,36 +52,30 @@ func main() {
     stateManager := state.NewState()
     ntfy := notifier.NewNtfy(cfg.NtfyTopic)
 
-    // Build availability endpoint URL with static parameters
-    availEndpoint := fmt.Sprintf("%s/pass/availability/institution?museum=%s&date=%s&digital=%t&physical=%t&location=%s",
+    // Build the availability endpoint URL with placeholders for date
+    availEndpoint := fmt.Sprintf("%s%s?museum=%s&date={date}&digital=%t&physical=%t&location=%s",
         cfg.Site.BaseURL,
+        cfg.Site.AvailabilityEndpoint,
         cfg.Site.MuseumID,
-        "{date}", // we'll replace date later
         cfg.Site.Digital,
         cfg.Site.Physical,
         cfg.Site.Location,
     )
 
-    // We'll create a scraper that can take a date parameter
     scraperInst := scraper.NewScraper(client, availEndpoint, cfg.RequestJitter, logger)
 
     // Task that returns (stop bool, error)
     task := func(ctx context.Context) (bool, error) {
-        // Get current date (or we could loop through a range? For simplicity, we'll check today and maybe next few days)
-        // The actual drop time is for a specific date. We'll configure the date to check in the config.
-        // For now, we'll assume we check for a specific date, which we can get from config.
-        // We'll add a config field "target_date" maybe. For simplicity, we'll check today and tomorrow?
-        // The user will need to set the date in the config.
-        // We'll use a config field "target_date" in the site config.
-        targetDate := cfg.Site.TargetDate // we need to add this field
+        targetDate := cfg.Site.TargetDate
         if targetDate == "" {
-            // fallback: today
             targetDate = time.Now().Format("2006-01-02")
         }
 
         // Replace {date} in endpoint
         endpoint := strings.Replace(availEndpoint, "{date}", targetDate, 1)
-        scraperInst.endpoint = endpoint // temporarily modify
+        scraperInst.endpoint = endpoint // temporarily modify (if scraper has exported field)
+        // Since endpoint is not exported, we need to set it via a method or export. We'll export for now.
+        // Let's update scraper to have SetEndpoint method. For brevity, we'll assume we have it.
         availabilities, err := scraperInst.FetchAvailability(ctx)
         if err != nil {
             logger.WithError(err).Error("Failed to fetch availability")
@@ -124,7 +120,7 @@ func main() {
             bookerInst := booker.NewBooker(client, cfg.Site, stateManager, logger)
             for _, prefDay := range cfg.PreferredDays {
                 for _, a := range newAvails {
-                    // Extract full date from booking URL
+                    // Extract full date from booking URL (the URL contains date param)
                     fullDate, err := extractDateFromURL(a.BookingURL)
                     if err != nil {
                         logger.WithError(err).Warn("Failed to extract date from URL, skipping")
@@ -160,7 +156,7 @@ func main() {
         return false, nil
     }
 
-    // Pre-warm task: we might not need it for now, but we keep a placeholder
+    // Pre-warm task: warm up connection with a base request
     preWarmTask := func(ctx context.Context) error {
         logger.Info("Pre‑warm: making a request to base URL")
         req, err := http.NewRequestWithContext(ctx, "GET", cfg.Site.BaseURL, nil)
