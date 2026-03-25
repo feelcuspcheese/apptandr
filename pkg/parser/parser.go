@@ -25,15 +25,12 @@ func ParseAvailability(r io.Reader, logger *logrus.Logger) ([]Availability, erro
         dateText := strings.TrimSpace(s.Text())
         href, exists := s.Attr("href")
         if exists && dateText != "" {
-            // The href is relative, e.g., "/passes/SAM/book?date=2026-04-24&pass=63ea409f9fab&digital=1&physical=0&location=0"
-            // We'll store the full URL later, but we can keep it as is and later combine with base URL.
             availabilities = append(availabilities, Availability{
-                Date:       dateText, // Just the day number; we might need full date from the URL? Actually the date is in the URL query param.
+                Date:       dateText,
                 BookingURL: href,
             })
         }
     })
-    // Alternatively, we could extract the date from the URL if needed. For now, we use the text as date.
     logger.WithField("count", len(availabilities)).Info("Parsed availabilities")
     return availabilities, nil
 }
