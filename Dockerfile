@@ -13,8 +13,11 @@ RUN go mod download
 # Now copy the rest of the source (including any existing go.sum)
 COPY . .
 
+# Run go mod tidy to ensure go.sum is updated and dependencies are resolved
+RUN go mod tidy
+
 # Build the agent
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o agent ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -a -installsuffix cgo -o agent ./cmd/agent
 
 # Final stage
 FROM alpine:latest
