@@ -1,0 +1,12 @@
+sites: {}
+preferred_slug: ""
+mode: "alert"
+preferred_days: ["Saturday", "Sunday"]
+strike_time: "09:00:00"
+check_window: 60
+check_interval: 2
+pre_warm_offset: 30
+ntfy_topic: "myappointments"
+max_workers: 2
+request_jitter: 2
+months_to_check: 2
