@@ -94,7 +94,6 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     // Select the active site (preferred slug)
     activeSite, ok := a.config.Sites[a.config.PreferredSlug]
     if !ok {
-        // Fallback to first site
         for _, s := range a.config.Sites {
             activeSite = s
             break
@@ -179,8 +178,8 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             }
         }
 
-        // Perform availability check
-        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, activeSite, client)
+        // Perform availability check – now passing dropTime
+        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, activeSite, client, dropTime)
         if err != nil {
             a.log("Check error: %v", err)
         }
