@@ -4,13 +4,14 @@ let museumsMap = {}; // key: slug, value: { name, museum_id }
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
-    // Initialize modal
-const modal = document.getElementById('admin-modal');
-if (modal) {
-    M.Modal.init(modal);
-}
     const timepicker = document.getElementById('strike-time');
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
+
+    // Initialize modal
+    const modal = document.getElementById('admin-modal');
+    if (modal) {
+        M.Modal.init(modal);
+    }
 
     loadConfig();
 
@@ -31,8 +32,6 @@ if (modal) {
     });
     document.getElementById('confirm-schedule').addEventListener('click', schedule);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
-
-    // Restart button (new)
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
     startStatusPolling();
@@ -106,7 +105,6 @@ function populateGlobalSettings(cfg) {
 function populateMuseumsList(sites) {
     const lines = [];
     for (const [slug, info] of Object.entries(sites)) {
-        // Use the stored name (which might be different from slug)
         const name = info.Name || slug;
         lines.push(`${name}:${slug}:${info.MuseumID}`);
     }
@@ -146,12 +144,10 @@ function parseMuseums() {
         let parts = line.split(':');
         let slug, museumId, name;
         if (parts.length === 2) {
-            // format: slug:id
             slug = parts[0];
             museumId = parts[1];
             name = slug;
         } else if (parts.length === 3) {
-            // format: name:slug:id
             name = parts[0];
             slug = parts[1];
             museumId = parts[2];
@@ -195,7 +191,6 @@ function getPreferredDays() {
 }
 
 async function saveConfig() {
-    // Build Sites map from museumsMap and global settings
     const sites = {};
     for (const [slug, info] of Object.entries(museumsMap)) {
         const site = {
@@ -233,12 +228,12 @@ async function saveConfig() {
     const preferredDays = getPreferredDays();
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
-const checkWindowMinutes = parseFloat(document.getElementById('check-window').value);
-const checkWindow = checkWindowMinutes * 60 * 1e9;
-const checkIntervalSec = parseFloat(document.getElementById('check-interval').value);
-const checkInterval = checkIntervalSec * 1e9;
-const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
-const requestJitter = requestJitterSec * 1e9;
+    const checkWindowMinutes = parseFloat(document.getElementById('check-window').value);
+    const checkWindow = checkWindowMinutes * 60 * 1e9;
+    const checkIntervalSec = parseFloat(document.getElementById('check-interval').value);
+    const checkInterval = checkIntervalSec * 1e9;
+    const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
+    const requestJitter = requestJitterSec * 1e9;
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
 
     const newConfig = {
