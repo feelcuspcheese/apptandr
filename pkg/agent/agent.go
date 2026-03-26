@@ -238,8 +238,8 @@ if err != nil {
 if len(avails) == 0 {
     // Log a snippet of the response for debugging
     snippet := rawBody
-    if len(snippet) > 500 {
-        snippet = snippet[:500] + "..."
+    if len(snippet) > 2000 {
+        snippet = snippet[:2000] + "..."
     }
     a.log("No availabilities found in response for %s; response snippet: %s", dateStr, snippet)
 }
