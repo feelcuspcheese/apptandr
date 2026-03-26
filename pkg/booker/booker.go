@@ -34,8 +34,6 @@ func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.Stat
 // PreLogin attempts to log in and get a valid session before strike time.
 func (b *Booker) PreLogin(ctx context.Context) error {
     b.logger.Info("Pre‑warming login")
-    // For now, we skip pre-login because the login flow requires a booking URL.
-    // Instead, we rely on the normal book flow.
     return nil
 }
 
@@ -60,7 +58,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     if err != nil {
         return err
     }
-    // Set referer header to mimic browser
     req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.siteConfig.Slug)
     resp, err := b.client.Do(req)
     if err != nil {
@@ -68,7 +65,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer resp.Body.Close()
 
-    // After following redirects, we should be on either the login page or the booking form.
     doc, err := goquery.NewDocumentFromReader(resp.Body)
     if err != nil {
         return err
@@ -76,27 +72,23 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
     // Check if we need to login
     loginForm := doc.Find("form[action*='form_login']")
-    var finalResp *http.Response // to hold final response after login (if any)
+    var finalResp *http.Response
     if loginForm.Length() > 0 {
         b.logger.Info("Login required, performing login")
-        // Extract hidden fields from the login form
         authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
         loginURL := loginForm.Find("input[name='login_url']").AttrOr("value", "")
         if authID == "" || loginURL == "" {
             return fmt.Errorf("could not extract auth_id or login_url from login form")
         }
 
-        // Prepare login POST data
         loginData := url.Values{}
         loginData.Set("auth_id", authID)
         loginData.Set("login_url", loginURL)
         loginData.Set(b.siteConfig.LoginForm.UsernameField, b.siteConfig.LoginForm.Username)
         loginData.Set(b.siteConfig.LoginForm.PasswordField, b.siteConfig.LoginForm.Password)
 
-        // Determine login action URL (may be relative)
         loginAction := loginForm.AttrOr("action", "")
         if strings.HasPrefix(loginAction, "/") {
-            // Resolve relative to current domain
             u, _ := url.Parse(loginAction)
             if u.Host == "" {
                 loginAction = "https://" + resp.Request.URL.Host + loginAction
@@ -105,7 +97,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
             loginAction = "https://" + resp.Request.URL.Host + "/" + loginAction
         }
 
-        // POST login
         loginReq, err := http.NewRequestWithContext(ctx, "POST", loginAction, strings.NewReader(loginData.Encode()))
         if err != nil {
             return err
@@ -118,8 +109,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
         defer loginResp.Body.Close()
 
-        // After successful login, we should be redirected to the original booking URL with a token.
-        finalResp = loginResp // after redirects, this is the final response
+        finalResp = loginResp
         doc, err = goquery.NewDocumentFromReader(finalResp.Body)
         if err != nil {
             return err
@@ -128,14 +118,12 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         finalResp = resp
     }
 
-    // At this point, doc should contain the booking form (if login succeeded or was not needed)
+    // Now doc should contain the booking form
     bookingForm := doc.Find("form#s-lc-bform")
     if bookingForm.Length() == 0 {
-        // Check for error messages
         if strings.Contains(doc.Text(), "Sorry, this would exceed the monthly booking limit") {
             return fmt.Errorf("booking limit exceeded")
         }
-        // Check if the URL contains "unavailable"
         if strings.Contains(finalResp.Request.URL.String(), "unavailable") {
             return fmt.Errorf("spot already taken (unavailable in URL)")
         }
@@ -151,12 +139,17 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
             formData.Set(name, value)
         }
     })
+
     // Add email field
-    email := b.siteConfig.BookingForm.EmailField
-    if email == "" {
-        email = "email" // default
+    emailFieldName := b.siteConfig.BookingForm.EmailField
+    if emailFieldName == "" {
+        emailFieldName = "email"
     }
-    formData.Set(email, b.siteConfig.LoginForm.Username)
+    emailValue := b.siteConfig.BookingForm.EmailFieldValue
+    if emailValue == "" {
+        emailValue = b.siteConfig.LoginForm.Username // fallback
+    }
+    formData.Set(emailFieldName, emailValue)
 
     // Determine action URL
     action := bookingForm.AttrOr("action", "")
@@ -182,21 +175,18 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer submitResp.Body.Close()
 
-    // Check success
     bodyBytes, err := io.ReadAll(submitResp.Body)
     if err != nil {
         return err
     }
     bodyStr := string(bodyBytes)
 
-    // Success indicator: "Thank you!" or "The following Digital Pass reservation was made:"
     if strings.Contains(bodyStr, "Thank you!") || strings.Contains(bodyStr, "The following Digital Pass reservation was made:") {
         b.logger.Info("Booking successful")
         b.state.MarkSeen(avail.Date)
         return nil
     }
 
-    // Check for failure messages
     if strings.Contains(bodyStr, "Sorry, this would exceed the monthly booking limit") {
         return fmt.Errorf("booking limit exceeded")
     }
