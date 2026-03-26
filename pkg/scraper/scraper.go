@@ -48,6 +48,8 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
         time.Sleep(jitter)
     }
 
+    s.logger.WithField("url", endpoint).Info("Requesting availability") // <-- NEW
+
     req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
     if err != nil {
         return nil, "", err
@@ -67,7 +69,6 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
     // Check if body is gzipped (starts with \x1f\x8b)
     var bodyBytes []byte
     if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
-        // Decompress
         gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
         if err != nil {
             return nil, "", fmt.Errorf("failed to create gzip reader: %w", err)
