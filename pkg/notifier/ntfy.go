@@ -11,8 +11,8 @@ import (
 )
 
 type Ntfy struct {
-    Topic string
-    URL   string
+    Topic  string
+    URL    string
     client *http.Client
 }
 
@@ -49,7 +49,6 @@ type Action struct {
     URL    string `json:"url"`
 }
 
-// AvailabilityWithLink holds availability data for notifications
 type AvailabilityWithLink struct {
     Date       string
     BookingURL string
@@ -57,8 +56,7 @@ type AvailabilityWithLink struct {
 
 // BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
 // It returns the title, message string, and the actions slice (max 3).
-// baseURL is the site's base URL (e.g., "https://spl.libcal.com") to prepend to relative booking URLs.
-func BuildNotification(availabilities []AvailabilityWithLink, baseURL string) (title, message string, actions []Action) {
+func BuildNotification(availabilities []AvailabilityWithLink) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
     }
@@ -79,20 +77,15 @@ func BuildNotification(availabilities []AvailabilityWithLink, baseURL string) (t
     // Combined list with weekends first
     all := append(weekends, weekdays...)
 
-    // Prepare actions (max 3) – take first 3 from the prioritized list
+    // Prepare actions (max 3)
     actions = make([]Action, 0, 3)
     for i := 0; i < len(all) && i < 3; i++ {
         a := all[i]
-        fullURL := a.BookingURL
-        // If URL is relative, prepend baseURL
-        if strings.HasPrefix(fullURL, "/") {
-            fullURL = strings.TrimRight(baseURL, "/") + fullURL
-        }
         label := fmt.Sprintf("%s: %s", weekendOrWeekday(a.Date), a.Date)
         actions = append(actions, Action{
             Action: "view",
             Label:  label,
-            URL:    fullURL,
+            URL:    a.BookingURL,
         })
     }
 
@@ -102,13 +95,11 @@ func BuildNotification(availabilities []AvailabilityWithLink, baseURL string) (t
         dateList[i] = fmt.Sprintf("%s (%s)", a.Date, weekendOrWeekday(a.Date))
     }
     message = strings.Join(dateList, ", ")
-
-    // Add note if there are more than 3 dates
     if len(all) > 3 {
-        message += fmt.Sprintf("\n(Only the first 3 are shown as buttons; %d more dates available)", len(all)-3)
+        message += fmt.Sprintf(" (only first 3 shown as buttons)")
     }
 
-    title = "Appointment Available!"
+    title = "📅 Appointment Available!"
     return
 }
 
