@@ -9,6 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadConfig();
 
+    // Attach click handlers to day chips (static)
+    const dayChips = document.querySelectorAll('#days-pills .chip');
+    dayChips.forEach(chip => {
+        chip.addEventListener('click', (e) => {
+            e.stopPropagation(); // avoid any interference
+            chip.classList.toggle('active');
+            // Optionally, you can store the selection in a variable; we'll read it when saving.
+        });
+    });
+
     document.getElementById('load-museums').addEventListener('click', parseMuseums);
     document.getElementById('save-config').addEventListener('click', saveConfig);
     document.getElementById('run-now').addEventListener('click', runNow);
@@ -17,15 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('confirm-schedule').addEventListener('click', schedule);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
-
-    // Attach click handlers to day chips
-    const dayChips = document.querySelectorAll('#days-pills .chip');
-    dayChips.forEach(chip => {
-        chip.addEventListener('click', () => {
-            chip.classList.toggle('active');
-            updatePreferredDays();
-        });
-    });
 
     connectWebSocket();
 });
@@ -48,7 +49,6 @@ async function loadConfig() {
 }
 
 function populateGlobalSettings(cfg) {
-    // Get first site for global defaults
     const firstSite = Object.values(cfg.Sites)[0];
     document.getElementById('base-url').value = firstSite?.BaseURL || 'https://spl.libcal.com';
     document.getElementById('availability-endpoint').value = firstSite?.AvailabilityEndpoint || '/pass/availability/institution';
@@ -69,15 +69,13 @@ function updateDaysPills(preferredDays) {
     days.forEach(day => {
         const chip = document.querySelector(`.chip[data-day="${day}"]`);
         if (chip) {
-            if (preferredDays.includes(day)) chip.classList.add('active');
-            else chip.classList.remove('active');
+            if (preferredDays && preferredDays.includes(day)) {
+                chip.classList.add('active');
+            } else {
+                chip.classList.remove('active');
+            }
         }
     });
-}
-
-function updatePreferredDays() {
-    const selected = Array.from(document.querySelectorAll('#days-pills .chip.active')).map(c => c.dataset.day);
-    // This function is called on click; we'll use the selected days when saving.
 }
 
 function parseMuseums() {
@@ -90,12 +88,10 @@ function parseMuseums() {
         let parts = line.split(':');
         let slug, museumId, name;
         if (parts.length === 2) {
-            // format: slug:id
             slug = parts[0];
             museumId = parts[1];
             name = slug;
         } else if (parts.length === 3) {
-            // format: name:slug:id
             name = parts[0];
             slug = parts[1];
             museumId = parts[2];
@@ -147,7 +143,7 @@ async function saveConfig() {
             BaseURL: document.getElementById('base-url').value,
             MuseumID: info.MuseumID,
             Slug: slug,
-            PassID: '', // not used currently
+            PassID: '',
             Digital: document.getElementById('digital').checked,
             Physical: document.getElementById('physical').checked,
             Location: document.getElementById('location').value,
@@ -160,7 +156,7 @@ async function saveConfig() {
                 CSRFSelector: '',
                 Username: document.getElementById('login-username').value,
                 Password: document.getElementById('login-password').value,
-                Email: document.getElementById('login-email').value, // added email
+                Email: document.getElementById('login-email').value,
                 AuthIDSelector: 'input[name="auth_id"]',
                 LoginURLSelector: 'input[name="login_url"]',
             },
@@ -178,7 +174,7 @@ async function saveConfig() {
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
     const checkWindowMinutes = parseInt(document.getElementById('check-window').value);
-    const checkWindow = checkWindowMinutes * 60; // seconds
+    const checkWindow = checkWindowMinutes * 60;
     const checkInterval = parseInt(document.getElementById('check-interval').value) || 2;
     const requestJitter = parseFloat(document.getElementById('request-jitter').value) || 2;
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
@@ -191,7 +187,7 @@ async function saveConfig() {
         StrikeTime: strikeTime,
         CheckWindow: checkWindow,
         CheckInterval: checkInterval,
-        PreWarmOffset: 30, // seconds
+        PreWarmOffset: 30,
         NtfyTopic: document.getElementById('ntfy-topic').value,
         MaxWorkers: 2,
         RequestJitter: requestJitter,
@@ -206,7 +202,6 @@ async function saveConfig() {
     if (res.ok) {
         M.toast({html: 'Configuration saved'});
         currentConfig = newConfig;
-        // Re-render pills to reflect preferred slug highlight
         renderMuseumPills();
     } else {
         const err = await res.json();
@@ -270,7 +265,6 @@ function connectWebSocket() {
     };
 }
 
-// Helper to populate museums list from existing config (when loading)
 function populateMuseumsList(sites) {
     const lines = [];
     for (const [slug, info] of Object.entries(sites)) {
