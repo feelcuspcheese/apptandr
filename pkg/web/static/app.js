@@ -13,9 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dayChips = document.querySelectorAll('#days-pills .chip');
     dayChips.forEach(chip => {
         chip.addEventListener('click', (e) => {
-            e.stopPropagation(); // avoid any interference
+            e.stopPropagation();
             chip.classList.toggle('active');
-            // Optionally, you can store the selection in a variable; we'll read it when saving.
         });
     });
 
@@ -39,7 +38,9 @@ async function loadConfig() {
         populateMuseumsList(currentConfig.Sites);
         updateDaysPills(currentConfig.PreferredDays);
         document.getElementById('strike-time').value = currentConfig.StrikeTime;
-        document.getElementById('check-window').value = (currentConfig.CheckWindow / 60).toFixed(0);
+        // Convert nanoseconds to minutes for CheckWindow
+        const checkWindowMinutes = Math.round(currentConfig.CheckWindow / (60 * 1e9));
+        document.getElementById('check-window').value = checkWindowMinutes;
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
         if (modeRadio) modeRadio.checked = true;
     } catch (err) {
@@ -59,8 +60,12 @@ function populateGlobalSettings(cfg) {
     document.getElementById('login-password').value = firstSite?.LoginForm?.Password || '';
     document.getElementById('login-email').value = firstSite?.LoginForm?.Email || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
-    document.getElementById('check-interval').value = (cfg.CheckInterval / 1000000000).toFixed(0);
-    document.getElementById('request-jitter').value = (cfg.RequestJitter / 1000000000).toFixed(1);
+    // Convert nanoseconds to seconds for CheckInterval
+    const checkIntervalSec = Math.round(cfg.CheckInterval / 1e9);
+    document.getElementById('check-interval').value = checkIntervalSec;
+    // Convert nanoseconds to seconds for RequestJitter
+    const requestJitterSec = Math.round(cfg.RequestJitter / 1e9);
+    document.getElementById('request-jitter').value = requestJitterSec;
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
@@ -174,9 +179,11 @@ async function saveConfig() {
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
     const checkWindowMinutes = parseInt(document.getElementById('check-window').value);
-    const checkWindow = checkWindowMinutes * 60;
-    const checkInterval = parseInt(document.getElementById('check-interval').value) || 2;
-    const requestJitter = parseFloat(document.getElementById('request-jitter').value) || 2;
+    const checkWindow = checkWindowMinutes * 60 * 1e9; // minutes → nanoseconds
+    const checkIntervalSec = parseInt(document.getElementById('check-interval').value);
+    const checkInterval = checkIntervalSec * 1e9; // seconds → nanoseconds
+    const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
+    const requestJitter = requestJitterSec * 1e9; // seconds → nanoseconds
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
 
     const newConfig = {
@@ -187,7 +194,7 @@ async function saveConfig() {
         StrikeTime: strikeTime,
         CheckWindow: checkWindow,
         CheckInterval: checkInterval,
-        PreWarmOffset: 30,
+        PreWarmOffset: 30 * 1e9, // 30 seconds in nanoseconds
         NtfyTopic: document.getElementById('ntfy-topic').value,
         MaxWorkers: 2,
         RequestJitter: requestJitter,
