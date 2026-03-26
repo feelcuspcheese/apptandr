@@ -4,6 +4,7 @@ import (
     "bytes"
     "encoding/json"
     "fmt"
+    "io"
     "net/http"
     "sort"
     "time"
@@ -48,7 +49,6 @@ type Action struct {
     URL    string `json:"url"`
 }
 
-// AvailabilityWithLink is a struct to hold availability data for notifications
 type AvailabilityWithLink struct {
     Date       string
     BookingURL string
@@ -78,16 +78,13 @@ func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []
     }
     defer resp.Body.Close()
     if resp.StatusCode != http.StatusOK {
-        // Read body for debugging
         body, _ := io.ReadAll(resp.Body)
         return fmt.Errorf("ntfy returned %d: %s", resp.StatusCode, string(body))
     }
     return nil
 }
 
-// Helper to prioritize weekends
 func PrioritizeActions(availabilities []AvailabilityWithLink) []Action {
-    // Separate weekends and weekdays
     var weekends, weekdays []AvailabilityWithLink
     for _, a := range availabilities {
         if isWeekend(a.Date) {
@@ -96,10 +93,8 @@ func PrioritizeActions(availabilities []AvailabilityWithLink) []Action {
             weekdays = append(weekdays, a)
         }
     }
-    // Sort each by date (ascending)
     sort.Slice(weekends, func(i, j int) bool { return weekends[i].Date < weekends[j].Date })
     sort.Slice(weekdays, func(i, j int) bool { return weekdays[i].Date < weekdays[j].Date })
-    // Build actions: weekends first, then weekdays
     actions := make([]Action, 0, len(availabilities))
     for _, a := range weekends {
         actions = append(actions, Action{
