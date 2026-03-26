@@ -5,6 +5,8 @@ import (
     "agent/pkg/httpclient"
     "agent/pkg/parser"
     "agent/pkg/state"
+    "bytes"
+    "compress/gzip"
     "context"
     "fmt"
     "github.com/PuerkitoBio/goquery"
@@ -31,6 +33,20 @@ func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.Stat
     }
 }
 
+// Helper to decompress gzip body if needed
+func decompressBody(body []byte) ([]byte, error) {
+    if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+        gzReader, err := gzip.NewReader(bytes.NewReader(body))
+        if err != nil {
+            return nil, fmt.Errorf("gzip decompression failed: %w", err)
+        }
+        defer gzReader.Close()
+        return io.ReadAll(gzReader)
+    }
+    return body, nil
+}
+
+// Book executes the full booking flow for a given availability.
 func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     if !b.state.StartProcessing(avail.Date) {
         b.logger.WithField("date", avail.Date).Info("Already processing this date")
@@ -46,7 +62,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
     b.logger.WithField("url", bookingURL).Info("Starting booking flow")
 
-    // Step 1: Follow the initial booking link (which may redirect to auth)
+    // Step 1: Follow the initial booking link (may redirect to auth)
     req, err := http.NewRequestWithContext(ctx, "GET", bookingURL, nil)
     if err != nil {
         return err
@@ -58,30 +74,34 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer resp.Body.Close()
 
-    b.logger.WithFields(logrus.Fields{
-        "final_url":  resp.Request.URL.String(),
-        "status":     resp.StatusCode,
-    }).Info("After initial request (including redirects)")
+    // Read the raw body
+    rawBody, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return err
+    }
 
-    // Read the entire response body for later use
-    bodyBytes, err := io.ReadAll(resp.Body)
+    // Decompress if necessary
+    bodyBytes, err := decompressBody(rawBody)
     if err != nil {
         return err
     }
     bodyStr := string(bodyBytes)
 
-    // Create a new reader for parsing
+    b.logger.WithField("final_url", resp.Request.URL.String()).Info("After initial request (including redirects)")
+
+    // Parse the HTML
     doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
     if err != nil {
         return err
     }
 
-    // Check if we need to login
+    // Check if we need to login – look for a form with action containing "form_login"
     loginForm := doc.Find("form[action*='form_login']")
     var finalResp *http.Response
     var finalBody []byte
     if loginForm.Length() > 0 {
         b.logger.Info("Login required, performing login")
+        // Extract hidden fields from the login form
         authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
         loginURLField := loginForm.Find("input[name='login_url']").AttrOr("value", "")
         if authID == "" || loginURLField == "" {
@@ -95,7 +115,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         loginData.Set(b.siteConfig.LoginForm.UsernameField, b.siteConfig.LoginForm.Username)
         loginData.Set(b.siteConfig.LoginForm.PasswordField, b.siteConfig.LoginForm.Password)
 
-        // Determine login action URL
+        // Determine login action URL (may be relative)
         loginAction := loginForm.AttrOr("action", "")
         if strings.HasPrefix(loginAction, "/") {
             u, _ := url.Parse(loginAction)
@@ -105,6 +125,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         } else if !strings.HasPrefix(loginAction, "http") {
             loginAction = "https://" + resp.Request.URL.Host + "/" + loginAction
         }
+
+        b.logger.WithField("login_action", loginAction).Info("POST to login")
 
         loginReq, err := http.NewRequestWithContext(ctx, "POST", loginAction, strings.NewReader(loginData.Encode()))
         if err != nil {
@@ -118,24 +140,25 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
         defer loginResp.Body.Close()
 
-        b.logger.WithFields(logrus.Fields{
-            "final_url": loginResp.Request.URL.String(),
-            "status":    loginResp.StatusCode,
-        }).Info("After login (including redirects)")
-
-        finalBody, err = io.ReadAll(loginResp.Body)
+        // After login, we should be redirected to the booking page (with token)
+        finalBodyRaw, err := io.ReadAll(loginResp.Body)
         if err != nil {
             return err
         }
-        doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(finalBody)))
+        finalBody, err = decompressBody(finalBodyRaw)
         if err != nil {
             return err
         }
         finalResp = loginResp
+        b.logger.WithField("final_url", finalResp.Request.URL.String()).Info("After login (including redirects)")
+        doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(finalBody)))
+        if err != nil {
+            return err
+        }
     } else {
         finalBody = bodyBytes
         finalResp = resp
-        b.logger.Info("No login required, proceeding to booking form")
+        b.logger.Info("No login form found – assuming already logged in")
     }
 
     // At this point, doc should contain the booking form
@@ -143,8 +166,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     if bookingForm.Length() == 0 {
         // Log the response snippet for debugging
         snippet := string(finalBody)
-        if len(snippet) > 2000 {
-            snippet = snippet[:2000] + "..."
+        if len(snippet) > 1000 {
+            snippet = snippet[:1000] + "..."
         }
         b.logger.WithFields(logrus.Fields{
             "url":     finalResp.Request.URL.String(),
