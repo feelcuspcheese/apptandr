@@ -91,18 +91,18 @@
                                     <label for="ntfy-topic">ntfy Topic</label>
                                 </div>
                             </div>
-                            <div class="row">
-                                <div class="input-field col s12">
-                                    <input id="check-interval" type="number" step="1" value="2">
-                                    <label for="check-interval">Check Interval (seconds)</label>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="input-field col s12">
-                                    <input id="request-jitter" type="number" step="0.5" value="2">
-                                    <label for="request-jitter">Request Jitter (seconds)</label>
-                                </div>
-                            </div>
+                           <div class="row">
+    <div class="input-field col s12">
+        <input id="check-interval" type="number" step="0.1" min="0.1" value="2">
+        <label for="check-interval">Check Interval (seconds)</label>
+    </div>
+</div>
+<div class="row">
+    <div class="input-field col s12">
+        <input id="request-jitter" type="number" step="0.03" min="0" value="2">
+        <label for="request-jitter">Request Jitter (seconds)</label>
+    </div>
+</div>
                             <div class="row">
                                 <div class="input-field col s12">
                                     <input id="months-to-check" type="number" step="1" value="2">
@@ -187,12 +187,12 @@
                                 <label>Timezone for Scheduled Run</label>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="input-field col s12">
-                                <input id="check-window" type="number" step="1" value="1">
-                                <label for="check-window">Check Window (minutes)</label>
-                            </div>
-                        </div>
+<div class="row">
+    <div class="input-field col s12">
+        <input id="check-window" type="number" step="0.05" min="0.05" value="1">
+        <label for="check-window">Check Window (minutes)</label>
+    </div>
+</div>
                         <div class="row">
                             <div class="col s12">
                                 <button id="save-config" class="btn waves-effect waves-light green">Save Configuration</button>
