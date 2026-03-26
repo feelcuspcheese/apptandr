@@ -34,15 +34,6 @@ const (
     PriorityUrgent  Priority = 5
 )
 
-type Message struct {
-    Topic    string   `json:"topic"`
-    Title    string   `json:"title"`
-    Message  string   `json:"message"`
-    Priority Priority `json:"priority"`
-    Actions  []Action `json:"actions,omitempty"`
-    Tags     []string `json:"tags,omitempty"`
-}
-
 type Action struct {
     Action string `json:"action"`
     Label  string `json:"label"`
@@ -69,14 +60,12 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
             weekdays = append(weekdays, a)
         }
     }
-    // Sort each by date
     sort.Slice(weekends, func(i, j int) bool { return weekends[i].Date < weekends[j].Date })
     sort.Slice(weekdays, func(i, j int) bool { return weekdays[i].Date < weekdays[j].Date })
 
-    // Combined list: weekends first
     all := append(weekends, weekdays...)
 
-    // Prepare up to 3 actions (weekends prioritized)
+    // Actions: up to 3 (weekends first)
     actions = make([]Action, 0, 3)
     for i := 0; i < len(all) && i < 3; i++ {
         a := all[i]
@@ -88,7 +77,7 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
         })
     }
 
-    // Build a concise message with a summary and fallback links
+    // Build the plain text message
     var msg strings.Builder
     msg.WriteString("Available: ")
     for i, a := range all {
@@ -103,14 +92,13 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
     if len(all) > 3 {
         msg.WriteString(fmt.Sprintf(" (+ %d more)", len(all)-3))
     }
-    // Add a newline and then the full list with links as plain text (fallback)
     msg.WriteString("\n\nFull list:\n")
-    for i, a := range all {
+    for _, a := range all {
         msg.WriteString(fmt.Sprintf("%s: %s\n", a.Date, a.BookingURL))
     }
 
-    message = msg.String()
     title = "Appointment Available"
+    message = msg.String()
     return
 }
 
@@ -130,30 +118,35 @@ func isWeekend(dateStr string) bool {
     return wd == time.Saturday || wd == time.Sunday
 }
 
-// SendNotification sends a notification with the given title, message, and actions.
+// SendNotification sends a structured notification using ntfy's header‑driven API.
 func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []Action) error {
-    m := Message{
-        Topic:    n.Topic,
-        Title:    title,
-        Message:  msg,
-        Priority: priority,
-        Actions:  actions,
-        Tags:     []string{"calendar", "clock"},
-    }
-    data, err := json.Marshal(m)
+    // Create the request with the message as the body (plain text)
+    req, err := http.NewRequest("POST", n.URL, strings.NewReader(msg))
     if err != nil {
         return err
     }
-    req, err := http.NewRequest("POST", n.URL, bytes.NewReader(data))
-    if err != nil {
-        return err
+
+    // Set headers for structured fields
+    req.Header.Set("Title", title)
+    req.Header.Set("Priority", fmt.Sprintf("%d", priority))
+    req.Header.Set("Tags", "calendar,clock")
+
+    // Actions must be JSON‑encoded in the "Actions" header
+    if len(actions) > 0 {
+        actionsJSON, err := json.Marshal(actions)
+        if err != nil {
+            return fmt.Errorf("failed to marshal actions: %w", err)
+        }
+        req.Header.Set("Actions", string(actionsJSON))
     }
-    req.Header.Set("Content-Type", "application/json")
+
+    // Send the request
     resp, err := n.client.Do(req)
     if err != nil {
         return err
     }
     defer resp.Body.Close()
+
     if resp.StatusCode != http.StatusOK {
         return fmt.Errorf("ntfy returned %d", resp.StatusCode)
     }
