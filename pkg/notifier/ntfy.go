@@ -55,7 +55,6 @@ type AvailabilityWithLink struct {
 }
 
 // BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
-// It returns the title, message string, and the actions slice (max 3).
 func BuildNotification(availabilities []AvailabilityWithLink) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
@@ -70,14 +69,14 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
             weekdays = append(weekdays, a)
         }
     }
-    // Sort each by date (ascending)
+    // Sort each by date
     sort.Slice(weekends, func(i, j int) bool { return weekends[i].Date < weekends[j].Date })
     sort.Slice(weekdays, func(i, j int) bool { return weekdays[i].Date < weekdays[j].Date })
 
-    // Combined list with weekends first
+    // Combined list: weekends first
     all := append(weekends, weekdays...)
 
-    // Prepare actions (max 3)
+    // Prepare up to 3 actions (weekends prioritized)
     actions = make([]Action, 0, 3)
     for i := 0; i < len(all) && i < 3; i++ {
         a := all[i]
@@ -85,21 +84,33 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
         actions = append(actions, Action{
             Action: "view",
             Label:  label,
-            URL:    a.BookingURL,
+            URL:    a.BookingURL, // must be absolute
         })
     }
 
-    // Prepare message summary for all dates (including those not in actions)
-    dateList := make([]string, len(all))
+    // Build a concise message with a summary and fallback links
+    var msg strings.Builder
+    msg.WriteString("Available: ")
     for i, a := range all {
-        dateList[i] = fmt.Sprintf("%s (%s)", a.Date, weekendOrWeekday(a.Date))
+        if i > 0 {
+            msg.WriteString(", ")
+        }
+        msg.WriteString(a.Date)
+        if i < 3 {
+            msg.WriteString(" [button]")
+        }
     }
-    message = strings.Join(dateList, ", ")
     if len(all) > 3 {
-        message += fmt.Sprintf(" (only first 3 shown as buttons)")
+        msg.WriteString(fmt.Sprintf(" (+ %d more)", len(all)-3))
+    }
+    // Add a newline and then the full list with links as plain text (fallback)
+    msg.WriteString("\n\nFull list:\n")
+    for i, a := range all {
+        msg.WriteString(fmt.Sprintf("%s: %s\n", a.Date, a.BookingURL))
     }
 
-    title = "📅 Appointment Available!"
+    message = msg.String()
+    title = "Appointment Available"
     return
 }
 
