@@ -4,6 +4,10 @@
 }
 .chip {
     cursor: pointer;
+    transition: background-color 0.2s;
+}
+.chip:hover {
+    background-color: #e0e0e0;
 }
 #logs {
     font-size: 12px;
