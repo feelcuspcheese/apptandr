@@ -233,7 +233,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         dateStr := targetDate.Format("2006-01-02")
         a.log("Fetching availability for month starting %s (date param: %s)", targetDate.Format("2006-01"), dateStr)
 
-        avails, rawBody, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
+        avails, _, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
         if err != nil {
             a.log("Error fetching availability for %s: %v", dateStr, err)
             continue
