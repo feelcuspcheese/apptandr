@@ -227,19 +227,22 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         }
         dateStr := targetDate.Format("2006-01-02")
         a.log("Fetching availability for month starting %s (date param: %s)", targetDate.Format("2006-01"), dateStr)
-        avails, err := scraperInst.FetchForDate(ctx, dateStr)
-        if err != nil {
-            a.log("Error fetching availability for %s: %v", dateStr, err)
-            continue
-        }
-        // Debug: if we got a 200 but no availabilities, log a snippet of the response
-        if len(avails) == 0 {
-            // We need to get the raw body from the scraper; we'll extend the scraper to return the body on demand.
-            // For now, we'll use a separate debug flag.
-            // But we can add a method to the scraper to return the raw body. For simplicity, we'll log a note.
-            a.log("No availabilities found in response for %s; check parsing or server response", dateStr)
-            // Optional: we could print the first 500 chars of the body if we capture it.
-        }
+        // Inside the loop, replace:
+// avails, err := scraperInst.FetchForDate(ctx, dateStr)
+// with:
+avails, rawBody, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
+if err != nil {
+    a.log("Error fetching availability for %s: %v", dateStr, err)
+    continue
+}
+if len(avails) == 0 {
+    // Log a snippet of the response for debugging
+    snippet := rawBody
+    if len(snippet) > 500 {
+        snippet = snippet[:500] + "..."
+    }
+    a.log("No availabilities found in response for %s; response snippet: %s", dateStr, snippet)
+}
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
             time.Sleep(time.Duration(rand.Int63n(int64(a.config.RequestJitter))))
