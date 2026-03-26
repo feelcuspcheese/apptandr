@@ -74,11 +74,13 @@ func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []
     req.Header.Set("Content-Type", "application/json")
     resp, err := n.client.Do(req)
     if err != nil {
-        return err
+        return fmt.Errorf("request failed: %w", err)
     }
     defer resp.Body.Close()
     if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("ntfy returned %d", resp.StatusCode)
+        // Read body for debugging
+        body, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("ntfy returned %d: %s", resp.StatusCode, string(body))
     }
     return nil
 }
