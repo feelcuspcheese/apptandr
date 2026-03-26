@@ -275,22 +275,23 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
     }
 
     if a.config.Mode == "alert" {
-        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-        for i, av := range newAvails {
-            notifyAvails[i] = notifier.AvailabilityWithLink{
-                Date:       av.Date,
-                BookingURL: av.BookingURL,
-            }
+    // Build notification with up to 3 buttons and a summary message
+    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+    for i, av := range newAvails {
+        notifyAvails[i] = notifier.AvailabilityWithLink{
+            Date:       av.Date,
+            BookingURL: ensureAbsoluteURL(av.BookingURL, activeSite.BaseURL),
         }
-        title, msg, actions := notifier.BuildNotification(notifyAvails, activeSite.BaseURL)
-        err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
-        if err != nil {
-            a.log("Failed to send notification: %v", err)
-        } else {
-            a.log("Notification sent for %d dates", len(newAvails))
-        }
-        return false, nil
-    } else if a.config.Mode == "booking" {
+    }
+    title, msg, actions := notifier.BuildNotification(notifyAvails)
+    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+    if err != nil {
+        a.log("Failed to send notification: %v", err)
+    } else {
+        a.log("Notification sent for %d dates", len(newAvails))
+    }
+    return false, nil
+} else if a.config.Mode == "booking" {
         bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
         for _, prefDay := range a.config.PreferredDays {
             for _, av := range newAvails {
@@ -365,4 +366,16 @@ func isDayOfWeek(dateStr, dayName string) bool {
         return false
     }
     return t.Weekday().String() == dayName
+}
+
+
+func ensureAbsoluteURL(rawURL, baseURL string) string {
+    if strings.HasPrefix(rawURL, "http") {
+        return rawURL
+    }
+    // Assume it's relative; join with base
+    if strings.HasPrefix(rawURL, "/") {
+        return baseURL + rawURL
+    }
+    return baseURL + "/" + rawURL
 }
