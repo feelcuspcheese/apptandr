@@ -238,12 +238,18 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
             a.log("Error fetching availability for %s: %v", dateStr, err)
             continue
         }
+        //Detailed Html response dump
+//        if len(avails) == 0 {
+//            snippet := rawBody
+//            if len(snippet) > 5000 {
+//                snippet = snippet[:5000] + "..."
+//            }
+//            a.log("No availabilities found in response for %s; response snippet (first 5000 chars): %s", dateStr, snippet)
+//        }
+        
+// simple logging
         if len(avails) == 0 {
-            snippet := rawBody
-            if len(snippet) > 5000 {
-                snippet = snippet[:5000] + "..."
-            }
-            a.log("No availabilities found in response for %s; response snippet (first 5000 chars): %s", dateStr, snippet)
+    a.log("No availabilities found for %s", dateStr)
         }
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
