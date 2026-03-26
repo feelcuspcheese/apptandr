@@ -1,6 +1,6 @@
 let ws;
 let currentConfig = null;
-let museumsMap = {};
+let museumsMap = {}; // key: slug, value: { name, museum_id }
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -8,8 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
 
     loadConfig();
-    startStatusPolling();
 
+    // Attach click handlers to day chips
     const dayChips = document.querySelectorAll('#days-pills .chip');
     dayChips.forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -26,33 +26,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('confirm-schedule').addEventListener('click', schedule);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
+
+    // Restart button (new)
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
+    startStatusPolling();
     connectWebSocket();
 });
 
+// --- Status polling ---
 function startStatusPolling() {
     setInterval(async () => {
-        const res = await fetch('/api/status');
-        const status = await res.json();
-        const statusSpan = document.getElementById('status-text');
-        const dropInfoSpan = document.getElementById('drop-time-info');
-        if (status.running) {
-            statusSpan.textContent = 'Status: Running';
-            if (status.dropTime) {
-                const dropDate = new Date(status.dropTime);
-                const localStr = dropDate.toLocaleString();
-                dropInfoSpan.textContent = `Scheduled: ${localStr}`;
+        try {
+            const res = await fetch('/api/status');
+            const status = await res.json();
+            const statusSpan = document.getElementById('status-text');
+            const dropInfoSpan = document.getElementById('drop-time-info');
+            if (status.running) {
+                statusSpan.textContent = 'Status: Running';
+                if (status.dropTime) {
+                    const dropDate = new Date(status.dropTime);
+                    const localStr = dropDate.toLocaleString();
+                    dropInfoSpan.textContent = `Scheduled: ${localStr}`;
+                } else {
+                    dropInfoSpan.textContent = '';
+                }
             } else {
+                statusSpan.textContent = 'Status: Idle';
                 dropInfoSpan.textContent = '';
             }
-        } else {
-            statusSpan.textContent = 'Status: Idle';
-            dropInfoSpan.textContent = '';
+        } catch (err) {
+            console.error('Status polling error:', err);
         }
     }, 2000);
 }
 
+// --- Config loading and populating ---
 async function loadConfig() {
     try {
         const res = await fetch('/api/config');
@@ -89,6 +98,25 @@ function populateGlobalSettings(cfg) {
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
+function populateMuseumsList(sites) {
+    const lines = [];
+    for (const [slug, info] of Object.entries(sites)) {
+        // Use the stored name (which might be different from slug)
+        const name = info.Name || slug;
+        lines.push(`${name}:${slug}:${info.MuseumID}`);
+    }
+    document.getElementById('museums-list').value = lines.join('\n');
+    museumsMap = {};
+    for (const [slug, info] of Object.entries(sites)) {
+        museumsMap[slug] = {
+            Name: info.Name || slug,
+            Slug: slug,
+            MuseumID: info.MuseumID,
+        };
+    }
+    renderMuseumPills();
+}
+
 function updateDaysPills(preferredDays) {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     days.forEach(day => {
@@ -113,10 +141,12 @@ function parseMuseums() {
         let parts = line.split(':');
         let slug, museumId, name;
         if (parts.length === 2) {
+            // format: slug:id
             slug = parts[0];
             museumId = parts[1];
             name = slug;
         } else if (parts.length === 3) {
+            // format: name:slug:id
             name = parts[0];
             slug = parts[1];
             museumId = parts[2];
@@ -160,6 +190,7 @@ function getPreferredDays() {
 }
 
 async function saveConfig() {
+    // Build Sites map from museumsMap and global settings
     const sites = {};
     for (const [slug, info] of Object.entries(museumsMap)) {
         const site = {
@@ -294,25 +325,4 @@ function connectWebSocket() {
     ws.onerror = (err) => {
         console.error('WebSocket error:', err);
     };
-}
-
-function populateMuseumsList(sites) {
-    const lines = [];
-    for (const [slug, info] of Object.entries(sites)) {
-        if (info.Name && info.Name !== slug) {
-            lines.push(`${info.Name}:${slug}:${info.MuseumID}`);
-        } else {
-            lines.push(`${slug}:${info.MuseumID}`);
-        }
-    }
-    document.getElementById('museums-list').value = lines.join('\n');
-    museumsMap = {};
-    for (const [slug, info] of Object.entries(sites)) {
-        museumsMap[slug] = {
-            Name: info.Name,
-            Slug: slug,
-            MuseumID: info.MuseumID,
-        };
-    }
-    renderMuseumPills();
 }
