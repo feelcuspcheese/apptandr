@@ -282,7 +282,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                 BookingURL: av.BookingURL,
             }
         }
-        title, msg, actions := notifier.BuildNotification(notifyAvails)
+        title, msg, actions := notifier.BuildNotification(notifyAvails, activeSite.BaseURL)
         err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
         if err != nil {
             a.log("Failed to send notification: %v", err)
