@@ -70,8 +70,12 @@ async function loadConfig() {
         populateMuseumsList(currentConfig.Sites);
         updateDaysPills(currentConfig.PreferredDays);
         document.getElementById('strike-time').value = currentConfig.StrikeTime;
-        const checkWindowMinutes = Math.round(currentConfig.CheckWindow / (60 * 1e9));
-        document.getElementById('check-window').value = checkWindowMinutes;
+const checkWindowMinutes = (currentConfig.CheckWindow / (60 * 1e9)).toFixed(2);
+document.getElementById('check-window').value = checkWindowMinutes;
+const checkIntervalSec = (currentConfig.CheckInterval / 1e9).toFixed(1);
+document.getElementById('check-interval').value = checkIntervalSec;
+const requestJitterSec = (currentConfig.RequestJitter / 1e9).toFixed(2);
+document.getElementById('request-jitter').value = requestJitterSec;
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
         if (modeRadio) modeRadio.checked = true;
     } catch (err) {
@@ -91,10 +95,10 @@ function populateGlobalSettings(cfg) {
     document.getElementById('login-password').value = firstSite?.LoginForm?.Password || '';
     document.getElementById('login-email').value = firstSite?.LoginForm?.Email || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
-    const checkIntervalSec = Math.round(cfg.CheckInterval / 1e9);
-    document.getElementById('check-interval').value = checkIntervalSec;
-    const requestJitterSec = Math.round(cfg.RequestJitter / 1e9);
-    document.getElementById('request-jitter').value = requestJitterSec;
+const checkIntervalSec = (cfg.CheckInterval / 1e9).toFixed(1);
+document.getElementById('check-interval').value = checkIntervalSec;
+const requestJitterSec = (cfg.RequestJitter / 1e9).toFixed(2);
+document.getElementById('request-jitter').value = requestJitterSec;
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
@@ -228,12 +232,12 @@ async function saveConfig() {
     const preferredDays = getPreferredDays();
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
-    const checkWindowMinutes = parseInt(document.getElementById('check-window').value);
-    const checkWindow = checkWindowMinutes * 60 * 1e9;
-    const checkIntervalSec = parseInt(document.getElementById('check-interval').value);
-    const checkInterval = checkIntervalSec * 1e9;
-    const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
-    const requestJitter = requestJitterSec * 1e9;
+const checkWindowMinutes = parseFloat(document.getElementById('check-window').value);
+const checkWindow = checkWindowMinutes * 60 * 1e9;
+const checkIntervalSec = parseFloat(document.getElementById('check-interval').value);
+const checkInterval = checkIntervalSec * 1e9;
+const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
+const requestJitter = requestJitterSec * 1e9;
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
 
     const newConfig = {
