@@ -17,11 +17,20 @@ func ParseAvailability(r io.Reader, logger *logrus.Logger) ([]Availability, erro
     if err != nil {
         return nil, err
     }
+    return parseFromDoc(doc, logger)
+}
 
+func ParseAvailabilityFromString(html string, logger *logrus.Logger) ([]Availability, error) {
+    doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+    if err != nil {
+        return nil, err
+    }
+    return parseFromDoc(doc, logger)
+}
+
+func parseFromDoc(doc *goquery.Document, logger *logrus.Logger) ([]Availability, error) {
     var availabilities []Availability
-    // Find all <a> elements with class "s-lc-pass-availability s-lc-pass-digital s-lc-pass-available"
     doc.Find("a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available").Each(func(i int, s *goquery.Selection) {
-        // The date is the text inside the <a> tag (the day number)
         dateText := strings.TrimSpace(s.Text())
         href, exists := s.Attr("href")
         if exists && dateText != "" {
