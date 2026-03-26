@@ -14,11 +14,21 @@
             <a href="#" class="brand-logo">📅 Appointment Agent</a>
             <ul id="nav-mobile" class="right hide-on-med-and-down">
                 <li><a href="#" id="stop-btn" class="waves-effect waves-light btn red">Stop Agent</a></li>
+                <li><a href="#" id="restart-btn" class="waves-effect waves-light btn orange">Restart Agent</a></li>
             </ul>
         </div>
     </nav>
 
     <div class="container">
+        <div class="row">
+            <div class="col s12">
+                <div class="card-panel teal lighten-2 white-text" id="status-card">
+                    <span id="status-text">Status: Idle</span>
+                    <span id="drop-time-info" class="right"></span>
+                </div>
+            </div>
+        </div>
+
         <div class="row">
             <div class="col s12 m6">
                 <div class="card">
