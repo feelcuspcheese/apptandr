@@ -28,6 +28,7 @@ type LoginFormConfig struct {
     CSRFSelector        string `mapstructure:"csrf_token_selector"`
     Username            string `mapstructure:"username"`
     Password            string `mapstructure:"password"`
+    Email               string `mapstructure:"email"` // added
     AuthIDSelector      string `mapstructure:"auth_id_selector"`
     LoginURLSelector    string `mapstructure:"login_url_selector"`
 }
