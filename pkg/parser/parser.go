@@ -14,12 +14,6 @@ type Availability struct {
     BookingURL string
 }
 
-var (
-    // Regex to find href with date parameter
-    bookingLinkRegex = regexp.MustCompile(`<a\s+[^>]*href="([^"]*\/book\?date=[^"]*)"[^>]*>`)
-    // Alternative: look for any link with "/book" and extract date via URL parse, but we'll do regex first
-)
-
 func ParseAvailability(r io.Reader, logger *logrus.Logger) ([]Availability, error) {
     doc, err := goquery.NewDocumentFromReader(r)
     if err != nil {
@@ -29,14 +23,6 @@ func ParseAvailability(r io.Reader, logger *logrus.Logger) ([]Availability, erro
 }
 
 func ParseAvailabilityFromString(html string, logger *logrus.Logger) ([]Availability, error) {
-    // First try regex to extract booking links directly from raw HTML
-    availabilities := parseWithRegex(html, logger)
-    if len(availabilities) > 0 {
-        logger.WithField("count", len(availabilities)).Info("Found availabilities using regex")
-        return availabilities, nil
-    }
-
-    // Fallback to goquery
     doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
     if err != nil {
         return nil, err
@@ -44,40 +30,8 @@ func ParseAvailabilityFromString(html string, logger *logrus.Logger) ([]Availabi
     return parseFromDoc(doc, logger)
 }
 
-func parseWithRegex(html string, logger *logrus.Logger) []Availability {
-    matches := bookingLinkRegex.FindAllStringSubmatch(html, -1)
-    availabilities := []Availability{}
-    for _, match := range matches {
-        if len(match) < 2 {
-            continue
-        }
-        href := match[1]
-        // Extract date from URL (using simple string split; could use net/url but regex already captured the full URL)
-        // We'll extract the date parameter by splitting on "date=" and then "&"
-        datePart := ""
-        if idx := strings.Index(href, "date="); idx != -1 {
-            start := idx + 5
-            end := strings.Index(href[start:], "&")
-            if end == -1 {
-                datePart = href[start:]
-            } else {
-                datePart = href[start : start+end]
-            }
-        }
-        if datePart != "" {
-            availabilities = append(availabilities, Availability{
-                Date:       datePart,
-                BookingURL: href,
-            })
-        } else {
-            logger.WithField("href", href).Warn("Found booking link but could not extract date")
-        }
-    }
-    return availabilities
-}
-
 func parseFromDoc(doc *goquery.Document, logger *logrus.Logger) ([]Availability, error) {
-    // Try the specific selector first
+    // First, try the specific selector used by the browser
     var availabilities []Availability
     doc.Find("a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available").Each(func(i int, s *goquery.Selection) {
         dateText := strings.TrimSpace(s.Text())
@@ -102,6 +56,26 @@ func parseFromDoc(doc *goquery.Document, logger *logrus.Logger) ([]Availability,
                 })
             }
         })
+    }
+
+    // If still none, use regex to find any <a> with href containing "/book"
+    if len(availabilities) == 0 {
+        html, err := doc.Html()
+        if err == nil {
+            // regex to find <a href=".../book...">...</a>
+            re := regexp.MustCompile(`<a\s+[^>]*href="([^"]*\/book[^"]*)"[^>]*>(\d+)</a>`)
+            matches := re.FindAllStringSubmatch(html, -1)
+            for _, match := range matches {
+                if len(match) >= 3 {
+                    href := match[1]
+                    dateText := match[2]
+                    availabilities = append(availabilities, Availability{
+                        Date:       dateText,
+                        BookingURL: href,
+                    })
+                }
+            }
+        }
     }
 
     // If still none, look for any <a> with href containing "book" (debug)
