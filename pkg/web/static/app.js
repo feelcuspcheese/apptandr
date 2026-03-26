@@ -4,6 +4,11 @@ let museumsMap = {}; // key: slug, value: { name, museum_id }
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
+    // Initialize modal
+const modal = document.getElementById('admin-modal');
+if (modal) {
+    M.Modal.init(modal);
+}
     const timepicker = document.getElementById('strike-time');
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
 
