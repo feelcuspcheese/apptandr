@@ -42,14 +42,12 @@ func (s *Server) setupRoutes() {
     s.router = gin.New()
     s.router.Use(gin.Recovery())
 
-    // Serve static files from embedded FS
     staticSub, err := fs.Sub(staticFS, "static")
     if err != nil {
         panic(err)
     }
     s.router.StaticFS("/static", http.FS(staticSub))
 
-    // Serve index.html for root
     s.router.GET("/", func(c *gin.Context) {
         data, err := staticFS.ReadFile("static/index.html")
         if err != nil {
@@ -59,7 +57,6 @@ func (s *Server) setupRoutes() {
         c.Data(http.StatusOK, "text/html; charset=utf-8", data)
     })
 
-    // API endpoints
     api := s.router.Group("/api")
     {
         api.GET("/config", s.getConfig)
@@ -76,8 +73,6 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
-// --- Handlers ---
-
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
 }
@@ -88,24 +83,16 @@ func (s *Server) updateConfig(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-
-    // Validate that the preferred slug exists in sites
     if _, ok := newCfg.Sites[newCfg.PreferredSlug]; !ok && newCfg.PreferredSlug != "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "preferred slug not found in sites"})
         return
     }
-
-    // Save to file
     if err := config.SaveConfig("configs/config.yaml", &newCfg); err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-
-    // Update local reference
     s.cfg = &newCfg
-    // Also update the agent's config reference (agent will use the new config on next start)
     s.agent = agent.NewAgent(&newCfg, s.logger)
-
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -115,7 +102,6 @@ func (s *Server) runNow(c *gin.Context) {
         return
     }
     dropTime := time.Now().Add(30 * time.Second)
-    // Run in a goroutine so we don't block the request
     go func() {
         if err := s.agent.Start(dropTime); err != nil {
             s.logger.WithError(err).Error("Agent start failed")
@@ -133,31 +119,25 @@ func (s *Server) schedule(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-
     loc, err := time.LoadLocation(req.Timezone)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timezone"})
         return
     }
-
-    // Parse datetime in the given timezone
     t, err := time.ParseInLocation("2006-01-02T15:04", req.DropTime, loc)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid datetime format, use YYYY-MM-DDTHH:MM"})
         return
     }
-
     if s.agent.IsRunning() {
         c.JSON(http.StatusConflict, gin.H{"error": "agent already running"})
         return
     }
-
     go func() {
         if err := s.agent.Start(t); err != nil {
             s.logger.WithError(err).Error("Agent start failed")
         }
     }()
-
     c.JSON(http.StatusOK, gin.H{"status": "scheduled", "dropTime": t.Format(time.RFC3339)})
 }
 
@@ -171,8 +151,17 @@ func (s *Server) stopAgent(c *gin.Context) {
 }
 
 func (s *Server) getStatus(c *gin.Context) {
+    running := s.agent.IsRunning()
+    var dropTimeStr string
+    if running {
+        dt := s.agent.GetDropTime()
+        if !dt.IsZero() {
+            dropTimeStr = dt.Format(time.RFC3339)
+        }
+    }
     c.JSON(http.StatusOK, gin.H{
-        "running": s.agent.IsRunning(),
+        "running":  running,
+        "dropTime": dropTimeStr,
     })
 }
 
