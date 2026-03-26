@@ -89,12 +89,12 @@ function populateGlobalSettings(cfg) {
     document.getElementById('login-password').value = firstSite?.LoginForm?.Password || '';
     document.getElementById('login-email').value = firstSite?.LoginForm?.Email || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
-const checkIntervalSec = (cfg.CheckInterval / 1e9).toFixed(1);
-document.getElementById('check-interval').value = checkIntervalSec;
-const requestJitterSec = (cfg.RequestJitter / 1e9).toFixed(2);
-document.getElementById('request-jitter').value = requestJitterSec;
-const checkWindowMinutes = (cfg.CheckWindow / (60 * 1e9)).toFixed(2);
-document.getElementById('check-window').value = checkWindowMinutes;
+    const checkIntervalSec = (cfg.CheckInterval / 1e9).toFixed(1);
+    document.getElementById('check-interval').value = checkIntervalSec;
+    const requestJitterSec = (cfg.RequestJitter / 1e9).toFixed(2);
+    document.getElementById('request-jitter').value = requestJitterSec;
+    const checkWindowMinutes = (cfg.CheckWindow / (60 * 1e9)).toFixed(2);
+    document.getElementById('check-window').value = checkWindowMinutes;
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
