@@ -1,51 +1,3 @@
-package notifier
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "sort"
-    "strings"
-    "time"
-)
-
-type Ntfy struct {
-    Topic  string
-    URL    string
-    client *http.Client
-}
-
-func NewNtfy(topic string) *Ntfy {
-    return &Ntfy{
-        Topic:  topic,
-        URL:    fmt.Sprintf("https://ntfy.sh/%s", topic),
-        client: &http.Client{Timeout: 10 * time.Second},
-    }
-}
-
-type Priority int
-
-const (
-    PriorityMin     Priority = 1
-    PriorityLow     Priority = 2
-    PriorityDefault Priority = 3
-    PriorityHigh    Priority = 4
-    PriorityUrgent  Priority = 5
-)
-
-type Action struct {
-    Action string `json:"action"`
-    Label  string `json:"label"`
-    URL    string `json:"url"`
-}
-
-type AvailabilityWithLink struct {
-    Date       string
-    BookingURL string
-}
-
-// BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
 func BuildNotification(availabilities []AvailabilityWithLink) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
@@ -73,18 +25,23 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
         actions = append(actions, Action{
             Action: "view",
             Label:  label,
-            URL:    a.BookingURL, // must be absolute
+            URL:    a.BookingURL,
         })
     }
 
-    // Build the plain text message
+    // Build the plain text message with emojis
     var msg strings.Builder
     msg.WriteString("Available: ")
     for i, a := range all {
         if i > 0 {
             msg.WriteString(", ")
         }
-        msg.WriteString(a.Date)
+        // Use emoji: 🌟 for weekend, 📅 for weekday
+        emoji := "📅"
+        if isWeekend(a.Date) {
+            emoji = "🌟"
+        }
+        msg.WriteString(fmt.Sprintf("%s %s", emoji, a.Date))
         if i < 3 {
             msg.WriteString(" [button]")
         }
@@ -94,61 +51,14 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
     }
     msg.WriteString("\n\nFull list:\n")
     for _, a := range all {
-        msg.WriteString(fmt.Sprintf("%s: %s\n", a.Date, a.BookingURL))
+        emoji := "📅"
+        if isWeekend(a.Date) {
+            emoji = "🌟"
+        }
+        msg.WriteString(fmt.Sprintf("%s %s: %s\n", emoji, a.Date, a.BookingURL))
     }
 
     title = "Appointment Available"
     message = msg.String()
     return
-}
-
-func weekendOrWeekday(dateStr string) string {
-    if isWeekend(dateStr) {
-        return "Weekend"
-    }
-    return "Weekday"
-}
-
-func isWeekend(dateStr string) bool {
-    t, err := time.Parse("2006-01-02", dateStr)
-    if err != nil {
-        return false
-    }
-    wd := t.Weekday()
-    return wd == time.Saturday || wd == time.Sunday
-}
-
-// SendNotification sends a structured notification using ntfy's header‑driven API.
-func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []Action) error {
-    // Create the request with the message as the body (plain text)
-    req, err := http.NewRequest("POST", n.URL, strings.NewReader(msg))
-    if err != nil {
-        return err
-    }
-
-    // Set headers for structured fields
-    req.Header.Set("Title", title)
-    req.Header.Set("Priority", fmt.Sprintf("%d", priority))
-    req.Header.Set("Tags", "calendar,clock")
-
-    // Actions must be JSON‑encoded in the "Actions" header
-    if len(actions) > 0 {
-        actionsJSON, err := json.Marshal(actions)
-        if err != nil {
-            return fmt.Errorf("failed to marshal actions: %w", err)
-        }
-        req.Header.Set("Actions", string(actionsJSON))
-    }
-
-    // Send the request
-    resp, err := n.client.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("ntfy returned %d", resp.StatusCode)
-    }
-    return nil
 }
