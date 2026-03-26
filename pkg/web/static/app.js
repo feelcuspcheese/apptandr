@@ -25,7 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('load-museums').addEventListener('click', parseMuseums);
-    document.getElementById('save-config').addEventListener('click', saveConfig);
+    document.getElementById('save-user-config').addEventListener('click', saveUserConfig);
+    document.getElementById('save-admin-config').addEventListener('click', saveAdminConfig);
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
         document.getElementById('schedule-panel').style.display = 'block';
@@ -163,7 +164,7 @@ function parseMuseums() {
     }
     museumsMap = newMap;
     renderMuseumPills();
-    M.toast({html: `Loaded ${Object.keys(museumsMap).length} museums`});
+    M.toast({html: `Loaded ${Object.keys(museumsMap).length} museums (preview only, not saved yet)`});
 }
 
 function renderMuseumPills() {
@@ -190,41 +191,7 @@ function getPreferredDays() {
     return Array.from(document.querySelectorAll('#days-pills .chip.active')).map(c => c.dataset.day);
 }
 
-async function saveConfig() {
-    const sites = {};
-    for (const [slug, info] of Object.entries(museumsMap)) {
-        const site = {
-            Name: info.Name,
-            BaseURL: document.getElementById('base-url').value,
-            MuseumID: info.MuseumID,
-            Slug: slug,
-            PassID: '',
-            Digital: document.getElementById('digital').checked,
-            Physical: document.getElementById('physical').checked,
-            Location: document.getElementById('location').value,
-            AvailabilityEndpoint: document.getElementById('availability-endpoint').value,
-            BookingLinkSelector: 'a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available',
-            LoginForm: {
-                UsernameField: 'username',
-                PasswordField: 'password',
-                SubmitButton: 'submit',
-                CSRFSelector: '',
-                Username: document.getElementById('login-username').value,
-                Password: document.getElementById('login-password').value,
-                Email: document.getElementById('login-email').value,
-                AuthIDSelector: 'input[name="auth_id"]',
-                LoginURLSelector: 'input[name="login_url"]',
-            },
-            BookingForm: {
-                ActionURL: '',
-                Fields: [],
-                EmailField: 'email',
-            },
-            SuccessIndicator: 'Thank you!',
-        };
-        sites[slug] = site;
-    }
-
+async function saveUserConfig() {
     const preferredDays = getPreferredDays();
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
@@ -235,34 +202,80 @@ async function saveConfig() {
     const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
     const requestJitter = requestJitterSec * 1e9;
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
+    const ntfyTopic = document.getElementById('ntfy-topic').value;
+    const loginUsername = document.getElementById('login-username').value;
+    const loginPassword = document.getElementById('login-password').value;
+    const loginEmail = document.getElementById('login-email').value;
+    const preferredSlug = currentConfig?.PreferredSlug || Object.keys(museumsMap)[0] || '';
 
-    const newConfig = {
-        Sites: sites,
-        PreferredSlug: currentConfig?.PreferredSlug || Object.keys(sites)[0] || '',
-        Mode: mode,
-        PreferredDays: preferredDays,
-        StrikeTime: strikeTime,
-        CheckWindow: checkWindow,
-        CheckInterval: checkInterval,
-        PreWarmOffset: 30 * 1e9,
-        NtfyTopic: document.getElementById('ntfy-topic').value,
-        MaxWorkers: 2,
-        RequestJitter: requestJitter,
-        MonthsToCheck: monthsToCheck,
+    const payload = {
+        preferredSlug,
+        mode,
+        preferredDays,
+        strikeTime,
+        checkWindow,
+        checkInterval,
+        requestJitter,
+        monthsToCheck,
+        ntfyTopic,
+        loginUsername,
+        loginPassword,
+        loginEmail,
     };
 
-    const res = await fetch('/api/config', {
+    const res = await fetch('/api/config/user', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newConfig)
+        body: JSON.stringify(payload)
     });
     if (res.ok) {
-        M.toast({html: 'Configuration saved'});
-        currentConfig = newConfig;
-        renderMuseumPills();
+        M.toast({html: 'User settings saved'});
+        // Reload config to reflect any changes (though only user fields changed)
+        await loadConfig();
     } else {
         const err = await res.json();
-        M.toast({html: err.error || 'Error saving config', classes: 'red'});
+        M.toast({html: err.error || 'Error saving user settings', classes: 'red'});
+    }
+}
+
+async function saveAdminConfig() {
+    const baseUrl = document.getElementById('base-url').value;
+    const availabilityEndpoint = document.getElementById('availability-endpoint').value;
+    const digital = document.getElementById('digital').checked;
+    const physical = document.getElementById('physical').checked;
+    const location = document.getElementById('location').value;
+
+    // Build sites from current museumsMap
+    const sites = {};
+    for (const [slug, info] of Object.entries(museumsMap)) {
+        sites[slug] = {
+            Name: info.Name,
+            Slug: slug,
+            MuseumID: info.MuseumID,
+            // other fields will be populated from baseUrl, etc. on server side
+        };
+    }
+
+    const payload = {
+        sites,
+        baseUrl,
+        availabilityEndpoint,
+        digital,
+        physical,
+        location,
+    };
+
+    const res = await fetch('/api/config/admin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+        M.toast({html: 'Admin settings saved'});
+        await loadConfig(); // reload to reflect changes
+    } else {
+        const err = await res.json();
+        M.toast({html: err.error || 'Error saving admin settings', classes: 'red'});
     }
 }
 
