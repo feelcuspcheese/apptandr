@@ -3,6 +3,7 @@ package scraper
 import (
     "agent/pkg/httpclient"
     "agent/pkg/parser"
+    "bytes"
     "compress/gzip"
     "context"
     "fmt"
