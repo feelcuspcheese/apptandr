@@ -205,10 +205,10 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     a.log("Agent finished")
 }
 
-// checkAvailability performs a single availability check and returns whether to stop.
-func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, activeSite config.SiteInfo, client *httpclient.Client) (bool, error) {
-    // Determine months to fetch
-    now := time.Now()
+// checkAvailability now receives dropTime as argument and uses it for month calculation.
+func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, activeSite config.SiteInfo, client *httpclient.Client, dropTime time.Time) (bool, error) {
+    // Use the drop time as the reference for the first month.
+    startDate := dropTime
     months := a.config.MonthsToCheck
     if months < 1 {
         months = 1
@@ -216,12 +216,30 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
     allAvails := []parser.Availability{}
     for i := 0; i < months; i++ {
-        date := now.AddDate(0, i, 0).Format("2006-01-02")
-        a.log("Fetching availability for month starting %s", date)
-        avails, err := scraperInst.FetchForDate(ctx, date)
+        // For the first month, use the exact drop date (as the browser does).
+        // For subsequent months, use the first day of that month.
+        var targetDate time.Time
+        if i == 0 {
+            targetDate = startDate
+        } else {
+            // Get the month after the start month.
+            targetMonth := startDate.AddDate(0, i, 0)
+            targetDate = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
+        }
+        dateStr := targetDate.Format("2006-01-02")
+        a.log("Fetching availability for month starting %s (date param: %s)", targetDate.Format("2006-01"), dateStr)
+        avails, err := scraperInst.FetchForDate(ctx, dateStr)
         if err != nil {
-            a.log("Error fetching availability for %s: %v", date, err)
+            a.log("Error fetching availability for %s: %v", dateStr, err)
             continue
+        }
+        // Debug: if we got a 200 but no availabilities, log a snippet of the response
+        if len(avails) == 0 {
+            // We need to get the raw body from the scraper; we'll extend the scraper to return the body on demand.
+            // For now, we'll use a separate debug flag.
+            // But we can add a method to the scraper to return the raw body. For simplicity, we'll log a note.
+            a.log("No availabilities found in response for %s; check parsing or server response", dateStr)
+            // Optional: we could print the first 500 chars of the body if we capture it.
         }
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
