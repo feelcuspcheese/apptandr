@@ -35,7 +35,6 @@ func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.Stat
 func (b *Booker) PreLogin(ctx context.Context) error {
     b.logger.Info("Pre‑warming login")
     // For now, we skip pre-login because the login flow requires a booking URL.
-    // Instead, we rely on the normal book flow.
     return nil
 }
 
@@ -67,6 +66,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         return fmt.Errorf("initial booking request failed: %w", err)
     }
     defer resp.Body.Close()
+
+    b.logger.WithField("final_url", resp.Request.URL.String()).Info("After initial request (including redirects)")
 
     // After following redirects, we should be on either the login page or the booking form.
     doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -118,6 +119,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
         defer loginResp.Body.Close()
 
+        b.logger.WithField("final_url", loginResp.Request.URL.String()).Info("After login (including redirects)")
+
         // After successful login, we should be redirected to the original booking URL with a token.
         finalResp = loginResp // after redirects, this is the final response
         doc, err = goquery.NewDocumentFromReader(finalResp.Body)
@@ -131,6 +134,16 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     // At this point, doc should contain the booking form (if login succeeded or was not needed)
     bookingForm := doc.Find("form#s-lc-bform")
     if bookingForm.Length() == 0 {
+        // Log the response body snippet to diagnose
+        bodyBytes, _ := io.ReadAll(finalResp.Body)
+        bodySnippet := string(bodyBytes)
+        if len(bodySnippet) > 1000 {
+            bodySnippet = bodySnippet[:1000] + "..."
+        }
+        b.logger.WithFields(logrus.Fields{
+            "url":       finalResp.Request.URL.String(),
+            "body_snip": bodySnippet,
+        }).Error("Booking form not found")
         // Check for error messages
         if strings.Contains(doc.Text(), "Sorry, this would exceed the monthly booking limit") {
             return fmt.Errorf("booking limit exceeded")
@@ -152,18 +165,11 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
     })
     // Add email field
-    emailField := b.siteConfig.BookingForm.EmailField
-    if emailField == "" {
-        emailField = "email" // default
+    email := b.siteConfig.BookingForm.EmailField
+    if email == "" {
+        email = "email" // default
     }
-    // Use the configured email address from LoginForm (which may be the user's email)
-    emailValue := b.siteConfig.LoginForm.Email
-    if emailValue == "" {
-        // Fallback to username if email not configured (for backward compatibility)
-        emailValue = b.siteConfig.LoginForm.Username
-        b.logger.Warn("No email configured, using username as email fallback")
-    }
-    formData.Set(emailField, emailValue)
+    formData.Set(email, b.siteConfig.LoginForm.Email)
 
     // Determine action URL
     action := bookingForm.AttrOr("action", "")
