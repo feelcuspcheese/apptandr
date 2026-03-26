@@ -70,12 +70,6 @@ async function loadConfig() {
         populateMuseumsList(currentConfig.Sites);
         updateDaysPills(currentConfig.PreferredDays);
         document.getElementById('strike-time').value = currentConfig.StrikeTime;
-const checkWindowMinutes = (currentConfig.CheckWindow / (60 * 1e9)).toFixed(2);
-document.getElementById('check-window').value = checkWindowMinutes;
-const checkIntervalSec = (currentConfig.CheckInterval / 1e9).toFixed(1);
-document.getElementById('check-interval').value = checkIntervalSec;
-const requestJitterSec = (currentConfig.RequestJitter / 1e9).toFixed(2);
-document.getElementById('request-jitter').value = requestJitterSec;
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
         if (modeRadio) modeRadio.checked = true;
     } catch (err) {
@@ -99,6 +93,8 @@ const checkIntervalSec = (cfg.CheckInterval / 1e9).toFixed(1);
 document.getElementById('check-interval').value = checkIntervalSec;
 const requestJitterSec = (cfg.RequestJitter / 1e9).toFixed(2);
 document.getElementById('request-jitter').value = requestJitterSec;
+const checkWindowMinutes = (currentConfig.CheckWindow / (60 * 1e9)).toFixed(2);
+document.getElementById('check-window').value = checkWindowMinutes;
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
