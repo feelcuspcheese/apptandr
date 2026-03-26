@@ -275,28 +275,23 @@ if len(avails) == 0 {
     }
 
     if a.config.Mode == "alert" {
-        // Send notification with buttons
-        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-        for i, av := range newAvails {
-            notifyAvails[i] = notifier.AvailabilityWithLink{
-                Date:       av.Date,
-                BookingURL: av.BookingURL,
-            }
+    // Build notification with up to 3 buttons and a summary message
+    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+    for i, av := range newAvails {
+        notifyAvails[i] = notifier.AvailabilityWithLink{
+            Date:       av.Date,
+            BookingURL: av.BookingURL,
         }
-        actions := notifier.PrioritizeActions(notifyAvails)
-        err := ntfy.SendNotification(
-            "Appointment Available!",
-            "Found new appointment dates",
-            notifier.PriorityHigh,
-            actions,
-        )
-        if err != nil {
-            a.log("Failed to send notification: %v", err)
-        } else {
-            a.log("Notification sent for %d dates", len(newAvails))
-        }
-        return false, nil
-    } else if a.config.Mode == "booking" {
+    }
+    title, msg, actions := notifier.BuildNotification(notifyAvails)
+    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+    if err != nil {
+        a.log("Failed to send notification: %v", err)
+    } else {
+        a.log("Notification sent for %d dates", len(newAvails))
+    }
+    return false, nil
+} else if a.config.Mode == "booking" {
         // Try to book
         bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
         for _, prefDay := range a.config.PreferredDays {
