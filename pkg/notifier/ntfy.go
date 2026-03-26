@@ -49,14 +49,12 @@ type Action struct {
     URL    string `json:"url"`
 }
 
-// AvailabilityWithLink holds availability data for notifications
 type AvailabilityWithLink struct {
     Date       string
     BookingURL string
 }
 
 // BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
-// It returns the title, message string, and the actions slice (max 3).
 func BuildNotification(availabilities []AvailabilityWithLink) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
@@ -71,14 +69,12 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
             weekdays = append(weekdays, a)
         }
     }
-    // Sort each by date (ascending)
     sort.Slice(weekends, func(i, j int) bool { return weekends[i].Date < weekends[j].Date })
     sort.Slice(weekdays, func(i, j int) bool { return weekdays[i].Date < weekdays[j].Date })
 
-    // Combined list with weekends first
     all := append(weekends, weekdays...)
 
-    // Prepare actions (max 3)
+    // Actions: up to 3
     actions = make([]Action, 0, 3)
     for i := 0; i < len(all) && i < 3; i++ {
         a := all[i]
@@ -90,18 +86,15 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
         })
     }
 
-    // Prepare message summary for all dates (including those not in actions)
-    dateList := make([]string, len(all))
+    // Message: all dates
+    dateStrs := make([]string, len(all))
     for i, a := range all {
-        dateList[i] = fmt.Sprintf("%s (%s)", a.Date, weekendOrWeekday(a.Date))
+        dateStrs[i] = fmt.Sprintf("%s (%s)", a.Date, weekendOrWeekday(a.Date))
     }
-    message = strings.Join(dateList, ", ")
-
-    // Add note if there are more than 3 dates
+    message = strings.Join(dateStrs, ", ")
     if len(all) > 3 {
         message += fmt.Sprintf("\n(Only the first 3 are shown as buttons; %d more dates available)", len(all)-3)
     }
-
     title = "Appointment Available!"
     return
 }
@@ -122,7 +115,6 @@ func isWeekend(dateStr string) bool {
     return wd == time.Saturday || wd == time.Sunday
 }
 
-// SendNotification sends a notification with the given title, message, and actions.
 func (n *Ntfy) SendNotification(title, msg string, priority Priority, actions []Action) error {
     m := Message{
         Topic:    n.Topic,
