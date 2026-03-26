@@ -275,17 +275,22 @@ function connectWebSocket() {
 function populateMuseumsList(sites) {
     const lines = [];
     for (const [slug, info] of Object.entries(sites)) {
+        // Use the stored name if it exists and is different from the slug, otherwise just slug
         if (info.Name && info.Name !== slug) {
             lines.push(`${info.Name}:${slug}:${info.MuseumID}`);
         } else {
             lines.push(`${slug}:${info.MuseumID}`);
         }
     }
-    document.getElementById('museums-list').value = lines.join('\n');
+    // Set the textarea value, ensuring it's a string with newlines
+    const textarea = document.getElementById('museums-list');
+    textarea.value = lines.join('\n');
+    
+    // Rebuild the museumsMap for internal use
     museumsMap = {};
     for (const [slug, info] of Object.entries(sites)) {
         museumsMap[slug] = {
-            Name: info.Name,
+            Name: info.Name || slug,
             Slug: slug,
             MuseumID: info.MuseumID,
         };
