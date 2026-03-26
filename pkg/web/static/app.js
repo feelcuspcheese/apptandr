@@ -1,11 +1,14 @@
 let ws;
 let currentConfig = null;
-let museumsMap = {}; // key: slug, value: { name, museum_id, pass_id? }
+let museumsMap = {}; // key: slug, value: { name, museum_id }
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
     const timepicker = document.getElementById('strike-time');
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
+
+    // Initialize days pills with click handlers
+    initDaysPills();
 
     loadConfig();
 
@@ -21,6 +24,16 @@ document.addEventListener('DOMContentLoaded', () => {
     connectWebSocket();
 });
 
+function initDaysPills() {
+    // Make days chips clickable/toggleable
+    const chips = document.querySelectorAll('#days-pills .chip');
+    chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            chip.classList.toggle('active');
+        });
+    });
+}
+
 async function loadConfig() {
     try {
         const res = await fetch('/api/config');
@@ -32,6 +45,12 @@ async function loadConfig() {
         document.getElementById('check-window').value = (currentConfig.CheckWindow / 60).toFixed(0);
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
         if (modeRadio) modeRadio.checked = true;
+
+        // Set email field if present in first site's booking form
+        const firstSite = Object.values(currentConfig.Sites)[0];
+        if (firstSite && firstSite.BookingForm && firstSite.BookingForm.EmailFieldValue) {
+            document.getElementById('email').value = firstSite.BookingForm.EmailFieldValue;
+        }
     } catch (err) {
         console.error(err);
         M.toast({html: 'Failed to load config', classes: 'red'});
@@ -39,26 +58,28 @@ async function loadConfig() {
 }
 
 function populateGlobalSettings(cfg) {
-    document.getElementById('base-url').value = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.BaseURL || 'https://spl.libcal.com';
-    document.getElementById('availability-endpoint').value = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.AvailabilityEndpoint || '/pass/availability/institution';
-    document.getElementById('digital').checked = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.Digital || true;
-    document.getElementById('physical').checked = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.Physical || false;
-    document.getElementById('location').value = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.Location || '0';
-    document.getElementById('login-username').value = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.LoginForm?.Username || '';
-    document.getElementById('login-password').value = cfg.Sites?.[Object.keys(cfg.Sites)[0]]?.LoginForm?.Password || '';
+    const firstSite = Object.values(cfg.Sites)[0] || {};
+    document.getElementById('base-url').value = firstSite.BaseURL || 'https://spl.libcal.com';
+    document.getElementById('availability-endpoint').value = firstSite.AvailabilityEndpoint || '/pass/availability/institution';
+    document.getElementById('digital').checked = firstSite.Digital !== false;
+    document.getElementById('physical').checked = firstSite.Physical === true;
+    document.getElementById('location').value = firstSite.Location || '0';
+    document.getElementById('login-username').value = firstSite.LoginForm?.Username || '';
+    document.getElementById('login-password').value = firstSite.LoginForm?.Password || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
-    document.getElementById('check-interval').value = (cfg.CheckInterval / 1000000000).toFixed(0); // from nanoseconds
-    document.getElementById('request-jitter').value = (cfg.RequestJitter / 1000000000).toFixed(1);
+    document.getElementById('check-interval').value = (cfg.CheckInterval || 2).toString();
+    document.getElementById('request-jitter').value = (cfg.RequestJitter || 2).toString();
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
 }
 
 function updateDaysPills(preferredDays) {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    days.forEach(day => {
-        const chip = document.querySelector(`.chip[data-day="${day}"]`);
-        if (chip) {
-            if (preferredDays.includes(day)) chip.classList.add('active');
-            else chip.classList.remove('active');
+    const chips = document.querySelectorAll('#days-pills .chip');
+    chips.forEach(chip => {
+        const day = chip.dataset.day;
+        if (preferredDays.includes(day)) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
         }
     });
 }
@@ -90,7 +111,6 @@ function parseMuseums() {
             Name: name,
             Slug: slug,
             MuseumID: museumId,
-            // We'll fill other fields from global settings later
         };
     }
     museumsMap = newMap;
@@ -125,25 +145,34 @@ function getPreferredDays() {
 async function saveConfig() {
     // Build Sites map from museumsMap and global settings
     const sites = {};
+    const baseURL = document.getElementById('base-url').value;
+    const availabilityEndpoint = document.getElementById('availability-endpoint').value;
+    const digital = document.getElementById('digital').checked;
+    const physical = document.getElementById('physical').checked;
+    const location = document.getElementById('location').value;
+    const loginUsername = document.getElementById('login-username').value;
+    const loginPassword = document.getElementById('login-password').value;
+    const email = document.getElementById('email').value;
+
     for (const [slug, info] of Object.entries(museumsMap)) {
         const site = {
             Name: info.Name,
-            BaseURL: document.getElementById('base-url').value,
+            BaseURL: baseURL,
             MuseumID: info.MuseumID,
             Slug: slug,
             PassID: '', // not used currently, but can be filled if needed
-            Digital: document.getElementById('digital').checked,
-            Physical: document.getElementById('physical').checked,
-            Location: document.getElementById('location').value,
-            AvailabilityEndpoint: document.getElementById('availability-endpoint').value,
+            Digital: digital,
+            Physical: physical,
+            Location: location,
+            AvailabilityEndpoint: availabilityEndpoint,
             BookingLinkSelector: 'a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available',
             LoginForm: {
                 UsernameField: 'username',
                 PasswordField: 'password',
                 SubmitButton: 'submit',
                 CSRFSelector: '',
-                Username: document.getElementById('login-username').value,
-                Password: document.getElementById('login-password').value,
+                Username: loginUsername,
+                Password: loginPassword,
                 AuthIDSelector: 'input[name="auth_id"]',
                 LoginURLSelector: 'input[name="login_url"]',
             },
@@ -151,6 +180,7 @@ async function saveConfig() {
                 ActionURL: '',
                 Fields: [],
                 EmailField: 'email',
+                EmailFieldValue: email, // store email value for later use
             },
             SuccessIndicator: 'Thank you!',
         };
