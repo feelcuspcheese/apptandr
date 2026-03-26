@@ -210,6 +210,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         action = "https://" + finalResp.Request.URL.Host + "/" + action
     }
 
+    b.logger.WithField("action", action).Info("Submitting booking form")
+
     // Submit booking
     submitReq, err := http.NewRequestWithContext(ctx, "POST", action, strings.NewReader(formData.Encode()))
     if err != nil {
@@ -223,19 +225,34 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer submitResp.Body.Close()
 
-    // Check success
-    resultBody, err := io.ReadAll(submitResp.Body)
+    // Read and decompress the final response
+    resultRaw, err := io.ReadAll(submitResp.Body)
     if err != nil {
         return err
     }
-    resultStr := string(resultBody)
+    resultDecompressed, err := decompressBody(resultRaw)
+    if err != nil {
+        return err
+    }
+    resultStr := string(resultDecompressed)
 
+    // Log snippet for debugging if not success
+    if !(strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:")) {
+        snippet := resultStr
+        if len(snippet) > 500 {
+            snippet = snippet[:500] + "..."
+        }
+        b.logger.WithField("snippet", snippet).Warn("Unexpected final response")
+    }
+
+    // Success indicator
     if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
         b.logger.Info("Booking successful")
         b.state.MarkSeen(avail.Date)
         return nil
     }
 
+    // Check for failure messages
     if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") {
         return fmt.Errorf("booking limit exceeded")
     }
