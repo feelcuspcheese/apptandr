@@ -3,6 +3,7 @@ package scraper
 import (
     "agent/pkg/httpclient"
     "agent/pkg/parser"
+    "compress/gzip"
     "context"
     "fmt"
     "io"
@@ -56,10 +57,30 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
     }
     defer resp.Body.Close()
 
-    bodyBytes, err := io.ReadAll(resp.Body)
+    // Read raw body
+    rawBody, err := io.ReadAll(resp.Body)
     if err != nil {
         return nil, "", err
     }
+
+    // Check if body is gzipped (starts with \x1f\x8b)
+    var bodyBytes []byte
+    if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
+        // Decompress
+        gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
+        if err != nil {
+            return nil, "", fmt.Errorf("failed to create gzip reader: %w", err)
+        }
+        decompressed, err := io.ReadAll(gzReader)
+        gzReader.Close()
+        if err != nil {
+            return nil, "", fmt.Errorf("failed to decompress gzip: %w", err)
+        }
+        bodyBytes = decompressed
+    } else {
+        bodyBytes = rawBody
+    }
+
     body := string(bodyBytes)
 
     if resp.StatusCode != http.StatusOK {
