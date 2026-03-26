@@ -31,14 +31,6 @@ func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.Stat
     }
 }
 
-// PreLogin attempts to log in and get a valid session before strike time.
-func (b *Booker) PreLogin(ctx context.Context) error {
-    b.logger.Info("Pre‑warming login")
-    // For now, we skip pre-login because the login flow requires a booking URL.
-    return nil
-}
-
-// Book executes the full booking flow for a given availability.
 func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     if !b.state.StartProcessing(avail.Date) {
         b.logger.WithField("date", avail.Date).Info("Already processing this date")
@@ -59,7 +51,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     if err != nil {
         return err
     }
-    // Set referer header to mimic browser
     req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.siteConfig.Slug)
     resp, err := b.client.Do(req)
     if err != nil {
@@ -67,37 +58,46 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer resp.Body.Close()
 
-    b.logger.WithField("final_url", resp.Request.URL.String()).Info("After initial request (including redirects)")
+    b.logger.WithFields(logrus.Fields{
+        "final_url":  resp.Request.URL.String(),
+        "status":     resp.StatusCode,
+    }).Info("After initial request (including redirects)")
 
-    // After following redirects, we should be on either the login page or the booking form.
-    doc, err := goquery.NewDocumentFromReader(resp.Body)
+    // Read the entire response body for later use
+    bodyBytes, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return err
+    }
+    bodyStr := string(bodyBytes)
+
+    // Create a new reader for parsing
+    doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
     if err != nil {
         return err
     }
 
     // Check if we need to login
     loginForm := doc.Find("form[action*='form_login']")
-    var finalResp *http.Response // to hold final response after login (if any)
+    var finalResp *http.Response
+    var finalBody []byte
     if loginForm.Length() > 0 {
         b.logger.Info("Login required, performing login")
-        // Extract hidden fields from the login form
         authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
-        loginURL := loginForm.Find("input[name='login_url']").AttrOr("value", "")
-        if authID == "" || loginURL == "" {
+        loginURLField := loginForm.Find("input[name='login_url']").AttrOr("value", "")
+        if authID == "" || loginURLField == "" {
             return fmt.Errorf("could not extract auth_id or login_url from login form")
         }
 
         // Prepare login POST data
         loginData := url.Values{}
         loginData.Set("auth_id", authID)
-        loginData.Set("login_url", loginURL)
+        loginData.Set("login_url", loginURLField)
         loginData.Set(b.siteConfig.LoginForm.UsernameField, b.siteConfig.LoginForm.Username)
         loginData.Set(b.siteConfig.LoginForm.PasswordField, b.siteConfig.LoginForm.Password)
 
-        // Determine login action URL (may be relative)
+        // Determine login action URL
         loginAction := loginForm.AttrOr("action", "")
         if strings.HasPrefix(loginAction, "/") {
-            // Resolve relative to current domain
             u, _ := url.Parse(loginAction)
             if u.Host == "" {
                 loginAction = "https://" + resp.Request.URL.Host + loginAction
@@ -106,7 +106,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
             loginAction = "https://" + resp.Request.URL.Host + "/" + loginAction
         }
 
-        // POST login
         loginReq, err := http.NewRequestWithContext(ctx, "POST", loginAction, strings.NewReader(loginData.Encode()))
         if err != nil {
             return err
@@ -119,36 +118,42 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
         defer loginResp.Body.Close()
 
-        b.logger.WithField("final_url", loginResp.Request.URL.String()).Info("After login (including redirects)")
+        b.logger.WithFields(logrus.Fields{
+            "final_url": loginResp.Request.URL.String(),
+            "status":    loginResp.StatusCode,
+        }).Info("After login (including redirects)")
 
-        // After successful login, we should be redirected to the original booking URL with a token.
-        finalResp = loginResp // after redirects, this is the final response
-        doc, err = goquery.NewDocumentFromReader(finalResp.Body)
+        finalBody, err = io.ReadAll(loginResp.Body)
         if err != nil {
             return err
         }
+        doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(finalBody)))
+        if err != nil {
+            return err
+        }
+        finalResp = loginResp
     } else {
+        finalBody = bodyBytes
         finalResp = resp
+        b.logger.Info("No login required, proceeding to booking form")
     }
 
-    // At this point, doc should contain the booking form (if login succeeded or was not needed)
+    // At this point, doc should contain the booking form
     bookingForm := doc.Find("form#s-lc-bform")
     if bookingForm.Length() == 0 {
-        // Log the response body snippet to diagnose
-        bodyBytes, _ := io.ReadAll(finalResp.Body)
-        bodySnippet := string(bodyBytes)
-        if len(bodySnippet) > 1000 {
-            bodySnippet = bodySnippet[:1000] + "..."
+        // Log the response snippet for debugging
+        snippet := string(finalBody)
+        if len(snippet) > 2000 {
+            snippet = snippet[:2000] + "..."
         }
         b.logger.WithFields(logrus.Fields{
-            "url":       finalResp.Request.URL.String(),
-            "body_snip": bodySnippet,
+            "url":     finalResp.Request.URL.String(),
+            "snippet": snippet,
         }).Error("Booking form not found")
-        // Check for error messages
+
         if strings.Contains(doc.Text(), "Sorry, this would exceed the monthly booking limit") {
             return fmt.Errorf("booking limit exceeded")
         }
-        // Check if the URL contains "unavailable"
         if strings.Contains(finalResp.Request.URL.String(), "unavailable") {
             return fmt.Errorf("spot already taken (unavailable in URL)")
         }
@@ -167,7 +172,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     // Add email field
     email := b.siteConfig.BookingForm.EmailField
     if email == "" {
-        email = "email" // default
+        email = "email"
     }
     formData.Set(email, b.siteConfig.LoginForm.Email)
 
@@ -196,24 +201,22 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     defer submitResp.Body.Close()
 
     // Check success
-    bodyBytes, err := io.ReadAll(submitResp.Body)
+    resultBody, err := io.ReadAll(submitResp.Body)
     if err != nil {
         return err
     }
-    bodyStr := string(bodyBytes)
+    resultStr := string(resultBody)
 
-    // Success indicator: "Thank you!" or "The following Digital Pass reservation was made:"
-    if strings.Contains(bodyStr, "Thank you!") || strings.Contains(bodyStr, "The following Digital Pass reservation was made:") {
+    if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
         b.logger.Info("Booking successful")
         b.state.MarkSeen(avail.Date)
         return nil
     }
 
-    // Check for failure messages
-    if strings.Contains(bodyStr, "Sorry, this would exceed the monthly booking limit") {
+    if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") {
         return fmt.Errorf("booking limit exceeded")
     }
-    if strings.Contains(bodyStr, "unavailable") || strings.Contains(bodyStr, "not available") {
+    if strings.Contains(resultStr, "unavailable") || strings.Contains(resultStr, "not available") {
         return fmt.Errorf("spot no longer available")
     }
 
