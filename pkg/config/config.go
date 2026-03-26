@@ -33,9 +33,10 @@ type LoginFormConfig struct {
 }
 
 type BookingFormConfig struct {
-    ActionURL  string            `mapstructure:"action_url"`
-    Fields     []FormFieldConfig `mapstructure:"fields"`
-    EmailField string            `mapstructure:"email_field"`
+    ActionURL        string            `mapstructure:"action_url"`
+    Fields           []FormFieldConfig `mapstructure:"fields"`
+    EmailField       string            `mapstructure:"email_field"`
+    EmailFieldValue  string            `mapstructure:"email_field_value"`
 }
 
 type FormFieldConfig struct {
