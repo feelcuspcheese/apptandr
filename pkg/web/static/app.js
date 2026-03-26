@@ -1,6 +1,6 @@
 let ws;
 let currentConfig = null;
-let museumsMap = {}; // key: slug, value: { name, museum_id, pass_id? }
+let museumsMap = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -8,8 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
 
     loadConfig();
+    startStatusPolling();
 
-    // Attach click handlers to day chips (static)
     const dayChips = document.querySelectorAll('#days-pills .chip');
     dayChips.forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -26,9 +26,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('confirm-schedule').addEventListener('click', schedule);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
+    document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
     connectWebSocket();
 });
+
+function startStatusPolling() {
+    setInterval(async () => {
+        const res = await fetch('/api/status');
+        const status = await res.json();
+        const statusSpan = document.getElementById('status-text');
+        const dropInfoSpan = document.getElementById('drop-time-info');
+        if (status.running) {
+            statusSpan.textContent = 'Status: Running';
+            if (status.dropTime) {
+                const dropDate = new Date(status.dropTime);
+                const localStr = dropDate.toLocaleString();
+                dropInfoSpan.textContent = `Scheduled: ${localStr}`;
+            } else {
+                dropInfoSpan.textContent = '';
+            }
+        } else {
+            statusSpan.textContent = 'Status: Idle';
+            dropInfoSpan.textContent = '';
+        }
+    }, 2000);
+}
 
 async function loadConfig() {
     try {
@@ -38,7 +61,6 @@ async function loadConfig() {
         populateMuseumsList(currentConfig.Sites);
         updateDaysPills(currentConfig.PreferredDays);
         document.getElementById('strike-time').value = currentConfig.StrikeTime;
-        // Convert nanoseconds to minutes for CheckWindow
         const checkWindowMinutes = Math.round(currentConfig.CheckWindow / (60 * 1e9));
         document.getElementById('check-window').value = checkWindowMinutes;
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
@@ -60,10 +82,8 @@ function populateGlobalSettings(cfg) {
     document.getElementById('login-password').value = firstSite?.LoginForm?.Password || '';
     document.getElementById('login-email').value = firstSite?.LoginForm?.Email || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
-    // Convert nanoseconds to seconds for CheckInterval
     const checkIntervalSec = Math.round(cfg.CheckInterval / 1e9);
     document.getElementById('check-interval').value = checkIntervalSec;
-    // Convert nanoseconds to seconds for RequestJitter
     const requestJitterSec = Math.round(cfg.RequestJitter / 1e9);
     document.getElementById('request-jitter').value = requestJitterSec;
     document.getElementById('months-to-check').value = cfg.MonthsToCheck || 2;
@@ -140,7 +160,6 @@ function getPreferredDays() {
 }
 
 async function saveConfig() {
-    // Build Sites map from museumsMap and global settings
     const sites = {};
     for (const [slug, info] of Object.entries(museumsMap)) {
         const site = {
@@ -179,11 +198,11 @@ async function saveConfig() {
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const strikeTime = document.getElementById('strike-time').value;
     const checkWindowMinutes = parseInt(document.getElementById('check-window').value);
-    const checkWindow = checkWindowMinutes * 60 * 1e9; // minutes → nanoseconds
+    const checkWindow = checkWindowMinutes * 60 * 1e9;
     const checkIntervalSec = parseInt(document.getElementById('check-interval').value);
-    const checkInterval = checkIntervalSec * 1e9; // seconds → nanoseconds
+    const checkInterval = checkIntervalSec * 1e9;
     const requestJitterSec = parseFloat(document.getElementById('request-jitter').value);
-    const requestJitter = requestJitterSec * 1e9; // seconds → nanoseconds
+    const requestJitter = requestJitterSec * 1e9;
     const monthsToCheck = parseInt(document.getElementById('months-to-check').value) || 2;
 
     const newConfig = {
@@ -194,7 +213,7 @@ async function saveConfig() {
         StrikeTime: strikeTime,
         CheckWindow: checkWindow,
         CheckInterval: checkInterval,
-        PreWarmOffset: 30 * 1e9, // 30 seconds in nanoseconds
+        PreWarmOffset: 30 * 1e9,
         NtfyTopic: document.getElementById('ntfy-topic').value,
         MaxWorkers: 2,
         RequestJitter: requestJitter,
@@ -253,6 +272,11 @@ async function stopAgent() {
     M.toast({html: data.status});
 }
 
+async function restartAgent() {
+    await stopAgent();
+    setTimeout(() => runNow(), 500);
+}
+
 function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}/api/logs`);
@@ -275,22 +299,17 @@ function connectWebSocket() {
 function populateMuseumsList(sites) {
     const lines = [];
     for (const [slug, info] of Object.entries(sites)) {
-        // Use the stored name if it exists and is different from the slug, otherwise just slug
         if (info.Name && info.Name !== slug) {
             lines.push(`${info.Name}:${slug}:${info.MuseumID}`);
         } else {
             lines.push(`${slug}:${info.MuseumID}`);
         }
     }
-    // Set the textarea value, ensuring it's a string with newlines
-    const textarea = document.getElementById('museums-list');
-    textarea.value = lines.join('\n');
-    
-    // Rebuild the museumsMap for internal use
+    document.getElementById('museums-list').value = lines.join('\n');
     museumsMap = {};
     for (const [slug, info] of Object.entries(sites)) {
         museumsMap[slug] = {
-            Name: info.Name || slug,
+            Name: info.Name,
             Slug: slug,
             MuseumID: info.MuseumID,
         };
