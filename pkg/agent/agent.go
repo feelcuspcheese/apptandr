@@ -20,14 +20,16 @@ import (
 )
 
 type Agent struct {
-    config       *config.AppConfig
-    logger       *logrus.Logger
-    stateManager *state.State
-    cancelFunc   context.CancelFunc
-    running      bool
-    logCh        chan string
-    wg           sync.WaitGroup
-    doneCh       chan struct{}
+    config          *config.AppConfig
+    logger          *logrus.Logger
+    stateManager    *state.State
+    cancelFunc      context.CancelFunc
+    running         bool
+    logCh           chan string
+    wg              sync.WaitGroup
+    doneCh          chan struct{}
+    currentDropTime time.Time
+    mu              sync.RWMutex
 }
 
 func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
@@ -40,22 +42,27 @@ func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
     }
 }
 
-// LogChannel returns a channel that receives log messages.
 func (a *Agent) LogChannel() <-chan string {
     return a.logCh
 }
 
-// IsRunning returns whether the agent is currently running.
 func (a *Agent) IsRunning() bool {
     return a.running
 }
 
-// Start blocks until the agent finishes (or Stop is called).
-// dropTime is the time when the check window should start.
+func (a *Agent) GetDropTime() time.Time {
+    a.mu.RLock()
+    defer a.mu.RUnlock()
+    return a.currentDropTime
+}
+
 func (a *Agent) Start(dropTime time.Time) error {
     if a.running {
         return fmt.Errorf("agent already running")
     }
+    a.mu.Lock()
+    a.currentDropTime = dropTime
+    a.mu.Unlock()
     ctx, cancel := context.WithCancel(context.Background())
     a.cancelFunc = cancel
     a.running = true
@@ -67,31 +74,38 @@ func (a *Agent) Start(dropTime time.Time) error {
         a.run(ctx, dropTime)
     }()
 
-    // Wait for the agent to finish
     select {
     case <-a.doneCh:
         a.running = false
+        a.mu.Lock()
+        a.currentDropTime = time.Time{}
+        a.mu.Unlock()
         return nil
     case <-ctx.Done():
         a.running = false
+        a.mu.Lock()
+        a.currentDropTime = time.Time{}
+        a.mu.Unlock()
         return ctx.Err()
     }
 }
 
-// Stop cancels the agent execution and waits for it to finish.
 func (a *Agent) Stop() {
     if a.cancelFunc != nil {
         a.cancelFunc()
     }
     a.wg.Wait()
     a.running = false
+    a.mu.Lock()
+    a.currentDropTime = time.Time{}
+    a.mu.Unlock()
 }
 
 func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     defer func() { a.running = false }()
     a.log("Agent starting, drop time: %v", dropTime)
 
-    // Select the active site (preferred slug)
+    // Select the active site
     activeSite, ok := a.config.Sites[a.config.PreferredSlug]
     if !ok {
         for _, s := range a.config.Sites {
@@ -105,7 +119,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         a.log("Preferred slug not found, using first site: %s", activeSite.Slug)
     }
 
-    // Prepare HTTP client with realistic headers
+    // HTTP client with realistic headers
     headers := map[string]string{
         "User-Agent":      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
         "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -121,7 +135,6 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         return
     }
 
-    // Build availability endpoint template
     endpointTemplate := fmt.Sprintf("%s%s?museum=%s&date={date}&digital=%t&physical=%t&location=%s",
         activeSite.BaseURL,
         activeSite.AvailabilityEndpoint,
@@ -132,15 +145,17 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     )
     scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
-    // Pre-warm connection
     a.log("Pre‑warming...")
-    if err := a.preWarm(client, activeSite.BaseURL); err != nil {
-        a.log("Pre‑warm failed: %v", err)
+    if activeSite.BaseURL == "" {
+        a.log("BaseURL empty, skipping pre‑warm")
     } else {
-        a.log("Pre‑warm completed")
+        if err := a.preWarm(client, activeSite.BaseURL); err != nil {
+            a.log("Pre‑warm failed: %v", err)
+        } else {
+            a.log("Pre‑warm completed")
+        }
     }
 
-    // Wait until drop time
     now := time.Now()
     if dropTime.After(now) {
         wait := dropTime.Sub(now)
@@ -153,21 +168,17 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
     }
 
-    // Start check window
     deadline := time.Now().Add(a.config.CheckWindow)
     a.log("Check window started, deadline: %v", deadline)
 
-    // Main check loop
     ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 
     for {
-        // Check if window expired
         if time.Now().After(deadline) {
             a.log("Check window expired")
             break
         }
 
-        // Apply jitter before check
         if a.config.RequestJitter > 0 {
             jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
             a.log("Applying jitter %v before check", jitter)
@@ -178,7 +189,6 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             }
         }
 
-        // Perform availability check – now passing dropTime
         stop, err := a.checkAvailability(ctx, scraperInst, ntfy, activeSite, client, dropTime)
         if err != nil {
             a.log("Check error: %v", err)
@@ -188,7 +198,6 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             break
         }
 
-        // Wait for next interval (with jitter)
         interval := a.config.CheckInterval
         if a.config.RequestJitter > 0 {
             interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
@@ -204,9 +213,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     a.log("Agent finished")
 }
 
-// checkAvailability now receives dropTime as argument and uses it for month calculation.
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, activeSite config.SiteInfo, client *httpclient.Client, dropTime time.Time) (bool, error) {
-    // Use the drop time as the reference for the first month.
     startDate := dropTime
     months := a.config.MonthsToCheck
     if months < 1 {
@@ -215,34 +222,28 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
     allAvails := []parser.Availability{}
     for i := 0; i < months; i++ {
-        // For the first month, use the exact drop date (as the browser does).
-        // For subsequent months, use the first day of that month.
         var targetDate time.Time
         if i == 0 {
             targetDate = startDate
         } else {
-            // Get the month after the start month.
             targetMonth := startDate.AddDate(0, i, 0)
             targetDate = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
         }
         dateStr := targetDate.Format("2006-01-02")
         a.log("Fetching availability for month starting %s (date param: %s)", targetDate.Format("2006-01"), dateStr)
-        // Inside the loop, replace:
-// avails, err := scraperInst.FetchForDate(ctx, dateStr)
-// with:
-avails, rawBody, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
-if err != nil {
-    a.log("Error fetching availability for %s: %v", dateStr, err)
-    continue
-}
-if len(avails) == 0 {
-    // Log a snippet of the response for debugging
-    snippet := rawBody
-    if len(snippet) > 50000 {
-        snippet = snippet[:50000] + "..."
-    }
-    a.log("No availabilities found in response for %s; response snippet: %s", dateStr, snippet)
-}
+
+        avails, rawBody, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
+        if err != nil {
+            a.log("Error fetching availability for %s: %v", dateStr, err)
+            continue
+        }
+        if len(avails) == 0 {
+            snippet := rawBody
+            if len(snippet) > 5000 {
+                snippet = snippet[:5000] + "..."
+            }
+            a.log("No availabilities found in response for %s; response snippet (first 5000 chars): %s", dateStr, snippet)
+        }
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
             time.Sleep(time.Duration(rand.Int63n(int64(a.config.RequestJitter))))
@@ -254,7 +255,6 @@ if len(avails) == 0 {
         return false, nil
     }
 
-    // Filter unseen and extract full dates
     newAvails := []parser.Availability{}
     for _, av := range allAvails {
         fullDate, err := extractDateFromURL(av.BookingURL)
@@ -275,24 +275,22 @@ if len(avails) == 0 {
     }
 
     if a.config.Mode == "alert" {
-    // Build notification with up to 3 buttons and a summary message
-    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-    for i, av := range newAvails {
-        notifyAvails[i] = notifier.AvailabilityWithLink{
-            Date:       av.Date,
-            BookingURL: av.BookingURL,
+        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+        for i, av := range newAvails {
+            notifyAvails[i] = notifier.AvailabilityWithLink{
+                Date:       av.Date,
+                BookingURL: av.BookingURL,
+            }
         }
-    }
-    title, msg, actions := notifier.BuildNotification(notifyAvails)
-    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
-    if err != nil {
-        a.log("Failed to send notification: %v", err)
-    } else {
-        a.log("Notification sent for %d dates", len(newAvails))
-    }
-    return false, nil
-} else if a.config.Mode == "booking" {
-        // Try to book
+        title, msg, actions := notifier.BuildNotification(notifyAvails)
+        err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+        if err != nil {
+            a.log("Failed to send notification: %v", err)
+        } else {
+            a.log("Notification sent for %d dates", len(newAvails))
+        }
+        return false, nil
+    } else if a.config.Mode == "booking" {
         bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
         for _, prefDay := range a.config.PreferredDays {
             for _, av := range newAvails {
@@ -315,7 +313,7 @@ if len(avails) == 0 {
                             notifier.PriorityUrgent,
                             nil,
                         )
-                        return true, nil // stop checking
+                        return true, nil
                     }
                 }
             }
