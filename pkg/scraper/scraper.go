@@ -5,6 +5,7 @@ import (
     "agent/pkg/parser"
     "context"
     "fmt"
+    "io"
     "math/rand"
     "net/http"
     "strings"
@@ -15,12 +16,11 @@ import (
 
 type Scraper struct {
     client           *httpclient.Client
-    endpointTemplate string // e.g., "...?date={date}..."
+    endpointTemplate string
     logger           *logrus.Logger
     jitter           time.Duration
 }
 
-// NewScraper creates a scraper that uses a template with {date} placeholder.
 func NewScraper(client *httpclient.Client, endpointTemplate string, jitter time.Duration, logger *logrus.Logger) *Scraper {
     return &Scraper{
         client:           client,
@@ -30,12 +30,16 @@ func NewScraper(client *httpclient.Client, endpointTemplate string, jitter time.
     }
 }
 
-// FetchForDate fetches availability for a specific date (month).
+// FetchForDate returns parsed availabilities for a given date.
 func (s *Scraper) FetchForDate(ctx context.Context, date string) ([]parser.Availability, error) {
-    // Build endpoint by replacing {date}
+    avails, _, err := s.FetchForDateWithBody(ctx, date)
+    return avails, err
+}
+
+// FetchForDateWithBody returns both the parsed availabilities and the raw response body.
+func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]parser.Availability, string, error) {
     endpoint := strings.Replace(s.endpointTemplate, "{date}", date, 1)
 
-    // Apply jitter before request
     if s.jitter > 0 {
         jitter := time.Duration(rand.Int63n(int64(s.jitter)))
         s.logger.WithField("jitter", jitter).Debug("Applying jitter before request")
@@ -44,17 +48,24 @@ func (s *Scraper) FetchForDate(ctx context.Context, date string) ([]parser.Avail
 
     req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
     if err != nil {
-        return nil, err
+        return nil, "", err
     }
     resp, err := s.client.Do(req)
     if err != nil {
-        return nil, err
+        return nil, "", err
     }
     defer resp.Body.Close()
 
+    bodyBytes, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, "", err
+    }
+    body := string(bodyBytes)
+
     if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+        return nil, body, fmt.Errorf("unexpected status: %d", resp.StatusCode)
     }
 
-    return parser.ParseAvailability(resp.Body, s.logger)
+    avails, err := parser.ParseAvailabilityFromString(body, s.logger)
+    return avails, body, err
 }
