@@ -2,6 +2,9 @@
     background-color: #26a69a;
     color: white;
 }
+.chip {
+    cursor: pointer;
+}
 #logs {
     font-size: 12px;
     line-height: 1.4;
