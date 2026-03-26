@@ -42,6 +42,7 @@ func (s *Server) setupRoutes() {
     s.router = gin.New()
     s.router.Use(gin.Recovery())
 
+    // Serve static files
     staticSub, err := fs.Sub(staticFS, "static")
     if err != nil {
         panic(err)
@@ -57,10 +58,12 @@ func (s *Server) setupRoutes() {
         c.Data(http.StatusOK, "text/html; charset=utf-8", data)
     })
 
+    // API routes
     api := s.router.Group("/api")
     {
         api.GET("/config", s.getConfig)
-        api.PUT("/config", s.updateConfig)
+        api.PUT("/config/admin", s.updateAdminConfig)
+        api.PUT("/config/user", s.updateUserConfig)
         api.POST("/run-now", s.runNow)
         api.POST("/schedule", s.schedule)
         api.GET("/logs", s.websocketLogs)
@@ -73,26 +76,106 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
+// --- Handlers ---
+
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
 }
 
-func (s *Server) updateConfig(c *gin.Context) {
-    var newCfg config.AppConfig
-    if err := c.ShouldBindJSON(&newCfg); err != nil {
+func (s *Server) updateAdminConfig(c *gin.Context) {
+    var req struct {
+        Sites                map[string]config.SiteInfo `json:"sites"`
+        BaseURL              string                     `json:"baseUrl"`
+        AvailabilityEndpoint string                     `json:"availabilityEndpoint"`
+        Digital              bool                       `json:"digital"`
+        Physical             bool                       `json:"physical"`
+        Location             string                     `json:"location"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-    if _, ok := newCfg.Sites[newCfg.PreferredSlug]; !ok && newCfg.PreferredSlug != "" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "preferred slug not found in sites"})
-        return
-    }
-    if err := config.SaveConfig("configs/config.yaml", &newCfg); err != nil {
+
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-    s.cfg = &newCfg
-    s.agent = agent.NewAgent(&newCfg, s.logger)
+
+    // Update admin fields
+    existing.Sites = req.Sites
+    for slug, site := range existing.Sites {
+        site.BaseURL = req.BaseURL
+        site.AvailabilityEndpoint = req.AvailabilityEndpoint
+        site.Digital = req.Digital
+        site.Physical = req.Physical
+        site.Location = req.Location
+        existing.Sites[slug] = site
+    }
+
+    if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    s.cfg = existing
+    s.agent = agent.NewAgent(existing, s.logger)
+
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *Server) updateUserConfig(c *gin.Context) {
+    var req struct {
+        PreferredSlug  string        `json:"preferredSlug"`
+        Mode           string        `json:"mode"`
+        PreferredDays  []string      `json:"preferredDays"`
+        StrikeTime     string        `json:"strikeTime"`
+        CheckWindow    time.Duration `json:"checkWindow"`
+        CheckInterval  time.Duration `json:"checkInterval"`
+        RequestJitter  time.Duration `json:"requestJitter"`
+        MonthsToCheck  int           `json:"monthsToCheck"`
+        NtfyTopic      string        `json:"ntfyTopic"`
+        LoginUsername  string        `json:"loginUsername"`
+        LoginPassword  string        `json:"loginPassword"`
+        LoginEmail     string        `json:"loginEmail"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Update user fields
+    existing.PreferredSlug = req.PreferredSlug
+    existing.Mode = req.Mode
+    existing.PreferredDays = req.PreferredDays
+    existing.StrikeTime = req.StrikeTime
+    existing.CheckWindow = req.CheckWindow
+    existing.CheckInterval = req.CheckInterval
+    existing.RequestJitter = req.RequestJitter
+    existing.MonthsToCheck = req.MonthsToCheck
+    existing.NtfyTopic = req.NtfyTopic
+
+    for slug, site := range existing.Sites {
+        site.LoginForm.Username = req.LoginUsername
+        site.LoginForm.Password = req.LoginPassword
+        site.LoginForm.Email = req.LoginEmail
+        existing.Sites[slug] = site
+    }
+
+    if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    s.cfg = existing
+    s.agent = agent.NewAgent(existing, s.logger)
+
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -119,25 +202,30 @@ func (s *Server) schedule(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
+
     loc, err := time.LoadLocation(req.Timezone)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timezone"})
         return
     }
+
     t, err := time.ParseInLocation("2006-01-02T15:04", req.DropTime, loc)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid datetime format, use YYYY-MM-DDTHH:MM"})
         return
     }
+
     if s.agent.IsRunning() {
         c.JSON(http.StatusConflict, gin.H{"error": "agent already running"})
         return
     }
+
     go func() {
         if err := s.agent.Start(t); err != nil {
             s.logger.WithError(err).Error("Agent start failed")
         }
     }()
+
     c.JSON(http.StatusOK, gin.H{"status": "scheduled", "dropTime": t.Format(time.RFC3339)})
 }
 
@@ -160,8 +248,8 @@ func (s *Server) getStatus(c *gin.Context) {
         }
     }
     c.JSON(http.StatusOK, gin.H{
-        "running":  running,
-        "dropTime": dropTimeStr,
+        "running":   running,
+        "dropTime":  dropTimeStr,
     })
 }
 
