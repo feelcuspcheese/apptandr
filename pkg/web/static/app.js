@@ -477,9 +477,8 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        // Reload the config to get the new scheduled run
-        await loadConfig();
-        loadScheduledRuns(); // refresh list
+        await loadConfig();                // wait for config to reload
+        loadScheduledRuns();               // then refresh list
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
