@@ -31,6 +31,17 @@
         </div>
 
         <div class="row">
+            <div class="col s12">
+                <div class="switch-container center-align" style="margin-bottom: 20px;">
+                    <div class="btn-group" role="group">
+                        <button id="btn-spl" class="btn site-toggle blue-grey darken-1">SPL</button>
+                        <button id="btn-kcls" class="btn site-toggle blue-grey lighten-2">KCLS</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
             <div class="col s12 m6">
                 <div class="card">
                     <div class="card-content">
@@ -138,7 +149,7 @@
                             </div>
                         </div>
                         <div class="row">
-                            <div class="input-field col s12">
+                            <div class="input-field col s12" id="email-field-container">
                                 <input id="login-email" type="email">
                                 <label for="login-email">Email (for booking)</label>
                             </div>
@@ -180,41 +191,74 @@
             <h4>Admin Settings</h4>
             <div class="row">
                 <div class="col s12">
-                    <h5>Global Settings</h5>
+                    <ul class="tabs">
+                        <li class="tab col s6"><a href="#tab-spl" class="active">SPL</a></li>
+                        <li class="tab col s6"><a href="#tab-kcls">KCLS</a></li>
+                    </ul>
+                </div>
+                <div id="tab-spl" class="col s12">
+                    <h5>SPL Global Settings</h5>
                     <div class="input-field col s12">
-                        <input id="base-url" type="text" value="https://spl.libcal.com">
-                        <label for="base-url">Base URL</label>
+                        <input id="base-url-spl" type="text" value="https://spl.libcal.com">
+                        <label for="base-url-spl">Base URL</label>
                     </div>
                     <div class="input-field col s12">
-                        <input id="availability-endpoint" type="text" value="/pass/availability/institution">
-                        <label for="availability-endpoint">Availability Endpoint</label>
+                        <input id="availability-endpoint-spl" type="text" value="/pass/availability/institution">
+                        <label for="availability-endpoint-spl">Availability Endpoint</label>
                     </div>
                     <div class="col s6">
                         <label>
-                            <input type="checkbox" id="digital" checked>
+                            <input type="checkbox" id="digital-spl" checked>
                             <span>Digital</span>
                         </label>
                     </div>
                     <div class="col s6">
                         <label>
-                            <input type="checkbox" id="physical">
+                            <input type="checkbox" id="physical-spl">
                             <span>Physical</span>
                         </label>
                     </div>
                     <div class="input-field col s12">
-                        <input id="location" type="text" value="0">
-                        <label for="location">Location</label>
+                        <input id="location-spl" type="text" value="0">
+                        <label for="location-spl">Location</label>
                     </div>
-                </div>
-                <div class="col s12">
-                    <h5>Museums Configuration</h5>
+                    <h5>SPL Museums Configuration</h5>
                     <label>Museums (one per line, format: slug:id or name:slug:id)</label>
-                    <textarea id="museums-list" rows="8" class="materialize-textarea" placeholder="Example:&#10;SAM:7f2ac5c414b2&#10;Zoo:033bbf08993f&#10;Pacific Science Center:PacSci:63ea409f9fab"></textarea>
+                    <textarea id="museums-list-spl" rows="8" class="materialize-textarea" placeholder="Example:&#10;SAM:7f2ac5c414b2&#10;Zoo:033bbf08993f&#10;Pacific Science Center:PacSci:63ea409f9fab"></textarea>
+                </div>
+                <div id="tab-kcls" class="col s12">
+                    <h5>KCLS Global Settings</h5>
+                    <div class="input-field col s12">
+                        <input id="base-url-kcls" type="text" value="https://rooms.kcls.org">
+                        <label for="base-url-kcls">Base URL</label>
+                    </div>
+                    <div class="input-field col s12">
+                        <input id="availability-endpoint-kcls" type="text" value="/pass/availability/institution">
+                        <label for="availability-endpoint-kcls">Availability Endpoint</label>
+                    </div>
+                    <div class="col s6">
+                        <label>
+                            <input type="checkbox" id="digital-kcls" checked>
+                            <span>Digital</span>
+                        </label>
+                    </div>
+                    <div class="col s6">
+                        <label>
+                            <input type="checkbox" id="physical-kcls">
+                            <span>Physical</span>
+                        </label>
+                    </div>
+                    <div class="input-field col s12">
+                        <input id="location-kcls" type="text" value="0">
+                        <label for="location-kcls">Location</label>
+                    </div>
+                    <h5>KCLS Museums Configuration</h5>
+                    <label>Museums (one per line, format: slug:id or name:slug:id)</label>
+                    <textarea id="museums-list-kcls" rows="8" class="materialize-textarea" placeholder="Example:&#10;KidsQuest:9ec25160a8a0"></textarea>
                 </div>
             </div>
             <div class="row">
                 <div class="col s12">
-                    <button id="load-museums" class="btn waves-effect waves-light">Load Museums (preview only)</button>
                     <button id="save-admin-config" class="btn waves-effect waves-light green">Save Admin Settings</button>
                 </div>
             </div>
