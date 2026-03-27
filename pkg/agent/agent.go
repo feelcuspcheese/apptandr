@@ -21,16 +21,16 @@ import (
 )
 
 type Agent struct {
-    config       *config.AppConfig
-    logger       *logrus.Logger
-    stateManager *state.State
-    cancelFunc   context.CancelFunc
-    running      bool
-    logCh        chan string
-    wg           sync.WaitGroup
-    doneCh       chan struct{}
+    config          *config.AppConfig
+    logger          *logrus.Logger
+    stateManager    *state.State
+    cancelFunc      context.CancelFunc
+    running         bool
+    logCh           chan string
+    wg              sync.WaitGroup
+    doneCh          chan struct{}
     currentDropTime time.Time
-    mu           sync.RWMutex
+    mu              sync.RWMutex
 }
 
 func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
@@ -303,20 +303,8 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
     } else if a.config.Mode == "booking" {
         // Try to book
         bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
-        // Get the preferred slug for this site (the selected museum)
-        preferredSlug := activeSite.PreferredSlug
-        // Find the availability that matches the preferred slug
+        // Loop over preferred days and book the first available that matches.
         for _, av := range newAvails {
-            // The slug is part of the booking URL; we can extract it from the URL
-            // For simplicity, we assume the preferred slug corresponds to the museum ID in the URL.
-            // If the booking URL contains the slug, we can check that.
-            // Here we just compare the date; the preferred slug is used elsewhere.
-            // The actual booking will use the full URL, so the slug is already in it.
-            // We'll just book the first available date that matches the preferred day preference.
-            // The actual preferred museum is already set in activeSite.PreferredSlug,
-            // and the booking URL contains that slug. So we don't need to filter further.
-            // Instead, we should check if the date is a preferred day.
-            // We'll loop over preferred days and book the first available that matches.
             for _, prefDay := range a.config.PreferredDays {
                 if isDayOfWeek(av.Date, prefDay) {
                     a.log("Attempting to book %s", av.Date)
