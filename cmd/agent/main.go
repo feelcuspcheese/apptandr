@@ -5,7 +5,6 @@ import (
     "agent/pkg/config"
     "agent/pkg/web"
     "flag"
-    "log"
     "os"
     "os/signal"
     "syscall"
