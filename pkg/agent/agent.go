@@ -307,23 +307,23 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     }
 
-    if mode == "alert" {
-        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-        for i, av := range newAvails {
-            notifyAvails[i] = notifier.AvailabilityWithLink{
-                Date:       av.Date,
-                BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
-            }
+if mode == "alert" {
+    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+    for i, av := range newAvails {
+        notifyAvails[i] = notifier.AvailabilityWithLink{
+            Date:       av.Date,
+            BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
         }
-        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
-        err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
-        if err != nil {
-            a.log("Failed to send notification: %v", err)
-        } else {
-            a.log("Notification sent for %d dates", len(newAvails))
-        }
-        return false, nil
-    } else if mode == "booking" {
+    }
+    title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
+    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+    if err != nil {
+        a.log("Failed to send notification: %v", err)
+    } else {
+        a.log("Notification sent for %d dates", len(newAvails))
+    }
+    return true, nil // <-- Stop after alert
+} else if mode == "booking" {
         bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
         for _, av := range newAvails {
             for _, prefDay := range a.config.PreferredDays {
