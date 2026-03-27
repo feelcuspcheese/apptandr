@@ -19,6 +19,7 @@ type SiteInfo struct {
     LoginForm            LoginFormConfig   `mapstructure:"login_form"`
     BookingForm          BookingFormConfig `mapstructure:"booking_form"`
     SuccessIndicator     string            `mapstructure:"success_indicator"`
+    PreferredSlug        string            `mapstructure:"preferred_slug"` // selected museum for this site
 }
 
 type LoginFormConfig struct {
@@ -28,16 +29,15 @@ type LoginFormConfig struct {
     CSRFSelector        string `mapstructure:"csrf_token_selector"`
     Username            string `mapstructure:"username"`
     Password            string `mapstructure:"password"`
-    Email               string `mapstructure:"email"` // added
+    Email               string `mapstructure:"email"`
     AuthIDSelector      string `mapstructure:"auth_id_selector"`
     LoginURLSelector    string `mapstructure:"login_url_selector"`
 }
 
 type BookingFormConfig struct {
-    ActionURL        string            `mapstructure:"action_url"`
-    Fields           []FormFieldConfig `mapstructure:"fields"`
-    EmailField       string            `mapstructure:"email_field"`
-    EmailFieldValue  string            `mapstructure:"email_field_value"`
+    ActionURL  string            `mapstructure:"action_url"`
+    Fields     []FormFieldConfig `mapstructure:"fields"`
+    EmailField string            `mapstructure:"email_field"`
 }
 
 type FormFieldConfig struct {
@@ -49,7 +49,7 @@ type FormFieldConfig struct {
 
 type AppConfig struct {
     Sites          map[string]SiteInfo `mapstructure:"sites"`
-    PreferredSlug  string              `mapstructure:"preferred_slug"`
+    ActiveSite     string              `mapstructure:"active_site"` // e.g., "spl" or "kcls"
     Mode           string              `mapstructure:"mode"`
     PreferredDays  []string            `mapstructure:"preferred_days"`
     StrikeTime     string              `mapstructure:"strike_time"`
@@ -81,7 +81,7 @@ func LoadConfig(path string) (*AppConfig, error) {
 func SaveConfig(path string, cfg *AppConfig) error {
     viper.SetConfigFile(path)
     viper.Set("sites", cfg.Sites)
-    viper.Set("preferred_slug", cfg.PreferredSlug)
+    viper.Set("active_site", cfg.ActiveSite)
     viper.Set("mode", cfg.Mode)
     viper.Set("preferred_days", cfg.PreferredDays)
     viper.Set("strike_time", cfg.StrikeTime)
