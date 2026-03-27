@@ -198,39 +198,17 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 
     ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 
+    // Rest cycle: only apply if check window > 1 minute
+    restEnabled := a.config.CheckWindow > 1*time.Minute
+    checksCount := 0
+
     for {
         if time.Now().After(deadline) {
             a.log("Check window expired")
             break
         }
 
-        // Apply jitter before first check? Only if configured and it's not the first check?
-        // The jitter is applied inside the scraper before each request. We also have an optional
-        // jitter before the check in the loop. To keep it simple, we keep the same loop as before.
-        // However, for the very first check after drop time, we don't want jitter; we already used
-        // a spin‑wait to hit the drop time precisely. So we skip the jitter for the first iteration.
-        // We'll use a flag to skip jitter on the first check.
-        // For simplicity, we'll remove the extra jitter here and rely on the jitter inside the scraper.
-        // But the original loop had a pre‑check jitter. We'll keep it but note that it will add
-        // a random delay before the first check, which we don't want. So we'll adjust.
-
-        // Actually, to preserve existing behavior and avoid breaking anything, we'll keep the loop
-        // as is, but for the first check we can bypass the jitter. We'll set a flag.
-        // However, the simplest is to remove the outer jitter entirely and let the scraper handle it.
-        // But the outer jitter was also used between checks. We'll keep it and for the first iteration
-        // we'll skip it using a boolean.
-        staticFirst := true
-
-        if !staticFirst && a.config.RequestJitter > 0 {
-            jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
-            a.log("Applying jitter %v before check", jitter)
-            select {
-            case <-time.After(jitter):
-            case <-ctx.Done():
-                return
-            }
-        }
-
+        // Perform availability check (scraper applies jitter; first check is jitter‑free because we use waitUntil)
         stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, run.DropTime, run.Mode)
         if err != nil {
             a.log("Check error: %v", err)
@@ -238,6 +216,11 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
         if stop {
             a.log("Booking successful, stopping checks")
             break
+        }
+
+        // Increment counter for rest cycle (only if window is long)
+        if restEnabled {
+            checksCount++
         }
 
         // Wait for next interval (with jitter)
@@ -251,6 +234,17 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
         case <-ctx.Done():
             a.log("Agent stopped during wait")
             return
+        }
+
+        // Rest cycle: after every RestCycleChecks, take a longer pause
+        if restEnabled && checksCount >= a.config.RestCycleChecks {
+            a.log("Resting for %v (human mimic)", a.config.RestCycleDuration)
+            select {
+            case <-time.After(a.config.RestCycleDuration):
+                checksCount = 0
+            case <-ctx.Done():
+                return
+            }
         }
     }
     a.log("Agent finished")
