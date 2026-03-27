@@ -1,5 +1,5 @@
 active_site: spl
-check_interval: 2s
+check_interval: 0.81s
 check_window: 60s
 max_workers: 2
 mode: alert
@@ -8,8 +8,8 @@ ntfy_topic: myappointments
 pre_warm_offset: 30s
 preferred_days: []
 preferred_slug: ""
-request_jitter: 2s
-rest_cycle_checks: 20
+request_jitter: 0.18s
+rest_cycle_checks: 8
 rest_cycle_duration: 3s
 scheduled_runs: []
 strike_time: "09:00"
