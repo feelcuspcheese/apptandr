@@ -10,7 +10,7 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 
-# Now copy the rest of the source (including any existing go.sum)
+# Now copy the rest of the source
 COPY . .
 
 # Build the agent
@@ -23,10 +23,10 @@ RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
+# Copy the binary from builder
 COPY --from=builder /app/agent .
 
-# Copy a default config file (minimal)
-# Ensure the file exists at this path; if you named it differently, adjust the COPY line.
+# Copy the default config (we must ensure the file is not excluded by .dockerignore)
 COPY configs/default_config.yaml /root/configs/default_config.yaml
 
 # Copy entrypoint script
