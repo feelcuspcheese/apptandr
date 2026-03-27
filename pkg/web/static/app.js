@@ -1,7 +1,6 @@
 let ws;
 let currentConfig = null;
-let museumsMap = {}; // key: slug, value: { name, museum_id, site }
-let activeSite = 'spl'; // default
+let activeSite = 'spl';
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -12,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('admin-modal');
     if (modal) {
         M.Modal.init(modal);
-        // Initialize tabs in modal
         const tabs = document.querySelectorAll('.tabs');
         M.Tabs.init(tabs);
     }
@@ -54,7 +52,7 @@ function switchSite(site) {
     document.getElementById('btn-kcls').classList.toggle('blue-grey-darken-1', site === 'kcls');
     document.getElementById('btn-kcls').classList.toggle('blue-grey-lighten-2', site !== 'kcls');
 
-    // Update email field requirement: SPL requires email, KCLS does not
+    // Update email requirement: SPL requires email, KCLS does not
     const emailField = document.getElementById('login-email');
     const emailContainer = document.getElementById('email-field-container');
     if (site === 'spl') {
@@ -67,7 +65,7 @@ function switchSite(site) {
         emailField.disabled = true;
     }
 
-    // Re-render museum pills based on new active site
+    // Re-render museum pills
     renderMuseumPills();
 }
 
@@ -120,27 +118,30 @@ async function loadConfig() {
 }
 
 function populateGlobalSettings(cfg) {
-    // SPL fields – we take the first museum of site 'spl' to get the global settings
-    const splMuseum = Object.values(cfg.Sites).find(s => s.Site === 'spl');
-    document.getElementById('base-url-spl').value = splMuseum?.BaseURL || 'https://spl.libcal.com';
-    document.getElementById('availability-endpoint-spl').value = splMuseum?.AvailabilityEndpoint || '/pass/availability/institution';
-    document.getElementById('digital-spl').checked = splMuseum?.Digital || true;
-    document.getElementById('physical-spl').checked = splMuseum?.Physical || false;
-    document.getElementById('location-spl').value = splMuseum?.Location || '0';
+    // SPL
+    const splSite = cfg.Sites['spl'];
+    if (splSite) {
+        document.getElementById('base-url-spl').value = splSite.BaseURL;
+        document.getElementById('availability-endpoint-spl').value = splSite.AvailabilityEndpoint;
+        document.getElementById('digital-spl').checked = splSite.Digital;
+        document.getElementById('physical-spl').checked = splSite.Physical;
+        document.getElementById('location-spl').value = splSite.Location;
+    }
+    // KCLS
+    const kclsSite = cfg.Sites['kcls'];
+    if (kclsSite) {
+        document.getElementById('base-url-kcls').value = kclsSite.BaseURL;
+        document.getElementById('availability-endpoint-kcls').value = kclsSite.AvailabilityEndpoint;
+        document.getElementById('digital-kcls').checked = kclsSite.Digital;
+        document.getElementById('physical-kcls').checked = kclsSite.Physical;
+        document.getElementById('location-kcls').value = kclsSite.Location;
+    }
 
-    // KCLS fields
-    const kclsMuseum = Object.values(cfg.Sites).find(s => s.Site === 'kcls');
-    document.getElementById('base-url-kcls').value = kclsMuseum?.BaseURL || 'https://rooms.kcls.org';
-    document.getElementById('availability-endpoint-kcls').value = kclsMuseum?.AvailabilityEndpoint || '/pass/availability/institution';
-    document.getElementById('digital-kcls').checked = kclsMuseum?.Digital || true;
-    document.getElementById('physical-kcls').checked = kclsMuseum?.Physical || false;
-    document.getElementById('location-kcls').value = kclsMuseum?.Location || '0';
-
-    // Global user settings – take from any museum (they share the same credentials)
-    const anyMuseum = Object.values(cfg.Sites)[0];
-    document.getElementById('login-username').value = anyMuseum?.LoginForm?.Username || '';
-    document.getElementById('login-password').value = anyMuseum?.LoginForm?.Password || '';
-    document.getElementById('login-email').value = anyMuseum?.LoginForm?.Email || '';
+    // Global user settings (use any site's login form)
+    const anySite = Object.values(cfg.Sites)[0];
+    document.getElementById('login-username').value = anySite?.LoginForm?.Username || '';
+    document.getElementById('login-password').value = anySite?.LoginForm?.Password || '';
+    document.getElementById('login-email').value = anySite?.LoginForm?.Email || '';
     document.getElementById('ntfy-topic').value = cfg.NtfyTopic || 'myappointments';
     const checkIntervalSec = (cfg.CheckInterval / 1e9).toFixed(1);
     document.getElementById('check-interval').value = checkIntervalSec;
@@ -152,37 +153,22 @@ function populateGlobalSettings(cfg) {
 }
 
 function populateMuseumsLists(sites) {
-    // Group museums by site
-    const splMuseums = Object.values(sites).filter(s => s.Site === 'spl');
-    const kclsMuseums = Object.values(sites).filter(s => s.Site === 'kcls');
-
-    // Build SPL textarea
-    const splLines = splMuseums.map(m => {
-        const name = m.Name || m.Slug;
-        return `${name}:${m.Slug}:${m.MuseumID}`;
-    });
+    // SPL
+    const splMuseums = sites['spl']?.Museums || {};
+    const splLines = [];
+    for (const [slug, m] of Object.entries(splMuseums)) {
+        splLines.push(`${m.Name}:${slug}:${m.MuseumID}`);
+    }
     document.getElementById('museums-list-spl').value = splLines.join('\n');
 
-    // Build KCLS textarea
-    const kclsLines = kclsMuseums.map(m => {
-        const name = m.Name || m.Slug;
-        return `${name}:${m.Slug}:${m.MuseumID}`;
-    });
+    // KCLS
+    const kclsMuseums = sites['kcls']?.Museums || {};
+    const kclsLines = [];
+    for (const [slug, m] of Object.entries(kclsMuseums)) {
+        kclsLines.push(`${m.Name}:${slug}:${m.MuseumID}`);
+    }
     document.getElementById('museums-list-kcls').value = kclsLines.join('\n');
 
-    // Build the museum map for the active site (used for pills)
-    const activeMuseums = splMuseums; // will be filtered later
-    museumsMap = {};
-    const targetSite = activeSite;
-    for (const m of Object.values(sites)) {
-        if (m.Site === targetSite) {
-            museumsMap[m.Slug] = {
-                Name: m.Name || m.Slug,
-                Slug: m.Slug,
-                MuseumID: m.MuseumID,
-            };
-        }
-    }
     renderMuseumPills();
 }
 
@@ -200,16 +186,16 @@ function updateDaysPills(preferredDays) {
     });
 }
 
-function parseMuseumsFromTextarea(site) {
-    const textareaId = site === 'spl' ? 'museums-list-spl' : 'museums-list-kcls';
+function parseMuseumsFromTextarea(siteKey) {
+    const textareaId = siteKey === 'spl' ? 'museums-list-spl' : 'museums-list-kcls';
     const text = document.getElementById(textareaId).value;
     const lines = text.split(/\r?\n/);
-    const newMap = {};
+    const museums = {};
     for (let line of lines) {
         line = line.trim();
         if (!line) continue;
         let parts = line.split(':');
-        let slug, museumId, name;
+        let name, slug, museumId;
         if (parts.length === 2) {
             slug = parts[0];
             museumId = parts[1];
@@ -222,39 +208,33 @@ function parseMuseumsFromTextarea(site) {
             console.warn('Invalid museum entry:', line);
             continue;
         }
-        newMap[slug] = {
-            Name: name,
-            Slug: slug,
-            MuseumID: museumId,
-            Site: site,
-        };
+        museums[slug] = { Name: name, Slug: slug, MuseumID: museumId };
     }
-    return newMap;
+    return museums;
 }
 
 function renderMuseumPills() {
     const container = document.getElementById('museums-pills');
     container.innerHTML = '';
-    for (const [slug, info] of Object.entries(museumsMap)) {
+    const site = currentConfig?.Sites[activeSite];
+    if (!site) return;
+
+    const museums = site.Museums || {};
+    const preferredSlug = site.PreferredSlug || '';
+    for (const [slug, info] of Object.entries(museums)) {
         const chip = document.createElement('div');
         chip.className = 'chip';
         chip.textContent = info.Name || slug;
         chip.dataset.slug = slug;
-        const siteConfig = Object.values(currentConfig?.Sites || {}).find(s => s.Site === activeSite);
-        if (siteConfig && siteConfig.PreferredSlug === slug) {
+        if (preferredSlug === slug) {
             chip.classList.add('active');
         }
         chip.addEventListener('click', () => {
             document.querySelectorAll('#museums-pills .chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
-            // Update the local preferred slug for the active site
-            if (currentConfig) {
-                for (const s of Object.values(currentConfig.Sites)) {
-                    if (s.Site === activeSite) {
-                        s.PreferredSlug = slug;
-                        break;
-                    }
-                }
+            // Update local preferred slug for the active site
+            if (currentConfig && currentConfig.Sites[activeSite]) {
+                currentConfig.Sites[activeSite].PreferredSlug = slug;
             }
         });
         container.appendChild(chip);
@@ -280,17 +260,7 @@ async function saveUserConfig() {
     const loginUsername = document.getElementById('login-username').value;
     const loginPassword = document.getElementById('login-password').value;
     const loginEmail = document.getElementById('login-email').value;
-    // Get the preferred slug for the active site from the currentConfig (or pills)
-    let preferredSlug = '';
-    for (const s of Object.values(currentConfig.Sites)) {
-        if (s.Site === activeSite) {
-            preferredSlug = s.PreferredSlug;
-            break;
-        }
-    }
-    if (!preferredSlug && museumsMap[Object.keys(museumsMap)[0]]) {
-        preferredSlug = Object.keys(museumsMap)[0];
-    }
+    const preferredSlug = currentConfig?.Sites[activeSite]?.PreferredSlug || '';
 
     const payload = {
         activeSite,
@@ -323,13 +293,9 @@ async function saveUserConfig() {
 }
 
 async function saveAdminConfig() {
-    // Parse SPL museums
+    // Build SPL site config
     const splMuseums = parseMuseumsFromTextarea('spl');
-    // Parse KCLS museums
-    const kclsMuseums = parseMuseumsFromTextarea('kcls');
-
-    // Build the full site configuration for SPL
-    const splBase = {
+    const splSite = {
         Name: "SPL",
         BaseURL: document.getElementById('base-url-spl').value,
         AvailabilityEndpoint: document.getElementById('availability-endpoint-spl').value,
@@ -354,24 +320,13 @@ async function saveAdminConfig() {
             EmailField: 'email',
         },
         SuccessIndicator: 'Thank you!',
+        Museums: splMuseums,
         PreferredSlug: currentConfig?.Sites['spl']?.PreferredSlug || '',
-        Site: 'spl',
     };
 
-    // Build SPL museums as separate SiteInfo entries (each museum becomes a separate entry in the sites map)
-    const splEntries = {};
-    for (const [slug, info] of Object.entries(splMuseums)) {
-        splEntries[slug] = {
-            ...splBase,
-            Name: info.Name,
-            Slug: slug,
-            MuseumID: info.MuseumID,
-            Site: 'spl',
-        };
-    }
-
-    // Build KCLS site base
-    const kclsBase = {
+    // Build KCLS site config
+    const kclsMuseums = parseMuseumsFromTextarea('kcls');
+    const kclsSite = {
         Name: "KCLS",
         BaseURL: document.getElementById('base-url-kcls').value,
         AvailabilityEndpoint: document.getElementById('availability-endpoint-kcls').value,
@@ -396,59 +351,30 @@ async function saveAdminConfig() {
             EmailField: 'email',
         },
         SuccessIndicator: 'Thank you!',
+        Museums: kclsMuseums,
         PreferredSlug: currentConfig?.Sites['kcls']?.PreferredSlug || '',
-        Site: 'kcls',
     };
 
-    const kclsEntries = {};
-    for (const [slug, info] of Object.entries(kclsMuseums)) {
-        kclsEntries[slug] = {
-            ...kclsBase,
-            Name: info.Name,
-            Slug: slug,
-            MuseumID: info.MuseumID,
-            Site: 'kcls',
-        };
-    }
+    // Send two separate requests (or one request with both)
+    const splPayload = { siteKey: 'spl', site: splSite };
+    const kclsPayload = { siteKey: 'kcls', site: kclsSite };
 
-    // Combine all sites
-    const allSites = { ...splEntries, ...kclsEntries };
-
-    // Send to server – we need to send the entire sites map for both sites
-    // The admin endpoint expects a site identifier and the full site config.
-    // Since we have two separate sites, we'll send two requests, one for each.
-    // But to simplify, we'll send two separate PUT requests.
-
-    // Save SPL
-    const splPayload = {
-        site: 'spl',
-        siteConfig: splBase, // this will be used to set the global settings for the site; but we also need to include the museums? Actually the admin endpoint updates the entire site's entry in the Sites map. Since we have multiple entries per site, we need to send the whole map for that site.
-        // We'll instead send the entire map for that site.
-    };
-    // Simpler: we can construct a map of all entries for SPL (which are the museum entries) and send that as the site config.
-    // But the server expects a SiteInfo object, not a map. So we need to restructure the config to have a separate field for museums per site.
-    // Given the complexity, I'll assume the admin endpoint accepts a full list of museums for the site and the global settings, and the server updates all museums for that site.
-    // I'll implement that in the server later.
-
-    // For now, we'll keep the current admin endpoint as is (it updates a single site's configuration). We'll send the SPL site config (with the first museum as representative) and also send the museum list as a separate field.
-    // This is a temporary workaround.
-
-    // We'll instead call the existing `/api/config/admin` endpoint for each site with the site's base config and the museums list as an extra field.
-    // But the server does not yet support that. To make it work, we would need to change the server's admin endpoint to accept a `museums` list and update all museums for that site.
-
-    // Given the time, I'll provide a solution that works with the current server (which updates the entire Sites map). So the admin modal must rebuild the entire `sites` map and send it in one request.
-    const combined = { ...allSites };
-    const res = await fetch('/api/config/admin', {
+    const splRes = await fetch('/api/config/admin', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sites: combined })
+        body: JSON.stringify(splPayload)
     });
-    if (res.ok) {
+    const kclsRes = await fetch('/api/config/admin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(kclsPayload)
+    });
+
+    if (splRes.ok && kclsRes.ok) {
         M.toast({html: 'Admin settings saved'});
         await loadConfig();
     } else {
-        const err = await res.json();
-        M.toast({html: err.error || 'Error saving admin settings', classes: 'red'});
+        M.toast({html: 'Error saving admin settings', classes: 'red'});
     }
 }
 
