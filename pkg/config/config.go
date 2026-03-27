@@ -56,23 +56,25 @@ type ScheduledRun struct {
     SiteKey    string    `mapstructure:"site_key"`
     MuseumSlug string    `mapstructure:"museum_slug"`
     DropTime   time.Time `mapstructure:"drop_time"`
-    Mode       string    `mapstructure:"mode"` // "alert" or "booking"
+    Mode       string    `mapstructure:"mode"`
 }
 
 type AppConfig struct {
-    Sites          map[string]Site   `mapstructure:"sites"`
-    ActiveSite     string            `mapstructure:"active_site"`
-    Mode           string            `mapstructure:"mode"`
-    PreferredDays  []string          `mapstructure:"preferred_days"`
-    StrikeTime     string            `mapstructure:"strike_time"`
-    CheckWindow    time.Duration     `mapstructure:"check_window"`
-    CheckInterval  time.Duration     `mapstructure:"check_interval"`
-    PreWarmOffset  time.Duration     `mapstructure:"pre_warm_offset"`
-    NtfyTopic      string            `mapstructure:"ntfy_topic"`
-    MaxWorkers     int               `mapstructure:"max_workers"`
-    RequestJitter  time.Duration     `mapstructure:"request_jitter"`
-    MonthsToCheck  int               `mapstructure:"months_to_check"`
-    ScheduledRuns  []ScheduledRun    `mapstructure:"scheduled_runs"`
+    Sites            map[string]Site `mapstructure:"sites"`
+    ActiveSite       string          `mapstructure:"active_site"`
+    Mode             string          `mapstructure:"mode"`
+    PreferredDays    []string        `mapstructure:"preferred_days"`
+    StrikeTime       string          `mapstructure:"strike_time"`
+    CheckWindow      time.Duration   `mapstructure:"check_window"`
+    CheckInterval    time.Duration   `mapstructure:"check_interval"`
+    PreWarmOffset    time.Duration   `mapstructure:"pre_warm_offset"`
+    NtfyTopic        string          `mapstructure:"ntfy_topic"`
+    MaxWorkers       int             `mapstructure:"max_workers"`
+    RequestJitter    time.Duration   `mapstructure:"request_jitter"`
+    MonthsToCheck    int             `mapstructure:"months_to_check"`
+    ScheduledRuns    []ScheduledRun  `mapstructure:"scheduled_runs"`
+    RestCycleChecks  int             `mapstructure:"rest_cycle_checks"`   // number of checks before a rest
+    RestCycleDuration time.Duration  `mapstructure:"rest_cycle_duration"` // duration of rest
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
@@ -90,6 +92,12 @@ func LoadConfig(path string) (*AppConfig, error) {
     }
     if cfg.PreWarmOffset == 0 {
         cfg.PreWarmOffset = 30 * time.Second
+    }
+    if cfg.RestCycleChecks == 0 {
+        cfg.RestCycleChecks = 20
+    }
+    if cfg.RestCycleDuration == 0 {
+        cfg.RestCycleDuration = 3 * time.Second
     }
     return &cfg, nil
 }
@@ -109,5 +117,7 @@ func SaveConfig(path string, cfg *AppConfig) error {
     viper.Set("request_jitter", cfg.RequestJitter)
     viper.Set("months_to_check", cfg.MonthsToCheck)
     viper.Set("scheduled_runs", cfg.ScheduledRuns)
+    viper.Set("rest_cycle_checks", cfg.RestCycleChecks)
+    viper.Set("rest_cycle_duration", cfg.RestCycleDuration)
     return viper.WriteConfig()
 }
