@@ -1,6 +1,7 @@
 package notifier
 
 import (
+    "bytes"
     "encoding/json"
     "fmt"
     "net/http"
@@ -45,7 +46,7 @@ type AvailabilityWithLink struct {
 }
 
 // BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
-func BuildNotification(availabilities []AvailabilityWithLink) (title, message string, actions []Action) {
+func BuildNotification(availabilities []AvailabilityWithLink, siteName string) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
     }
@@ -62,14 +63,13 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
     sort.Slice(weekends, func(i, j int) bool { return weekends[i].Date < weekends[j].Date })
     sort.Slice(weekdays, func(i, j int) bool { return weekdays[i].Date < weekdays[j].Date })
 
-    // Combine weekends first
     all := append(weekends, weekdays...)
 
-    // Prepare up to 3 actions (prioritize weekends)
+    // Actions: up to 3 (weekends first)
     actions = make([]Action, 0, 3)
     for i := 0; i < len(all) && i < 3; i++ {
         a := all[i]
-        label := fmt.Sprintf("%s: %s", weekendOrWeekday(a.Date), a.Date)
+        label := fmt.Sprintf("%s: %s", weekendOrWeekday(a.Date), formatDateShort(a.Date))
         actions = append(actions, Action{
             Action: "view",
             Label:  label,
@@ -77,27 +77,26 @@ func BuildNotification(availabilities []AvailabilityWithLink) (title, message st
         })
     }
 
-    // Build the message body: a simple list of dates with emojis, formatted like "Mar 26"
+    // Build the concise message body (no URLs)
     var msg strings.Builder
-    msg.WriteString("Available: ")
     for i, a := range all {
         if i > 0 {
             msg.WriteString(", ")
         }
-        // Parse date to format "Jan 2"
-        t, _ := time.Parse("2006-01-02", a.Date)
-        dateFmt := t.Format("Jan 2")
         emoji := "📅"
         if isWeekend(a.Date) {
             emoji = "🌟"
         }
-        msg.WriteString(fmt.Sprintf("%s %s", emoji, dateFmt))
+        msg.WriteString(fmt.Sprintf("%s %s", emoji, formatDateShort(a.Date)))
+        if i < 3 {
+            msg.WriteString(" [button]")
+        }
     }
     if len(all) > 3 {
         msg.WriteString(fmt.Sprintf(" (+ %d more)", len(all)-3))
     }
 
-    title = "Appointment Available"
+    title = fmt.Sprintf("%s - Appointment Available", siteName)
     message = msg.String()
     return
 }
@@ -116,6 +115,14 @@ func isWeekend(dateStr string) bool {
     }
     wd := t.Weekday()
     return wd == time.Saturday || wd == time.Sunday
+}
+
+func formatDateShort(dateStr string) string {
+    t, err := time.Parse("2006-01-02", dateStr)
+    if err != nil {
+        return dateStr
+    }
+    return t.Format("Jan-02")
 }
 
 // SendNotification sends a structured notification using ntfy's header‑driven API.
