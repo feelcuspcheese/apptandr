@@ -30,3 +30,31 @@
 .site-toggle:not(.active) {
     background-color: #546e7a !important; /* blue-grey */
 }
+
+
+
+@media (max-width: 600px) {
+    .nav-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .nav-wrapper .brand-logo {
+        font-size: 1.2rem;
+        margin-left: 10px;
+    }
+    .nav-wrapper ul {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 5px;
+    }
+    .nav-wrapper ul li {
+        margin: 5px 0;
+    }
+    .nav-wrapper .btn {
+        padding: 0 12px;
+        font-size: 0.8rem;
+    }
+}
