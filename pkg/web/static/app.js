@@ -1,7 +1,6 @@
 let ws;
 let currentConfig = null;
 let activeSite = 'spl';
-let scheduledRunTimer = null; // not used, runs are handled by server
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -36,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
         document.getElementById('schedule-panel').style.display = 'block';
-        populateScheduleSiteSelect();
+        populateScheduleSiteSelect(); // populate site dropdown when panel opens
     });
     document.getElementById('confirm-schedule').addEventListener('click', scheduleRun);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
@@ -384,15 +383,17 @@ async function runNow() {
 
 function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
-    siteSelect.innerHTML = '';
+    siteSelect.innerHTML = ''; // clear any existing options
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
         option.textContent = site.Name || key.toUpperCase();
         siteSelect.appendChild(option);
     }
-    // Trigger museum population for the first site
-    populateScheduleMuseums();
+    // If there is at least one site, populate the museum dropdown for the first one
+    if (siteSelect.options.length > 0) {
+        populateScheduleMuseums();
+    }
 }
 
 function populateScheduleMuseums() {
@@ -408,7 +409,7 @@ function populateScheduleMuseums() {
         museumSelect.appendChild(option);
     }
     // Optionally set the default to the site's preferred slug
-    if (site.PreferredSlug) {
+    if (site.PreferredSlug && museumSelect.querySelector(`option[value="${site.PreferredSlug}"]`)) {
         museumSelect.value = site.PreferredSlug;
     }
 }
@@ -417,7 +418,7 @@ async function scheduleRun() {
     const siteKey = document.getElementById('schedule-site').value;
     const museumSlug = document.getElementById('schedule-museum').value;
     const mode = document.getElementById('schedule-mode').value;
-    const datetime = document.getElementById('schedule-time').value; // ID fixed
+    const datetime = document.getElementById('schedule-time').value;
     const timezone = document.getElementById('schedule-timezone').value;
 
     if (!datetime) {
@@ -441,7 +442,7 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        loadScheduledRuns();
+        loadScheduledRuns(); // refresh list
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -488,17 +489,19 @@ async function loadScheduledRuns() {
         }
         html += '</ul>';
         container.innerHTML = html;
-        // Attach delete handlers
+        // Attach delete handlers to the newly created delete buttons
         document.querySelectorAll('.delete-run').forEach(el => {
             el.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const runId = el.dataset.id;
-                const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
-                if (res.ok) {
+                if (!runId) return;
+                const deleteRes = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+                if (deleteRes.ok) {
                     M.toast({html: 'Run deleted'});
-                    loadScheduledRuns();
+                    loadScheduledRuns(); // refresh list
                 } else {
-                    M.toast({html: 'Failed to delete run', classes: 'red'});
+                    const err = await deleteRes.json();
+                    M.toast({html: err.error || 'Failed to delete run', classes: 'red'});
                 }
             });
         });
