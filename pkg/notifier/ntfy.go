@@ -76,7 +76,7 @@ func BuildNotification(availabilities []AvailabilityWithLink, siteName, museumNa
         })
     }
 
-    // Build the concise message body (no URLs)
+    // Build the concise message body (no URLs, no "[button]" text)
     var msg strings.Builder
     for i, a := range all {
         if i > 0 {
@@ -87,9 +87,6 @@ func BuildNotification(availabilities []AvailabilityWithLink, siteName, museumNa
             emoji = "🌟"
         }
         msg.WriteString(fmt.Sprintf("%s %s", emoji, formatDateShort(a.Date)))
-        if i < 3 {
-            msg.WriteString(" [button]")
-        }
     }
     if len(all) > 3 {
         msg.WriteString(fmt.Sprintf(" (+ %d more)", len(all)-3))
