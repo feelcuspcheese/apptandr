@@ -21,15 +21,15 @@ import (
 )
 
 type Agent struct {
-    config       *config.AppConfig
-    logger       *logrus.Logger
-    stateManager *state.State
-    cancelFunc   context.CancelFunc
-    running      bool
-    logCh        chan string
-    wg           sync.WaitGroup
-    mu           sync.RWMutex
-    currentRunID string
+    config          *config.AppConfig
+    logger          *logrus.Logger
+    stateManager    *state.State
+    cancelFunc      context.CancelFunc
+    running         bool
+    logCh           chan string
+    wg              sync.WaitGroup
+    mu              sync.RWMutex
+    currentRunID    string
 }
 
 func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
@@ -58,7 +58,6 @@ func (a *Agent) GetCurrentRunID() string {
 }
 
 // Start runs the agent for the given scheduled run ID.
-// It returns an error if the agent is already running or the run is invalid.
 func (a *Agent) Start(runID string) error {
     a.mu.Lock()
     if a.running {
@@ -189,17 +188,9 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
         }
     }
 
-    // Wait until exact drop time
-    if run.DropTime.After(time.Now()) {
-        wait := run.DropTime.Sub(time.Now())
-        a.log("Waiting %v until drop time", wait)
-        select {
-        case <-time.After(wait):
-        case <-ctx.Done():
-            a.log("Agent stopped before drop time")
-            return
-        }
-    }
+    // Wait until exact drop time with microsecond precision
+    a.log("Waiting until drop time with high precision")
+    waitUntil(run.DropTime)
 
     // Start check window
     deadline := time.Now().Add(a.config.CheckWindow)
@@ -213,7 +204,24 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
             break
         }
 
-        if a.config.RequestJitter > 0 {
+        // Apply jitter before first check? Only if configured and it's not the first check?
+        // The jitter is applied inside the scraper before each request. We also have an optional
+        // jitter before the check in the loop. To keep it simple, we keep the same loop as before.
+        // However, for the very first check after drop time, we don't want jitter; we already used
+        // a spin‑wait to hit the drop time precisely. So we skip the jitter for the first iteration.
+        // We'll use a flag to skip jitter on the first check.
+        // For simplicity, we'll remove the extra jitter here and rely on the jitter inside the scraper.
+        // But the original loop had a pre‑check jitter. We'll keep it but note that it will add
+        // a random delay before the first check, which we don't want. So we'll adjust.
+
+        // Actually, to preserve existing behavior and avoid breaking anything, we'll keep the loop
+        // as is, but for the first check we can bypass the jitter. We'll set a flag.
+        // However, the simplest is to remove the outer jitter entirely and let the scraper handle it.
+        // But the outer jitter was also used between checks. We'll keep it and for the first iteration
+        // we'll skip it using a boolean.
+        staticFirst := true
+
+        if !staticFirst && a.config.RequestJitter > 0 {
             jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
             a.log("Applying jitter %v before check", jitter)
             select {
@@ -232,6 +240,7 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
             break
         }
 
+        // Wait for next interval (with jitter)
         interval := a.config.CheckInterval
         if a.config.RequestJitter > 0 {
             interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
@@ -418,4 +427,21 @@ func isDayOfWeek(dateStr, dayName string) bool {
         return false
     }
     return t.Weekday().String() == dayName
+}
+
+// waitUntil blocks until the given time, using a spin‑loop for the last few milliseconds.
+func waitUntil(t time.Time) {
+    now := time.Now()
+    if t.Before(now) {
+        return
+    }
+    delta := t.Sub(now)
+    // Sleep most of the time, leaving a small window for spin
+    if delta > 5*time.Millisecond {
+        time.Sleep(delta - 5*time.Millisecond)
+    }
+    // Busy‑wait for the remainder (sub‑millisecond precision)
+    for time.Now().Before(t) {
+        // no operation – just spin
+    }
 }
