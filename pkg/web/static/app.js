@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadConfig();
 
+    // Day chip click handlers
     const dayChips = document.querySelectorAll('#days-pills .chip');
     dayChips.forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -24,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Site toggle buttons
     document.getElementById('btn-spl').addEventListener('click', () => switchSite('spl'));
     document.getElementById('btn-kcls').addEventListener('click', () => switchSite('kcls'));
 
@@ -32,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
         document.getElementById('schedule-panel').style.display = 'block';
-        populateScheduleSiteSelect();
-        // Set a default datetime (tomorrow at 09:00 local time)
+        populateScheduleSiteSelect(); // ensure site dropdown is filled
+        // Set default datetime (tomorrow 09:00)
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(9, 0, 0, 0);
@@ -45,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
+    // Schedule site change listener
     const scheduleSiteSelect = document.getElementById('schedule-site');
     scheduleSiteSelect.addEventListener('change', () => populateScheduleMuseums());
 
@@ -106,7 +109,9 @@ function startStatusPolling() {
 async function loadConfig() {
     try {
         const res = await fetch('/api/config');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         currentConfig = await res.json();
+        console.log('Loaded config:', currentConfig); // DEBUG
         activeSite = currentConfig.ActiveSite || 'spl';
         populateGlobalSettings(currentConfig);
         populateMuseumsLists(currentConfig.Sites);
@@ -117,7 +122,7 @@ async function loadConfig() {
 
         switchSite(activeSite);
     } catch (err) {
-        console.error(err);
+        console.error('Failed to load config:', err);
         M.toast({html: 'Failed to load config', classes: 'red'});
     }
 }
@@ -155,6 +160,7 @@ function populateGlobalSettings(cfg) {
 }
 
 function populateMuseumsLists(sites) {
+    // SPL
     const splMuseums = sites['spl']?.Museums || {};
     const splLines = [];
     for (const [slug, m] of Object.entries(splMuseums)) {
@@ -162,6 +168,7 @@ function populateMuseumsLists(sites) {
     }
     document.getElementById('museums-list-spl').value = splLines.join('\n');
 
+    // KCLS
     const kclsMuseums = sites['kcls']?.Museums || {};
     const kclsLines = [];
     for (const [slug, m] of Object.entries(kclsMuseums)) {
@@ -386,7 +393,9 @@ async function runNow() {
 
 function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
+    if (!siteSelect) return;
     siteSelect.innerHTML = '';
+    // Use the currentConfig which should be loaded
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
@@ -395,6 +404,8 @@ function populateScheduleSiteSelect() {
     }
     if (siteSelect.options.length > 0) {
         populateScheduleMuseums();
+    } else {
+        console.warn('No sites found in config');
     }
 }
 
@@ -402,8 +413,15 @@ function populateScheduleMuseums() {
     const siteKey = document.getElementById('schedule-site').value;
     const site = currentConfig?.Sites[siteKey];
     const museumSelect = document.getElementById('schedule-museum');
-    if (!site) return;
+    if (!museumSelect) return;
     museumSelect.innerHTML = '';
+    if (!site || !site.Museums || Object.keys(site.Museums).length === 0) {
+        const option = document.createElement('option');
+        option.disabled = true;
+        option.textContent = 'No museums configured';
+        museumSelect.appendChild(option);
+        return;
+    }
     for (const [slug, m] of Object.entries(site.Museums)) {
         const option = document.createElement('option');
         option.value = slug;
@@ -443,7 +461,7 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        loadScheduledRuns();
+        loadScheduledRuns(); // refresh list
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -490,6 +508,7 @@ async function loadScheduledRuns() {
         }
         html += '</ul>';
         container.innerHTML = html;
+        // Attach delete handlers
         document.querySelectorAll('.delete-run').forEach(el => {
             el.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -506,7 +525,7 @@ async function loadScheduledRuns() {
             });
         });
     } catch (err) {
-        console.error(err);
+        console.error('Failed to load scheduled runs:', err);
     }
 }
 
