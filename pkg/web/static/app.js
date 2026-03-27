@@ -512,16 +512,17 @@ async function loadScheduledRuns() {
         }
         let html = '<ul class="collection">';
         for (const run of runs) {
-            const site = currentConfig.Sites[run.site_key]?.Name || run.site_key;
-            const museum = currentConfig.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
-            const dropTime = new Date(run.drop_time).toLocaleString();
+            // Use correct JSON keys: SiteKey, MuseumSlug (capitalized)
+            const site = currentConfig.Sites[run.SiteKey]?.Name || run.SiteKey;
+            const museum = currentConfig.Sites[run.SiteKey]?.Museums[run.MuseumSlug]?.Name || run.MuseumSlug;
+            const dropTime = new Date(run.DropTime).toLocaleString();
             html += `
                 <li class="collection-item">
                     <div>
                         <strong>${site} - ${museum}</strong><br>
-                        Mode: ${run.mode}<br>
+                        Mode: ${run.Mode}<br>
                         Drop: ${dropTime}
-                        <a href="#" class="secondary-content delete-run" data-id="${run.id}">
+                        <a href="#" class="secondary-content delete-run" data-id="${run.ID}">
                             <i class="material-icons">delete</i>
                         </a>
                     </div>
