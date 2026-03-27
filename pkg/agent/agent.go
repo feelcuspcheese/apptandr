@@ -21,16 +21,15 @@ import (
 )
 
 type Agent struct {
-    config          *config.AppConfig
-    logger          *logrus.Logger
-    stateManager    *state.State
-    cancelFunc      context.CancelFunc
-    running         bool
-    logCh           chan string
-    wg              sync.WaitGroup
-    doneCh          chan struct{}
-    currentRunID    string
-    mu              sync.RWMutex
+    config       *config.AppConfig
+    logger       *logrus.Logger
+    stateManager *state.State
+    cancelFunc   context.CancelFunc
+    running      bool
+    logCh        chan string
+    wg           sync.WaitGroup
+    mu           sync.RWMutex
+    currentRunID string
 }
 
 func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
@@ -39,7 +38,6 @@ func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
         logger:       logger,
         stateManager: state.NewState(),
         logCh:        make(chan string, 100),
-        doneCh:       make(chan struct{}),
     }
 }
 
@@ -48,6 +46,8 @@ func (a *Agent) LogChannel() <-chan string {
 }
 
 func (a *Agent) IsRunning() bool {
+    a.mu.RLock()
+    defer a.mu.RUnlock()
     return a.running
 }
 
@@ -58,12 +58,18 @@ func (a *Agent) GetCurrentRunID() string {
 }
 
 // Start runs the agent for the given scheduled run ID.
+// It returns an error if the agent is already running or the run is invalid.
 func (a *Agent) Start(runID string) error {
+    a.mu.Lock()
     if a.running {
+        a.mu.Unlock()
         return fmt.Errorf("agent already running")
     }
+    a.running = true
+    a.currentRunID = runID
+    a.mu.Unlock()
 
-    // Find the run
+    // Find the run in the config
     var run *config.ScheduledRun
     for _, r := range a.config.ScheduledRuns {
         if r.ID == runID {
@@ -72,30 +78,34 @@ func (a *Agent) Start(runID string) error {
         }
     }
     if run == nil {
+        a.mu.Lock()
+        a.running = false
+        a.currentRunID = ""
+        a.mu.Unlock()
         return fmt.Errorf("scheduled run %s not found", runID)
     }
 
-    a.mu.Lock()
-    a.currentRunID = runID
-    a.mu.Unlock()
-
+    // Create a per‑run done channel
+    doneCh := make(chan struct{})
     ctx, cancel := context.WithCancel(context.Background())
     a.cancelFunc = cancel
-    a.running = true
     a.wg.Add(1)
 
     go func() {
         defer a.wg.Done()
-        defer close(a.doneCh)
+        defer close(doneCh)
         a.run(ctx, run)
+        a.mu.Lock()
+        a.running = false
+        a.currentRunID = ""
+        a.mu.Unlock()
     }()
 
+    // Wait for completion
     select {
-    case <-a.doneCh:
-        a.running = false
+    case <-doneCh:
         return nil
     case <-ctx.Done():
-        a.running = false
         return ctx.Err()
     }
 }
@@ -105,14 +115,16 @@ func (a *Agent) Stop() {
         a.cancelFunc()
     }
     a.wg.Wait()
-    a.running = false
 }
 
 func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
-    defer func() { a.running = false }()
+    defer func() {
+        // Remove the run from config when finished
+        a.removeRun(run.ID)
+    }()
+
     a.log("Agent starting for run %s, drop time: %v", run.ID, run.DropTime)
 
-    // Get site and museum
     site, ok := a.config.Sites[run.SiteKey]
     if !ok {
         a.log("Site %s not found", run.SiteKey)
@@ -233,9 +245,6 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
         }
     }
     a.log("Agent finished")
-
-    // Remove the run from config after completion
-    a.removeRun(run.ID)
 }
 
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
@@ -368,7 +377,6 @@ func (a *Agent) log(format string, args ...interface{}) {
 }
 
 func (a *Agent) removeRun(runID string) {
-    // Find and remove the run from the config
     newRuns := []config.ScheduledRun{}
     for _, r := range a.config.ScheduledRuns {
         if r.ID != runID {
