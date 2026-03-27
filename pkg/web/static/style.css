@@ -14,3 +14,7 @@
     line-height: 1.4;
     white-space: pre-wrap;
 }
+.greyed-out {
+    opacity: 0.6;
+    pointer-events: none;
+}
