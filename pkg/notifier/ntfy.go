@@ -45,7 +45,7 @@ type AvailabilityWithLink struct {
 }
 
 // BuildNotification creates a title, message, and up to 3 actions (prioritizing weekends)
-func BuildNotification(availabilities []AvailabilityWithLink, siteName string) (title, message string, actions []Action) {
+func BuildNotification(availabilities []AvailabilityWithLink, siteName, museumName string) (title, message string, actions []Action) {
     if len(availabilities) == 0 {
         return "", "", nil
     }
@@ -95,7 +95,7 @@ func BuildNotification(availabilities []AvailabilityWithLink, siteName string) (
         msg.WriteString(fmt.Sprintf(" (+ %d more)", len(all)-3))
     }
 
-    title = fmt.Sprintf("%s - Appointment Available", siteName)
+    title = fmt.Sprintf("%s - %s - Appointment Available", siteName, museumName)
     message = msg.String()
     return
 }
