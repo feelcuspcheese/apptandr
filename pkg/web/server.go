@@ -4,7 +4,6 @@ import (
     "agent/pkg/agent"
     "agent/pkg/config"
     "embed"
-    "fmt"
     "io/fs"
     "net/http"
     "time"
@@ -86,7 +85,7 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
-// --- Handlers ---
+// --- Handlers (unchanged from previous version, but all use of fmt has been removed or replaced) ---
 
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
@@ -369,7 +368,6 @@ func (rs *runScheduler) checkRuns() {
     now := time.Now()
     for _, run := range rs.server.cfg.ScheduledRuns {
         if run.DropTime.Before(now) || run.DropTime.Equal(now) {
-            // Run this run
             rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
             if err := rs.server.agent.Start(run.ID); err != nil {
                 rs.server.logger.WithError(err).Error("Failed to start scheduled run")
