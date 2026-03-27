@@ -298,7 +298,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                 BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
             }
         }
-        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name)   // <-- added site.Name
+        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name) // <-- added museum.Name
         err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
         if err != nil {
             a.log("Failed to send notification: %v", err)
@@ -316,7 +316,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                     if err := bookerInst.Book(ctx, av); err != nil {
                         a.log("Booking failed for %s: %v", av.Date, err)
                         _ = ntfy.SendNotification(
-                            fmt.Sprintf("%s - Booking Failed", site.Name),    // <-- added site name
+                            fmt.Sprintf("%s - %s - Booking Failed", site.Name, museum.Name),    // <-- added site name
                             fmt.Sprintf("Failed to book %s: %v", av.Date, err),
                             notifier.PriorityHigh,
                             nil,
@@ -325,7 +325,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                     } else {
                         a.log("Booking successful for %s", av.Date)
                         _ = ntfy.SendNotification(
-                            fmt.Sprintf("%s - Booking Successful", site.Name), // <-- added site name
+                            fmt.Sprintf("%s - %s - Booking Successful", site.Name, museum.Name), // <-- added site name
                             fmt.Sprintf("Successfully booked %s", av.Date),
                             notifier.PriorityUrgent,
                             nil,
