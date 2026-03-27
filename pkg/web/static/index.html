@@ -148,8 +148,8 @@
                                 <label for="login-password">Login Password</label>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="input-field col s12" id="email-field-container">
+                        <div class="row" id="email-field-container">
+                            <div class="input-field col s12">
                                 <input id="login-email" type="email">
                                 <label for="login-email">Email (for booking)</label>
                             </div>
@@ -222,9 +222,9 @@
                         <input id="location-spl" type="text" value="0">
                         <label for="location-spl">Location</label>
                     </div>
-                    <h5>SPL Museums Configuration</h5>
-                    <label>Museums (one per line, format: slug:id or name:slug:id)</label>
-                    <textarea id="museums-list-spl" rows="8" class="materialize-textarea" placeholder="Example:&#10;SAM:7f2ac5c414b2&#10;Zoo:033bbf08993f&#10;Pacific Science Center:PacSci:63ea409f9fab"></textarea>
+                    <h5>SPL Museums</h5>
+                    <label>Museums (one per line, format: name:slug:id)</label>
+                    <textarea id="museums-list-spl" rows="8" class="materialize-textarea" placeholder="Example:&#10;Seattle Art Museum:SAM:7f2ac5c414b2&#10;Woodland Park Zoo:Zoo:033bbf08993f"></textarea>
                 </div>
                 <div id="tab-kcls" class="col s12">
                     <h5>KCLS Global Settings</h5>
@@ -252,9 +252,9 @@
                         <input id="location-kcls" type="text" value="0">
                         <label for="location-kcls">Location</label>
                     </div>
-                    <h5>KCLS Museums Configuration</h5>
-                    <label>Museums (one per line, format: slug:id or name:slug:id)</label>
-                    <textarea id="museums-list-kcls" rows="8" class="materialize-textarea" placeholder="Example:&#10;KidsQuest:9ec25160a8a0"></textarea>
+                    <h5>KCLS Museums</h5>
+                    <label>Museums (one per line, format: name:slug:id)</label>
+                    <textarea id="museums-list-kcls" rows="8" class="materialize-textarea" placeholder="Example:&#10;KidsQuest:KidsQuest:9ec25160a8a0"></textarea>
                 </div>
             </div>
             <div class="row">
