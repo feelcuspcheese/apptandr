@@ -58,7 +58,6 @@ func (s *Server) setupRoutes() {
         c.Data(http.StatusOK, "text/html; charset=utf-8", data)
     })
 
-    // API routes
     api := s.router.Group("/api")
     {
         api.GET("/config", s.getConfig)
@@ -84,12 +83,8 @@ func (s *Server) getConfig(c *gin.Context) {
 
 func (s *Server) updateAdminConfig(c *gin.Context) {
     var req struct {
-        Sites                map[string]config.SiteInfo `json:"sites"`
-        BaseURL              string                     `json:"baseUrl"`
-        AvailabilityEndpoint string                     `json:"availabilityEndpoint"`
-        Digital              bool                       `json:"digital"`
-        Physical             bool                       `json:"physical"`
-        Location             string                     `json:"location"`
+        Site string           `json:"site"` // "spl" or "kcls"
+        SiteConfig config.SiteInfo `json:"siteConfig"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -102,16 +97,8 @@ func (s *Server) updateAdminConfig(c *gin.Context) {
         return
     }
 
-    // Update admin fields
-    existing.Sites = req.Sites
-    for slug, site := range existing.Sites {
-        site.BaseURL = req.BaseURL
-        site.AvailabilityEndpoint = req.AvailabilityEndpoint
-        site.Digital = req.Digital
-        site.Physical = req.Physical
-        site.Location = req.Location
-        existing.Sites[slug] = site
-    }
+    // Update the specific site's configuration
+    existing.Sites[req.Site] = req.SiteConfig
 
     if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -126,6 +113,7 @@ func (s *Server) updateAdminConfig(c *gin.Context) {
 
 func (s *Server) updateUserConfig(c *gin.Context) {
     var req struct {
+        ActiveSite     string        `json:"activeSite"`
         PreferredSlug  string        `json:"preferredSlug"`
         Mode           string        `json:"mode"`
         PreferredDays  []string      `json:"preferredDays"`
@@ -150,8 +138,8 @@ func (s *Server) updateUserConfig(c *gin.Context) {
         return
     }
 
-    // Update user fields
-    existing.PreferredSlug = req.PreferredSlug
+    // Update global user preferences
+    existing.ActiveSite = req.ActiveSite
     existing.Mode = req.Mode
     existing.PreferredDays = req.PreferredDays
     existing.StrikeTime = req.StrikeTime
@@ -161,11 +149,25 @@ func (s *Server) updateUserConfig(c *gin.Context) {
     existing.MonthsToCheck = req.MonthsToCheck
     existing.NtfyTopic = req.NtfyTopic
 
-    for slug, site := range existing.Sites {
+    // Update the active site's preferred slug and login credentials
+    if site, ok := existing.Sites[req.ActiveSite]; ok {
+        site.PreferredSlug = req.PreferredSlug
         site.LoginForm.Username = req.LoginUsername
         site.LoginForm.Password = req.LoginPassword
         site.LoginForm.Email = req.LoginEmail
-        existing.Sites[slug] = site
+        existing.Sites[req.ActiveSite] = site
+    }
+
+    // Also update credentials for the other site (if they share the same credentials)
+    // For simplicity, we'll update both sites' credentials (assuming they are the same).
+    // If they differ, the admin can override them in the admin modal.
+    for _, site := range existing.Sites {
+        if site.Slug != req.ActiveSite {
+            site.LoginForm.Username = req.LoginUsername
+            site.LoginForm.Password = req.LoginPassword
+            site.LoginForm.Email = req.LoginEmail
+            existing.Sites[site.Slug] = site
+        }
     }
 
     if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
