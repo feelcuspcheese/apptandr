@@ -4,6 +4,7 @@ import (
     "agent/pkg/agent"
     "agent/pkg/config"
     "embed"
+    "fmt"
     "io/fs"
     "net/http"
     "time"
@@ -11,6 +12,7 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/gorilla/websocket"
     "github.com/sirupsen/logrus"
+    "github.com/google/uuid"
 )
 
 //go:embed static/*
@@ -22,6 +24,12 @@ type Server struct {
     cfg      *config.AppConfig
     logger   *logrus.Logger
     upgrader websocket.Upgrader
+    runSched *runScheduler
+}
+
+type runScheduler struct {
+    server *Server
+    stop   chan struct{}
 }
 
 func NewServer(cfg *config.AppConfig, logger *logrus.Logger) *Server {
@@ -33,7 +41,9 @@ func NewServer(cfg *config.AppConfig, logger *logrus.Logger) *Server {
         },
     }
     s.agent = agent.NewAgent(cfg, logger)
+    s.runSched = &runScheduler{server: s, stop: make(chan struct{})}
     s.setupRoutes()
+    go s.runSched.start()
     return s
 }
 
@@ -64,6 +74,8 @@ func (s *Server) setupRoutes() {
         api.PUT("/config/user", s.updateUserConfig)
         api.POST("/run-now", s.runNow)
         api.POST("/schedule", s.schedule)
+        api.GET("/runs", s.listRuns)
+        api.DELETE("/runs/:id", s.deleteRun)
         api.GET("/logs", s.websocketLogs)
         api.POST("/stop", s.stopAgent)
         api.GET("/status", s.getStatus)
@@ -74,13 +86,15 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
+// --- Handlers ---
+
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
 }
 
 func (s *Server) updateAdminConfig(c *gin.Context) {
     var req struct {
-        SiteKey string        `json:"siteKey"`
+        SiteKey string      `json:"siteKey"`
         Site    config.Site `json:"site"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
@@ -94,7 +108,6 @@ func (s *Server) updateAdminConfig(c *gin.Context) {
         return
     }
 
-    // Update the specific site
     existing.Sites[req.SiteKey] = req.Site
 
     if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
@@ -135,7 +148,6 @@ func (s *Server) updateUserConfig(c *gin.Context) {
         return
     }
 
-    // Update global user preferences
     existing.ActiveSite = req.ActiveSite
     existing.Mode = req.Mode
     existing.PreferredDays = req.PreferredDays
@@ -146,7 +158,6 @@ func (s *Server) updateUserConfig(c *gin.Context) {
     existing.MonthsToCheck = req.MonthsToCheck
     existing.NtfyTopic = req.NtfyTopic
 
-    // Update the active site's preferred slug
     if site, ok := existing.Sites[req.ActiveSite]; ok {
         site.PreferredSlug = req.PreferredSlug
         site.LoginForm.Username = req.LoginUsername
@@ -155,7 +166,6 @@ func (s *Server) updateUserConfig(c *gin.Context) {
         existing.Sites[req.ActiveSite] = site
     }
 
-    // Also update the other site's credentials (if they are the same)
     for k, site := range existing.Sites {
         if k != req.ActiveSite {
             site.LoginForm.Username = req.LoginUsername
@@ -177,23 +187,58 @@ func (s *Server) updateUserConfig(c *gin.Context) {
 }
 
 func (s *Server) runNow(c *gin.Context) {
-    if s.agent.IsRunning() {
-        c.JSON(http.StatusConflict, gin.H{"error": "agent already running"})
+    // Get the current active site and preferred museum
+    siteKey := s.cfg.ActiveSite
+    site, ok := s.cfg.Sites[siteKey]
+    if !ok {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "active site not found"})
         return
     }
-    dropTime := time.Now().Add(30 * time.Second)
-    go func() {
-        if err := s.agent.Start(dropTime); err != nil {
-            s.logger.WithError(err).Error("Agent start failed")
+    museumSlug := site.PreferredSlug
+    if museumSlug == "" {
+        // fallback to first museum
+        for slug := range site.Museums {
+            museumSlug = slug
+            break
         }
-    }()
+    }
+    if museumSlug == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "no museum selected"})
+        return
+    }
+
+    dropTime := time.Now().Add(30 * time.Second)
+    runID := uuid.New().String()
+    run := config.ScheduledRun{
+        ID:         runID,
+        SiteKey:    siteKey,
+        MuseumSlug: museumSlug,
+        DropTime:   dropTime,
+        Mode:       s.cfg.Mode,
+    }
+
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    existing.ScheduledRuns = append(existing.ScheduledRuns, run)
+    if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    s.cfg = existing
+
     c.JSON(http.StatusOK, gin.H{"status": "started", "dropTime": dropTime.Format(time.RFC3339)})
 }
 
 func (s *Server) schedule(c *gin.Context) {
     var req struct {
-        DropTime string `json:"dropTime"`
-        Timezone string `json:"timezone"`
+        SiteKey     string `json:"siteKey"`
+        MuseumSlug  string `json:"museumSlug"`
+        DropTime    string `json:"dropTime"`
+        Timezone    string `json:"timezone"`
+        Mode        string `json:"mode"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -205,25 +250,60 @@ func (s *Server) schedule(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timezone"})
         return
     }
-
     t, err := time.ParseInLocation("2006-01-02T15:04", req.DropTime, loc)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid datetime format, use YYYY-MM-DDTHH:MM"})
         return
     }
 
-    if s.agent.IsRunning() {
-        c.JSON(http.StatusConflict, gin.H{"error": "agent already running"})
-        return
+    runID := uuid.New().String()
+    run := config.ScheduledRun{
+        ID:         runID,
+        SiteKey:    req.SiteKey,
+        MuseumSlug: req.MuseumSlug,
+        DropTime:   t,
+        Mode:       req.Mode,
     }
 
-    go func() {
-        if err := s.agent.Start(t); err != nil {
-            s.logger.WithError(err).Error("Agent start failed")
-        }
-    }()
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    existing.ScheduledRuns = append(existing.ScheduledRuns, run)
+    if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    s.cfg = existing
 
-    c.JSON(http.StatusOK, gin.H{"status": "scheduled", "dropTime": t.Format(time.RFC3339)})
+    c.JSON(http.StatusOK, gin.H{"status": "scheduled", "dropTime": t.Format(time.RFC3339), "id": runID})
+}
+
+func (s *Server) listRuns(c *gin.Context) {
+    c.JSON(http.StatusOK, s.cfg.ScheduledRuns)
+}
+
+func (s *Server) deleteRun(c *gin.Context) {
+    runID := c.Param("id")
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    newRuns := []config.ScheduledRun{}
+    for _, r := range existing.ScheduledRuns {
+        if r.ID != runID {
+            newRuns = append(newRuns, r)
+        }
+    }
+    existing.ScheduledRuns = newRuns
+    if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    s.cfg = existing
+    c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 func (s *Server) stopAgent(c *gin.Context) {
@@ -237,16 +317,13 @@ func (s *Server) stopAgent(c *gin.Context) {
 
 func (s *Server) getStatus(c *gin.Context) {
     running := s.agent.IsRunning()
-    var dropTimeStr string
+    var runID string
     if running {
-        dt := s.agent.GetDropTime()
-        if !dt.IsZero() {
-            dropTimeStr = dt.Format(time.RFC3339)
-        }
+        runID = s.agent.GetCurrentRunID()
     }
     c.JSON(http.StatusOK, gin.H{
-        "running":   running,
-        "dropTime":  dropTimeStr,
+        "running": running,
+        "runID":   runID,
     })
 }
 
@@ -269,4 +346,39 @@ func (s *Server) websocketLogs(c *gin.Context) {
             return
         }
     }
+}
+
+// --- runScheduler ---
+func (rs *runScheduler) start() {
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ticker.C:
+            rs.checkRuns()
+        case <-rs.stop:
+            return
+        }
+    }
+}
+
+func (rs *runScheduler) checkRuns() {
+    if rs.server.agent.IsRunning() {
+        return
+    }
+    now := time.Now()
+    for _, run := range rs.server.cfg.ScheduledRuns {
+        if run.DropTime.Before(now) || run.DropTime.Equal(now) {
+            // Run this run
+            rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
+            if err := rs.server.agent.Start(run.ID); err != nil {
+                rs.server.logger.WithError(err).Error("Failed to start scheduled run")
+            }
+            break // only start one at a time
+        }
+    }
+}
+
+func (rs *runScheduler) Stop() {
+    close(rs.stop)
 }
