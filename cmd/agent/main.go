@@ -3,7 +3,6 @@ package main
 import (
     "agent/pkg/agent"
     "agent/pkg/config"
-    "agent/pkg/web"
     "context"
     "flag"
     "os"
@@ -11,6 +10,7 @@ import (
     "syscall"
     "time"
 
+    "github.com/google/uuid"
     "github.com/sirupsen/logrus"
 )
 
@@ -38,10 +38,57 @@ func main() {
             logger.Fatal(err)
         }
     } else {
-        // Standalone mode: run as original scheduler
+        // Standalone mode: create a single run using the current config
         logger.Info("Starting in standalone mode")
 
-        // Context to stop the agent gracefully
+        // Use the active site and its preferred museum
+        siteKey := cfg.ActiveSite
+        site, ok := cfg.Sites[siteKey]
+        if !ok {
+            logger.Fatalf("Active site %s not found", siteKey)
+        }
+        museumSlug := site.PreferredSlug
+        if museumSlug == "" {
+            // Fallback to first museum
+            for slug := range site.Museums {
+                museumSlug = slug
+                break
+            }
+        }
+        if museumSlug == "" {
+            logger.Fatal("No museum selected")
+        }
+
+        // Compute drop time from strike time (today or tomorrow)
+        now := time.Now()
+        strikeTimeStr := cfg.StrikeTime
+        t, err := time.Parse("15:04:05", strikeTimeStr)
+        if err != nil {
+            logger.Fatalf("Invalid strike time format: %v", err)
+        }
+        dropTime := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+        if dropTime.Before(now) {
+            dropTime = dropTime.Add(24 * time.Hour)
+        }
+
+        // Create a scheduled run (temporary)
+        runID := uuid.New().String()
+        run := config.ScheduledRun{
+            ID:         runID,
+            SiteKey:    siteKey,
+            MuseumSlug: museumSlug,
+            DropTime:   dropTime,
+            Mode:       cfg.Mode,
+        }
+
+        // Save the run to config (so the agent can find it)
+        cfg.ScheduledRuns = []config.ScheduledRun{run}
+        if err := config.SaveConfig(*configPath, cfg); err != nil {
+            logger.Fatalf("Failed to save run: %v", err)
+        }
+
+        // Create agent and start
+        ag := agent.NewAgent(cfg, logger)
         ctx, cancel := context.WithCancel(context.Background())
         defer cancel()
 
@@ -54,46 +101,9 @@ func main() {
             cancel()
         }()
 
-        // Main loop: run every day at strike time
-        for {
-            // Compute next strike time (today or tomorrow)
-            now := time.Now()
-            strikeTimeStr := cfg.StrikeTime
-            t, err := time.Parse("15:04:05", strikeTimeStr)
-            if err != nil {
-                logger.Fatalf("Invalid strike time format: %v", err)
-            }
-            strike := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
-            if strike.Before(now) {
-                strike = strike.Add(24 * time.Hour)
-            }
-
-            // Wait until strike time
-            wait := strike.Sub(now)
-            if wait > 0 {
-                logger.WithField("wait", wait).Info("Waiting for strike time")
-                select {
-                case <-time.After(wait):
-                case <-ctx.Done():
-                    return
-                }
-            }
-
-            // Run the agent for this day (blocking)
-            logger.Info("Starting agent for the day")
-            ag := agent.NewAgent(cfg, logger)
-            if err := ag.Start(strike); err != nil {
-                logger.WithError(err).Error("Agent start failed")
-            }
-
-            // If context was cancelled, exit
-            select {
-            case <-ctx.Done():
-                return
-            default:
-            }
-
-            // The loop will continue to the next day automatically
+        logger.Infof("Starting agent for run %s, drop time: %v", runID, dropTime)
+        if err := ag.Start(runID); err != nil {
+            logger.Fatalf("Agent start failed: %v", err)
         }
     }
 }
