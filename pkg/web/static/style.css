@@ -18,3 +18,15 @@
     opacity: 0.6;
     pointer-events: none;
 }
+
+/* Site toggle buttons */
+.site-toggle {
+    margin: 0 5px;
+}
+.site-toggle.active {
+    background-color: #2e7d32 !important; /* dark green */
+    color: white;
+}
+.site-toggle:not(.active) {
+    background-color: #546e7a !important; /* blue-grey */
+}
