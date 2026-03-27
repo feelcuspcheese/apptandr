@@ -115,7 +115,7 @@ async function loadConfig() {
         const res = await fetch('/api/config');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         currentConfig = await res.json();
-        console.log('Loaded config:', currentConfig); // DEBUG
+        console.log('Loaded config:', currentConfig);
         activeSite = currentConfig.ActiveSite || 'spl';
         populateGlobalSettings(currentConfig);
         populateMuseumsLists(currentConfig.Sites);
@@ -397,14 +397,18 @@ async function runNow() {
 
 function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
-    if (!siteSelect) return;
+    if (!siteSelect) {
+        console.error('Schedule site select not found');
+        return;
+    }
     siteSelect.innerHTML = '';
     const siteKeys = Object.keys(currentConfig.Sites);
-    console.log('Populating site select, found sites:', siteKeys); // DEBUG
+    console.log('Populating site select, found sites:', siteKeys);
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
-        option.textContent = site.Name || key.toUpperCase();
+        // Fallback to key if name is empty or missing
+        option.textContent = (site.Name && site.Name.trim()) ? site.Name : key.toUpperCase();
         siteSelect.appendChild(option);
     }
     if (siteSelect.options.length > 0) {
