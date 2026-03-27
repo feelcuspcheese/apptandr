@@ -29,7 +29,7 @@ type Agent struct {
     logCh           chan string
     wg              sync.WaitGroup
     doneCh          chan struct{}
-    currentDropTime time.Time
+    currentRunID    string
     mu              sync.RWMutex
 }
 
@@ -43,30 +43,40 @@ func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
     }
 }
 
-// LogChannel returns a channel that receives log messages.
 func (a *Agent) LogChannel() <-chan string {
     return a.logCh
 }
 
-// IsRunning returns whether the agent is currently running.
 func (a *Agent) IsRunning() bool {
     return a.running
 }
 
-// GetDropTime returns the current drop time (or zero if not running).
-func (a *Agent) GetDropTime() time.Time {
+func (a *Agent) GetCurrentRunID() string {
     a.mu.RLock()
     defer a.mu.RUnlock()
-    return a.currentDropTime
+    return a.currentRunID
 }
 
-// Start blocks until the agent finishes (or Stop is called).
-func (a *Agent) Start(dropTime time.Time) error {
+// Start runs the agent for the given scheduled run ID.
+func (a *Agent) Start(runID string) error {
     if a.running {
         return fmt.Errorf("agent already running")
     }
+
+    // Find the run
+    var run *config.ScheduledRun
+    for _, r := range a.config.ScheduledRuns {
+        if r.ID == runID {
+            run = &r
+            break
+        }
+    }
+    if run == nil {
+        return fmt.Errorf("scheduled run %s not found", runID)
+    }
+
     a.mu.Lock()
-    a.currentDropTime = dropTime
+    a.currentRunID = runID
     a.mu.Unlock()
 
     ctx, cancel := context.WithCancel(context.Background())
@@ -77,7 +87,7 @@ func (a *Agent) Start(dropTime time.Time) error {
     go func() {
         defer a.wg.Done()
         defer close(a.doneCh)
-        a.run(ctx, dropTime)
+        a.run(ctx, run)
     }()
 
     select {
@@ -90,7 +100,6 @@ func (a *Agent) Start(dropTime time.Time) error {
     }
 }
 
-// Stop cancels the agent execution and waits for it to finish.
 func (a *Agent) Stop() {
     if a.cancelFunc != nil {
         a.cancelFunc()
@@ -99,34 +108,21 @@ func (a *Agent) Stop() {
     a.running = false
 }
 
-func (a *Agent) run(ctx context.Context, dropTime time.Time) {
+func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
     defer func() { a.running = false }()
-    a.log("Agent starting, drop time: %v", dropTime)
+    a.log("Agent starting for run %s, drop time: %v", run.ID, run.DropTime)
 
-    // Get the active site configuration
-    activeSiteKey := a.config.ActiveSite
-    site, ok := a.config.Sites[activeSiteKey]
+    // Get site and museum
+    site, ok := a.config.Sites[run.SiteKey]
     if !ok {
-        a.log("Active site %s not found", activeSiteKey)
+        a.log("Site %s not found", run.SiteKey)
         return
     }
-
-    // Get the preferred museum slug for this site
-    preferredSlug := site.PreferredSlug
-    if preferredSlug == "" {
-        // Fallback to first museum in the site
-        for slug := range site.Museums {
-            preferredSlug = slug
-            break
-        }
-    }
-    museum, ok := site.Museums[preferredSlug]
+    museum, ok := site.Museums[run.MuseumSlug]
     if !ok {
-        a.log("Preferred museum %s not found for site %s", preferredSlug, activeSiteKey)
+        a.log("Museum %s not found in site %s", run.MuseumSlug, run.SiteKey)
         return
     }
-
-    a.log("Using site: %s, museum: %s (slug: %s)", activeSiteKey, museum.Name, museum.Slug)
 
     // Prepare HTTP client with realistic headers
     headers := map[string]string{
@@ -155,7 +151,21 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     )
     scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
-    // Pre-warm connection
+    // Wait until pre‑warm time (dropTime - preWarmOffset)
+    now := time.Now()
+    preWarmTime := run.DropTime.Add(-a.config.PreWarmOffset)
+    if preWarmTime.After(now) {
+        wait := preWarmTime.Sub(now)
+        a.log("Waiting %v until pre‑warm time", wait)
+        select {
+        case <-time.After(wait):
+        case <-ctx.Done():
+            a.log("Agent stopped before pre‑warm")
+            return
+        }
+    }
+
+    // Pre‑warm now (close to drop time)
     a.log("Pre‑warming...")
     if site.BaseURL == "" {
         a.log("BaseURL empty, skipping pre‑warm")
@@ -167,10 +177,9 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
     }
 
-    // Wait until drop time
-    now := time.Now()
-    if dropTime.After(now) {
-        wait := dropTime.Sub(now)
+    // Wait until exact drop time
+    if run.DropTime.After(time.Now()) {
+        wait := run.DropTime.Sub(time.Now())
         a.log("Waiting %v until drop time", wait)
         select {
         case <-time.After(wait):
@@ -187,13 +196,11 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 
     for {
-        // Check if window expired
         if time.Now().After(deadline) {
             a.log("Check window expired")
             break
         }
 
-        // Apply jitter before check
         if a.config.RequestJitter > 0 {
             jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
             a.log("Applying jitter %v before check", jitter)
@@ -204,8 +211,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             }
         }
 
-        // Perform availability check
-        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, dropTime)
+        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, run.DropTime, run.Mode)
         if err != nil {
             a.log("Check error: %v", err)
         }
@@ -214,7 +220,6 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             break
         }
 
-        // Wait for next interval (with jitter)
         interval := a.config.CheckInterval
         if a.config.RequestJitter > 0 {
             interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
@@ -228,10 +233,12 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
     }
     a.log("Agent finished")
+
+    // Remove the run from config after completion
+    a.removeRun(run.ID)
 }
 
-func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time) (bool, error) {
-    // Use the drop time as the reference for the first month.
+func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
     startDate := dropTime
     months := a.config.MonthsToCheck
     if months < 1 {
@@ -269,7 +276,6 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     }
 
-    // Filter unseen and extract full dates
     newAvails := []parser.Availability{}
     for _, av := range allAvails {
         fullDate, err := extractDateFromURL(av.BookingURL)
@@ -289,8 +295,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     }
 
-    if a.config.Mode == "alert" {
-        // Build notification with up to 3 buttons and a summary message
+    if mode == "alert" {
         notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
         for i, av := range newAvails {
             notifyAvails[i] = notifier.AvailabilityWithLink{
@@ -298,7 +303,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                 BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
             }
         }
-        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name) // <-- added museum.Name
+        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
         err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
         if err != nil {
             a.log("Failed to send notification: %v", err)
@@ -306,8 +311,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
             a.log("Notification sent for %d dates", len(newAvails))
         }
         return false, nil
-    } else if a.config.Mode == "booking" {
-        // Try to book
+    } else if mode == "booking" {
         bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
         for _, av := range newAvails {
             for _, prefDay := range a.config.PreferredDays {
@@ -316,7 +320,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                     if err := bookerInst.Book(ctx, av); err != nil {
                         a.log("Booking failed for %s: %v", av.Date, err)
                         _ = ntfy.SendNotification(
-                            fmt.Sprintf("%s - %s - Booking Failed", site.Name, museum.Name),    // <-- added site name
+                            fmt.Sprintf("%s - %s - Booking Failed", site.Name, museum.Name),
                             fmt.Sprintf("Failed to book %s: %v", av.Date, err),
                             notifier.PriorityHigh,
                             nil,
@@ -325,7 +329,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
                     } else {
                         a.log("Booking successful for %s", av.Date)
                         _ = ntfy.SendNotification(
-                            fmt.Sprintf("%s - %s - Booking Successful", site.Name, museum.Name), // <-- added site name
+                            fmt.Sprintf("%s - %s - Booking Successful", site.Name, museum.Name),
                             fmt.Sprintf("Successfully booked %s", av.Date),
                             notifier.PriorityUrgent,
                             nil,
@@ -360,6 +364,20 @@ func (a *Agent) log(format string, args ...interface{}) {
     select {
     case a.logCh <- msg:
     default:
+    }
+}
+
+func (a *Agent) removeRun(runID string) {
+    // Find and remove the run from the config
+    newRuns := []config.ScheduledRun{}
+    for _, r := range a.config.ScheduledRuns {
+        if r.ID != runID {
+            newRuns = append(newRuns, r)
+        }
+    }
+    a.config.ScheduledRuns = newRuns
+    if err := config.SaveConfig("configs/config.yaml", a.config); err != nil {
+        a.log("Failed to remove run from config: %v", err)
     }
 }
 
