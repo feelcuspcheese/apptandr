@@ -33,8 +33,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('save-admin-config').addEventListener('click', saveAdminConfig);
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
+        // Wait for config to be loaded
+        if (!currentConfig) {
+            M.toast({html: 'Config still loading, please wait...', classes: 'orange'});
+            return;
+        }
         document.getElementById('schedule-panel').style.display = 'block';
-        populateScheduleSiteSelect(); // ensure site dropdown is filled
+        populateScheduleSiteSelect();
         // Set default datetime (tomorrow 09:00)
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
@@ -47,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
-    // Schedule site change listener
     const scheduleSiteSelect = document.getElementById('schedule-site');
     scheduleSiteSelect.addEventListener('change', () => populateScheduleMuseums());
 
@@ -395,7 +399,8 @@ function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
     if (!siteSelect) return;
     siteSelect.innerHTML = '';
-    // Use the currentConfig which should be loaded
+    const siteKeys = Object.keys(currentConfig.Sites);
+    console.log('Populating site select, found sites:', siteKeys); // DEBUG
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
