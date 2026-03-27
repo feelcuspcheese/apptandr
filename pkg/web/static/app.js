@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('confirm-schedule').addEventListener('click', scheduleRun);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
-    document.getElementById('restart-btn').addEventListener('click', restartAgent);
+    // document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
     const scheduleSiteSelect = document.getElementById('schedule-site');
     scheduleSiteSelect.addEventListener('change', () => populateScheduleMuseums());
