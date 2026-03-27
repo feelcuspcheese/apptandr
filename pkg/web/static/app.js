@@ -1,6 +1,8 @@
 let ws;
 let currentConfig = null;
 let activeSite = 'spl';
+let scheduledRunTime = null;   // store scheduled drop time (Date)
+let statusTimer = null;        // timer to check if run started
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -47,10 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
 function switchSite(site) {
     activeSite = site;
     // Update button styles
-    document.getElementById('btn-spl').classList.toggle('blue-grey-darken-1', site === 'spl');
-    document.getElementById('btn-spl').classList.toggle('blue-grey-lighten-2', site !== 'spl');
-    document.getElementById('btn-kcls').classList.toggle('blue-grey-darken-1', site === 'kcls');
-    document.getElementById('btn-kcls').classList.toggle('blue-grey-lighten-2', site !== 'kcls');
+    const splBtn = document.getElementById('btn-spl');
+    const kclsBtn = document.getElementById('btn-kcls');
+    if (site === 'spl') {
+        splBtn.classList.add('active');
+        kclsBtn.classList.remove('active');
+    } else {
+        kclsBtn.classList.add('active');
+        splBtn.classList.remove('active');
+    }
 
     // Update email requirement: SPL requires email, KCLS does not
     const emailField = document.getElementById('login-email');
@@ -69,7 +76,7 @@ function switchSite(site) {
     renderMuseumPills();
 }
 
-// --- Status polling ---
+// --- Status polling (still needed for running state) ---
 function startStatusPolling() {
     setInterval(async () => {
         try {
@@ -78,17 +85,28 @@ function startStatusPolling() {
             const statusSpan = document.getElementById('status-text');
             const dropInfoSpan = document.getElementById('drop-time-info');
             if (status.running) {
+                // Agent is currently running – override any scheduled display
                 statusSpan.textContent = 'Status: Running';
                 if (status.dropTime) {
                     const dropDate = new Date(status.dropTime);
                     const localStr = dropDate.toLocaleString();
-                    dropInfoSpan.textContent = `Scheduled: ${localStr}`;
+                    dropInfoSpan.textContent = `Started: ${localStr}`;
                 } else {
                     dropInfoSpan.textContent = '';
                 }
+                // Clear any scheduled state
+                scheduledRunTime = null;
+                if (statusTimer) clearTimeout(statusTimer);
             } else {
-                statusSpan.textContent = 'Status: Idle';
-                dropInfoSpan.textContent = '';
+                // Not running – check if we have a scheduled run
+                if (scheduledRunTime && scheduledRunTime > new Date()) {
+                    statusSpan.textContent = 'Status: Scheduled';
+                    const localStr = scheduledRunTime.toLocaleString();
+                    dropInfoSpan.textContent = `Scheduled: ${localStr}`;
+                } else {
+                    statusSpan.textContent = 'Status: Idle';
+                    dropInfoSpan.textContent = '';
+                }
             }
         } catch (err) {
             console.error('Status polling error:', err);
@@ -355,7 +373,6 @@ async function saveAdminConfig() {
         PreferredSlug: currentConfig?.Sites['kcls']?.PreferredSlug || '',
     };
 
-    // Send two separate requests (or one request with both)
     const splPayload = { siteKey: 'spl', site: splSite };
     const kclsPayload = { siteKey: 'kcls', site: kclsSite };
 
@@ -382,6 +399,9 @@ async function runNow() {
     const res = await fetch('/api/run-now', { method: 'POST' });
     if (res.ok) {
         M.toast({html: 'Agent started, drop in 30 seconds'});
+        // Clear any scheduled state because run now overrides
+        scheduledRunTime = null;
+        if (statusTimer) clearTimeout(statusTimer);
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -401,8 +421,21 @@ async function schedule() {
         body: JSON.stringify({ dropTime: dateTime, timezone })
     });
     if (res.ok) {
-        M.toast({html: 'Agent scheduled'});
+        const data = await res.json();
+        const dropTime = new Date(data.dropTime);
+        scheduledRunTime = dropTime;
+        M.toast({html: `Agent scheduled for ${dropTime.toLocaleString()}`});
         document.getElementById('schedule-panel').style.display = 'none';
+        // Start a timer to check when the agent should start (for status display)
+        if (statusTimer) clearTimeout(statusTimer);
+        const now = new Date();
+        const delay = dropTime - now;
+        if (delay > 0) {
+            statusTimer = setTimeout(() => {
+                // The agent should start soon; we'll rely on status polling to catch it.
+                // No action needed.
+            }, delay);
+        }
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -413,6 +446,9 @@ async function stopAgent() {
     const res = await fetch('/api/stop', { method: 'POST' });
     const data = await res.json();
     M.toast({html: data.status});
+    // Clear scheduled state because agent stopped
+    scheduledRunTime = null;
+    if (statusTimer) clearTimeout(statusTimer);
 }
 
 async function restartAgent() {
@@ -430,6 +466,12 @@ function connectWebSocket() {
         line.textContent = `[${timestamp}] ${event.data}`;
         logsDiv.appendChild(line);
         logsDiv.scrollTop = logsDiv.scrollHeight;
+
+        // If we see "Agent starting", clear the scheduled state because it has started.
+        if (event.data.includes('Agent starting')) {
+            scheduledRunTime = null;
+            if (statusTimer) clearTimeout(statusTimer);
+        }
     };
     ws.onclose = () => {
         setTimeout(connectWebSocket, 3000);
