@@ -477,8 +477,9 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        await loadConfig();                // wait for config to reload
-        loadScheduledRuns();               // then refresh list
+        // Reload config to get the new run and then refresh list
+        await loadConfig();
+        loadScheduledRuns();
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -497,6 +498,10 @@ async function restartAgent() {
 }
 
 async function loadScheduledRuns() {
+    if (!currentConfig) {
+        console.warn('loadScheduledRuns called before config loaded');
+        return;
+    }
     try {
         const res = await fetch('/api/runs');
         const runs = await res.json();
@@ -507,9 +512,8 @@ async function loadScheduledRuns() {
         }
         let html = '<ul class="collection">';
         for (const run of runs) {
-            // Use the currentConfig to resolve names
-            const site = currentConfig?.Sites[run.site_key]?.Name || run.site_key;
-            const museum = currentConfig?.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
+            const site = currentConfig.Sites[run.site_key]?.Name || run.site_key;
+            const museum = currentConfig.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
             const dropTime = new Date(run.drop_time).toLocaleString();
             html += `
                 <li class="collection-item">
