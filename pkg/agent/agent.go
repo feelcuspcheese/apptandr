@@ -214,9 +214,13 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
             a.log("Check error: %v", err)
         }
         if stop {
+            if run.Mode == "alert" {
+            a.log("Alert sent, stopping checks")
+            } else {
             a.log("Booking successful, stopping checks")
-            break
         }
+    break
+    }
 
         // Increment counter for rest cycle (only if window is long)
         if restEnabled {
