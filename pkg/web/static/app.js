@@ -494,7 +494,7 @@ async function stopAgent() {
 
 async function restartAgent() {
     await stopAgent();
-    setTimeout(() => runNow(), 500);
+    M.toast({html: 'Agent stopped. Use Run Now or Schedule to start a new run.'});
 }
 
 async function loadScheduledRuns() {
