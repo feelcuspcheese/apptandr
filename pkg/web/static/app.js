@@ -412,6 +412,12 @@ function populateScheduleSiteSelect() {
         siteSelect.appendChild(option);
     }
     if (siteSelect.options.length > 0) {
+        // Reinitialize Materialize select
+        if (typeof M !== 'undefined' && M.FormSelect) {
+            const instance = M.FormSelect.getInstance(siteSelect);
+            if (instance) instance.destroy();
+            M.FormSelect.init(siteSelect);
+        }
         populateScheduleMuseums();
     } else {
         console.warn('No sites found in config');
@@ -429,16 +435,22 @@ function populateScheduleMuseums() {
         option.disabled = true;
         option.textContent = 'No museums configured';
         museumSelect.appendChild(option);
-        return;
+    } else {
+        for (const [slug, m] of Object.entries(site.Museums)) {
+            const option = document.createElement('option');
+            option.value = slug;
+            option.textContent = m.Name || slug;
+            museumSelect.appendChild(option);
+        }
+        if (site.PreferredSlug && museumSelect.querySelector(`option[value="${site.PreferredSlug}"]`)) {
+            museumSelect.value = site.PreferredSlug;
+        }
     }
-    for (const [slug, m] of Object.entries(site.Museums)) {
-        const option = document.createElement('option');
-        option.value = slug;
-        option.textContent = m.Name || slug;
-        museumSelect.appendChild(option);
-    }
-    if (site.PreferredSlug && museumSelect.querySelector(`option[value="${site.PreferredSlug}"]`)) {
-        museumSelect.value = site.PreferredSlug;
+    // Reinitialize Materialize select
+    if (typeof M !== 'undefined' && M.FormSelect) {
+        const instance = M.FormSelect.getInstance(museumSelect);
+        if (instance) instance.destroy();
+        M.FormSelect.init(museumSelect);
     }
 }
 
