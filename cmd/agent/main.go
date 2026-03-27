@@ -3,8 +3,9 @@ package main
 import (
     "agent/pkg/agent"
     "agent/pkg/config"
-    "context"
+    "agent/pkg/web"
     "flag"
+    "log"
     "os"
     "os/signal"
     "syscall"
@@ -38,10 +39,22 @@ func main() {
             logger.Fatal(err)
         }
     } else {
-        // Standalone mode: create a single run using the current config
+        // Standalone mode: create a single run for today's strike time
         logger.Info("Starting in standalone mode")
 
-        // Use the active site and its preferred museum
+        // Compute the strike time (today or tomorrow)
+        now := time.Now()
+        strikeTimeStr := cfg.StrikeTime
+        t, err := time.Parse("15:04:05", strikeTimeStr)
+        if err != nil {
+            logger.Fatalf("Invalid strike time format: %v", err)
+        }
+        strike := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+        if strike.Before(now) {
+            strike = strike.Add(24 * time.Hour)
+        }
+
+        // Get the active site and preferred museum
         siteKey := cfg.ActiveSite
         site, ok := cfg.Sites[siteKey]
         if !ok {
@@ -49,7 +62,7 @@ func main() {
         }
         museumSlug := site.PreferredSlug
         if museumSlug == "" {
-            // Fallback to first museum
+            // fallback to first museum
             for slug := range site.Museums {
                 museumSlug = slug
                 break
@@ -59,51 +72,43 @@ func main() {
             logger.Fatal("No museum selected")
         }
 
-        // Compute drop time from strike time (today or tomorrow)
-        now := time.Now()
-        strikeTimeStr := cfg.StrikeTime
-        t, err := time.Parse("15:04:05", strikeTimeStr)
-        if err != nil {
-            logger.Fatalf("Invalid strike time format: %v", err)
-        }
-        dropTime := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
-        if dropTime.Before(now) {
-            dropTime = dropTime.Add(24 * time.Hour)
-        }
-
-        // Create a scheduled run (temporary)
+        // Create a scheduled run
         runID := uuid.New().String()
         run := config.ScheduledRun{
             ID:         runID,
             SiteKey:    siteKey,
             MuseumSlug: museumSlug,
-            DropTime:   dropTime,
+            DropTime:   strike,
             Mode:       cfg.Mode,
         }
-
-        // Save the run to config (so the agent can find it)
         cfg.ScheduledRuns = []config.ScheduledRun{run}
         if err := config.SaveConfig(*configPath, cfg); err != nil {
-            logger.Fatalf("Failed to save run: %v", err)
+            logger.Fatalf("Failed to save config: %v", err)
         }
 
-        // Create agent and start
+        // Start the agent
         ag := agent.NewAgent(cfg, logger)
-        ctx, cancel := context.WithCancel(context.Background())
-        defer cancel()
+        if err := ag.Start(runID); err != nil {
+            logger.Fatalf("Agent start failed: %v", err)
+        }
 
-        // Handle signals
+        // Handle signals to allow graceful stop
         sigChan := make(chan os.Signal, 1)
         signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
         go func() {
             <-sigChan
             logger.Info("Shutting down...")
-            cancel()
+            ag.Stop()
+            os.Exit(0)
         }()
 
-        logger.Infof("Starting agent for run %s, drop time: %v", runID, dropTime)
-        if err := ag.Start(runID); err != nil {
-            logger.Fatalf("Agent start failed: %v", err)
+        // Wait for the agent to finish
+        for {
+            if !ag.IsRunning() {
+                break
+            }
+            time.Sleep(1 * time.Second)
         }
+        logger.Info("Agent finished")
     }
 }
