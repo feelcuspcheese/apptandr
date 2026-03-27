@@ -1,13 +1,14 @@
 let ws;
 let currentConfig = null;
 let activeSite = 'spl';
+let scheduledRunTimer = null; // not used, runs are handled by server
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
     const timepicker = document.getElementById('strike-time');
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
 
-    // Initialize admin modal
+    // Initialize modals
     const adminModal = document.getElementById('admin-modal');
     if (adminModal) {
         M.Modal.init(adminModal);
@@ -34,19 +35,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('save-admin-config').addEventListener('click', saveAdminConfig);
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
-        const panel = document.getElementById('schedule-panel');
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        // Populate site and museum dropdowns when opened
-        if (panel.style.display === 'block') {
-            populateScheduleSites();
-        }
+        document.getElementById('schedule-panel').style.display = 'block';
+        populateScheduleSiteSelect();
     });
     document.getElementById('confirm-schedule').addEventListener('click', scheduleRun);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
     // Populate schedule site select when it changes
-    document.getElementById('schedule-site').addEventListener('change', populateScheduleMuseums);
+    const scheduleSiteSelect = document.getElementById('schedule-site');
+    scheduleSiteSelect.addEventListener('change', () => populateScheduleMuseums());
 
     startStatusPolling();
     connectWebSocket();
@@ -384,16 +382,16 @@ async function runNow() {
     }
 }
 
-function populateScheduleSites() {
+function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
     siteSelect.innerHTML = '';
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
-        option.textContent = site.Name || key;
+        option.textContent = site.Name || key.toUpperCase();
         siteSelect.appendChild(option);
     }
-    // Trigger initial museum population
+    // Trigger museum population for the first site
     populateScheduleMuseums();
 }
 
@@ -409,8 +407,8 @@ function populateScheduleMuseums() {
         option.textContent = m.Name || slug;
         museumSelect.appendChild(option);
     }
-    // Select the preferred slug if any
-    if (site.PreferredSlug && museumSelect.querySelector(`option[value="${site.PreferredSlug}"]`)) {
+    // Optionally set the default to the site's preferred slug
+    if (site.PreferredSlug) {
         museumSelect.value = site.PreferredSlug;
     }
 }
@@ -418,8 +416,8 @@ function populateScheduleMuseums() {
 async function scheduleRun() {
     const siteKey = document.getElementById('schedule-site').value;
     const museumSlug = document.getElementById('schedule-museum').value;
-    const mode = document.getElementById('schedule-mode').value; // select, not radio
-    const datetime = document.getElementById('schedule-time').value;
+    const mode = document.getElementById('schedule-mode').value;
+    const datetime = document.getElementById('schedule-time').value; // ID fixed
     const timezone = document.getElementById('schedule-timezone').value;
 
     if (!datetime) {
@@ -472,16 +470,16 @@ async function loadScheduledRuns() {
         }
         let html = '<ul class="collection">';
         for (const run of runs) {
-            const site = currentConfig?.Sites[run.SiteKey]?.Name || run.SiteKey;
-            const museum = currentConfig?.Sites[run.SiteKey]?.Museums[run.MuseumSlug]?.Name || run.MuseumSlug;
-            const dropTime = new Date(run.DropTime).toLocaleString();
+            const site = currentConfig?.Sites[run.site_key]?.Name || run.site_key;
+            const museum = currentConfig?.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
+            const dropTime = new Date(run.drop_time).toLocaleString();
             html += `
                 <li class="collection-item">
                     <div>
                         <strong>${site} - ${museum}</strong><br>
-                        Mode: ${run.Mode}<br>
+                        Mode: ${run.mode}<br>
                         Drop: ${dropTime}
-                        <a href="#" class="secondary-content delete-run" data-id="${run.ID}">
+                        <a href="#" class="secondary-content delete-run" data-id="${run.id}">
                             <i class="material-icons">delete</i>
                         </a>
                     </div>
