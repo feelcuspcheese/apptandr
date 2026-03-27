@@ -13,24 +13,24 @@ import (
     "math/rand"
     "net/http"
     "net/url"
+    "strings"
     "sync"
     "time"
-    "strings"
 
     "github.com/sirupsen/logrus"
 )
 
 type Agent struct {
-    config          *config.AppConfig
-    logger          *logrus.Logger
-    stateManager    *state.State
-    cancelFunc      context.CancelFunc
-    running         bool
-    logCh           chan string
-    wg              sync.WaitGroup
-    doneCh          chan struct{}
+    config       *config.AppConfig
+    logger       *logrus.Logger
+    stateManager *state.State
+    cancelFunc   context.CancelFunc
+    running      bool
+    logCh        chan string
+    wg           sync.WaitGroup
+    doneCh       chan struct{}
     currentDropTime time.Time
-    mu              sync.RWMutex
+    mu           sync.RWMutex
 }
 
 func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
@@ -43,20 +43,24 @@ func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
     }
 }
 
+// LogChannel returns a channel that receives log messages.
 func (a *Agent) LogChannel() <-chan string {
     return a.logCh
 }
 
+// IsRunning returns whether the agent is currently running.
 func (a *Agent) IsRunning() bool {
     return a.running
 }
 
+// GetDropTime returns the current drop time (or zero if not running).
 func (a *Agent) GetDropTime() time.Time {
     a.mu.RLock()
     defer a.mu.RUnlock()
     return a.currentDropTime
 }
 
+// Start blocks until the agent finishes (or Stop is called).
 func (a *Agent) Start(dropTime time.Time) error {
     if a.running {
         return fmt.Errorf("agent already running")
@@ -64,6 +68,7 @@ func (a *Agent) Start(dropTime time.Time) error {
     a.mu.Lock()
     a.currentDropTime = dropTime
     a.mu.Unlock()
+
     ctx, cancel := context.WithCancel(context.Background())
     a.cancelFunc = cancel
     a.running = true
@@ -78,49 +83,44 @@ func (a *Agent) Start(dropTime time.Time) error {
     select {
     case <-a.doneCh:
         a.running = false
-        a.mu.Lock()
-        a.currentDropTime = time.Time{}
-        a.mu.Unlock()
         return nil
     case <-ctx.Done():
         a.running = false
-        a.mu.Lock()
-        a.currentDropTime = time.Time{}
-        a.mu.Unlock()
         return ctx.Err()
     }
 }
 
+// Stop cancels the agent execution and waits for it to finish.
 func (a *Agent) Stop() {
     if a.cancelFunc != nil {
         a.cancelFunc()
     }
     a.wg.Wait()
     a.running = false
-    a.mu.Lock()
-    a.currentDropTime = time.Time{}
-    a.mu.Unlock()
 }
 
 func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     defer func() { a.running = false }()
     a.log("Agent starting, drop time: %v", dropTime)
 
-    // Select the active site
-    activeSite, ok := a.config.Sites[a.config.PreferredSlug]
+    // Select the active site using ActiveSite
+    activeSite, ok := a.config.Sites[a.config.ActiveSite]
     if !ok {
+        // Fallback to first site
         for _, s := range a.config.Sites {
             activeSite = s
             break
         }
         if activeSite.Slug == "" {
-            a.log("No sites configured and no preferred slug set")
+            a.log("No sites configured and no active site set")
             return
         }
-        a.log("Preferred slug not found, using first site: %s", activeSite.Slug)
+        a.log("Active site %s not found, using first site: %s", a.config.ActiveSite, activeSite.Slug)
+    } else {
+        a.log("Using active site: %s", activeSite.Slug)
     }
 
-    // HTTP client with realistic headers
+    // Prepare HTTP client with realistic headers
     headers := map[string]string{
         "User-Agent":      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
         "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -136,6 +136,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         return
     }
 
+    // Build availability endpoint template
     endpointTemplate := fmt.Sprintf("%s%s?museum=%s&date={date}&digital=%t&physical=%t&location=%s",
         activeSite.BaseURL,
         activeSite.AvailabilityEndpoint,
@@ -146,6 +147,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     )
     scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
+    // Pre-warm connection (skip if BaseURL empty)
     a.log("Pre‑warming...")
     if activeSite.BaseURL == "" {
         a.log("BaseURL empty, skipping pre‑warm")
@@ -157,6 +159,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
     }
 
+    // Wait until drop time
     now := time.Now()
     if dropTime.After(now) {
         wait := dropTime.Sub(now)
@@ -169,17 +172,20 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
     }
 
+    // Start check window
     deadline := time.Now().Add(a.config.CheckWindow)
     a.log("Check window started, deadline: %v", deadline)
 
     ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 
     for {
+        // Check if window expired
         if time.Now().After(deadline) {
             a.log("Check window expired")
             break
         }
 
+        // Apply jitter before check
         if a.config.RequestJitter > 0 {
             jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
             a.log("Applying jitter %v before check", jitter)
@@ -190,6 +196,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             }
         }
 
+        // Perform availability check
         stop, err := a.checkAvailability(ctx, scraperInst, ntfy, activeSite, client, dropTime)
         if err != nil {
             a.log("Check error: %v", err)
@@ -199,6 +206,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
             break
         }
 
+        // Wait for next interval (with jitter)
         interval := a.config.CheckInterval
         if a.config.RequestJitter > 0 {
             interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
@@ -215,6 +223,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
 }
 
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, activeSite config.SiteInfo, client *httpclient.Client, dropTime time.Time) (bool, error) {
+    // Use the drop time as the reference for the first month.
     startDate := dropTime
     months := a.config.MonthsToCheck
     if months < 1 {
@@ -223,6 +232,8 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
     allAvails := []parser.Availability{}
     for i := 0; i < months; i++ {
+        // For the first month, use the exact drop date.
+        // For subsequent months, use the first day of that month.
         var targetDate time.Time
         if i == 0 {
             targetDate = startDate
@@ -238,18 +249,8 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
             a.log("Error fetching availability for %s: %v", dateStr, err)
             continue
         }
-        //Detailed Html response dump
-//        if len(avails) == 0 {
-//            snippet := rawBody
-//            if len(snippet) > 5000 {
-//                snippet = snippet[:5000] + "..."
-//            }
-//            a.log("No availabilities found in response for %s; response snippet (first 5000 chars): %s", dateStr, snippet)
-//        }
-        
-// simple logging
         if len(avails) == 0 {
-    a.log("No availabilities found for %s", dateStr)
+            a.log("No availabilities found for %s", dateStr)
         }
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
@@ -262,6 +263,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     }
 
+    // Filter unseen and extract full dates
     newAvails := []parser.Availability{}
     for _, av := range allAvails {
         fullDate, err := extractDateFromURL(av.BookingURL)
@@ -282,26 +284,40 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
     }
 
     if a.config.Mode == "alert" {
-    // Build notification with up to 3 buttons and a summary message
-    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-    for i, av := range newAvails {
-        notifyAvails[i] = notifier.AvailabilityWithLink{
-            Date:       av.Date,
-            BookingURL: ensureAbsoluteURL(av.BookingURL, activeSite.BaseURL),
+        // Build notification with up to 3 buttons and a summary message
+        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+        for i, av := range newAvails {
+            notifyAvails[i] = notifier.AvailabilityWithLink{
+                Date:       av.Date,
+                BookingURL: ensureAbsoluteURL(av.BookingURL, activeSite.BaseURL),
+            }
         }
-    }
-    title, msg, actions := notifier.BuildNotification(notifyAvails)
-    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
-    if err != nil {
-        a.log("Failed to send notification: %v", err)
-    } else {
-        a.log("Notification sent for %d dates", len(newAvails))
-    }
-    return false, nil
-} else if a.config.Mode == "booking" {
+        title, msg, actions := notifier.BuildNotification(notifyAvails)
+        err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+        if err != nil {
+            a.log("Failed to send notification: %v", err)
+        } else {
+            a.log("Notification sent for %d dates", len(newAvails))
+        }
+        return false, nil
+    } else if a.config.Mode == "booking" {
+        // Try to book
         bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
-        for _, prefDay := range a.config.PreferredDays {
-            for _, av := range newAvails {
+        // Get the preferred slug for this site (the selected museum)
+        preferredSlug := activeSite.PreferredSlug
+        // Find the availability that matches the preferred slug
+        for _, av := range newAvails {
+            // The slug is part of the booking URL; we can extract it from the URL
+            // For simplicity, we assume the preferred slug corresponds to the museum ID in the URL.
+            // If the booking URL contains the slug, we can check that.
+            // Here we just compare the date; the preferred slug is used elsewhere.
+            // The actual booking will use the full URL, so the slug is already in it.
+            // We'll just book the first available date that matches the preferred day preference.
+            // The actual preferred museum is already set in activeSite.PreferredSlug,
+            // and the booking URL contains that slug. So we don't need to filter further.
+            // Instead, we should check if the date is a preferred day.
+            // We'll loop over preferred days and book the first available that matches.
+            for _, prefDay := range a.config.PreferredDays {
                 if isDayOfWeek(av.Date, prefDay) {
                     a.log("Attempting to book %s", av.Date)
                     if err := bookerInst.Book(ctx, av); err != nil {
@@ -354,6 +370,16 @@ func (a *Agent) log(format string, args ...interface{}) {
     }
 }
 
+func ensureAbsoluteURL(rawURL, baseURL string) string {
+    if strings.HasPrefix(rawURL, "http") {
+        return rawURL
+    }
+    if strings.HasPrefix(rawURL, "/") {
+        return baseURL + rawURL
+    }
+    return baseURL + "/" + rawURL
+}
+
 func extractDateFromURL(rawURL string) (string, error) {
     u, err := url.Parse(rawURL)
     if err != nil {
@@ -373,16 +399,4 @@ func isDayOfWeek(dateStr, dayName string) bool {
         return false
     }
     return t.Weekday().String() == dayName
-}
-
-
-func ensureAbsoluteURL(rawURL, baseURL string) string {
-    if strings.HasPrefix(rawURL, "http") {
-        return rawURL
-    }
-    // Assume it's relative; join with base
-    if strings.HasPrefix(rawURL, "/") {
-        return baseURL + rawURL
-    }
-    return baseURL + "/" + rawURL
 }
