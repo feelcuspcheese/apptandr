@@ -103,22 +103,30 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     defer func() { a.running = false }()
     a.log("Agent starting, drop time: %v", dropTime)
 
-    // Select the active site using ActiveSite
-    activeSite, ok := a.config.Sites[a.config.ActiveSite]
+    // Get the active site configuration
+    activeSiteKey := a.config.ActiveSite
+    site, ok := a.config.Sites[activeSiteKey]
     if !ok {
-        // Fallback to first site
-        for _, s := range a.config.Sites {
-            activeSite = s
+        a.log("Active site %s not found", activeSiteKey)
+        return
+    }
+
+    // Get the preferred museum slug for this site
+    preferredSlug := site.PreferredSlug
+    if preferredSlug == "" {
+        // Fallback to first museum in the site
+        for slug := range site.Museums {
+            preferredSlug = slug
             break
         }
-        if activeSite.Slug == "" {
-            a.log("No sites configured and no active site set")
-            return
-        }
-        a.log("Active site %s not found, using first site: %s", a.config.ActiveSite, activeSite.Slug)
-    } else {
-        a.log("Using active site: %s", activeSite.Slug)
     }
+    museum, ok := site.Museums[preferredSlug]
+    if !ok {
+        a.log("Preferred museum %s not found for site %s", preferredSlug, activeSiteKey)
+        return
+    }
+
+    a.log("Using site: %s, museum: %s (slug: %s)", activeSiteKey, museum.Name, museum.Slug)
 
     // Prepare HTTP client with realistic headers
     headers := map[string]string{
@@ -127,7 +135,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "Connection":      "keep-alive",
-        "Referer":         activeSite.BaseURL + "/passes/" + activeSite.Slug,
+        "Referer":         site.BaseURL + "/passes/" + museum.Slug,
         "X-Requested-With": "XMLHttpRequest",
     }
     client, err := httpclient.NewClient(headers, 30*time.Second)
@@ -138,21 +146,21 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
 
     // Build availability endpoint template
     endpointTemplate := fmt.Sprintf("%s%s?museum=%s&date={date}&digital=%t&physical=%t&location=%s",
-        activeSite.BaseURL,
-        activeSite.AvailabilityEndpoint,
-        activeSite.MuseumID,
-        activeSite.Digital,
-        activeSite.Physical,
-        activeSite.Location,
+        site.BaseURL,
+        site.AvailabilityEndpoint,
+        museum.MuseumID,
+        site.Digital,
+        site.Physical,
+        site.Location,
     )
     scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
-    // Pre-warm connection (skip if BaseURL empty)
+    // Pre-warm connection
     a.log("Pre‑warming...")
-    if activeSite.BaseURL == "" {
+    if site.BaseURL == "" {
         a.log("BaseURL empty, skipping pre‑warm")
     } else {
-        if err := a.preWarm(client, activeSite.BaseURL); err != nil {
+        if err := a.preWarm(client, site.BaseURL); err != nil {
             a.log("Pre‑warm failed: %v", err)
         } else {
             a.log("Pre‑warm completed")
@@ -197,7 +205,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
         }
 
         // Perform availability check
-        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, activeSite, client, dropTime)
+        stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, dropTime)
         if err != nil {
             a.log("Check error: %v", err)
         }
@@ -222,7 +230,7 @@ func (a *Agent) run(ctx context.Context, dropTime time.Time) {
     a.log("Agent finished")
 }
 
-func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, activeSite config.SiteInfo, client *httpclient.Client, dropTime time.Time) (bool, error) {
+func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time) (bool, error) {
     // Use the drop time as the reference for the first month.
     startDate := dropTime
     months := a.config.MonthsToCheck
@@ -232,8 +240,6 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
     allAvails := []parser.Availability{}
     for i := 0; i < months; i++ {
-        // For the first month, use the exact drop date.
-        // For subsequent months, use the first day of that month.
         var targetDate time.Time
         if i == 0 {
             targetDate = startDate
@@ -289,7 +295,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         for i, av := range newAvails {
             notifyAvails[i] = notifier.AvailabilityWithLink{
                 Date:       av.Date,
-                BookingURL: ensureAbsoluteURL(av.BookingURL, activeSite.BaseURL),
+                BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
             }
         }
         title, msg, actions := notifier.BuildNotification(notifyAvails)
@@ -302,8 +308,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     } else if a.config.Mode == "booking" {
         // Try to book
-        bookerInst := booker.NewBooker(client, activeSite, a.stateManager, a.logger)
-        // Loop over preferred days and book the first available that matches.
+        bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
         for _, av := range newAvails {
             for _, prefDay := range a.config.PreferredDays {
                 if isDayOfWeek(av.Date, prefDay) {
