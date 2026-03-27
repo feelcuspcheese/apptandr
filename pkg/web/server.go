@@ -381,11 +381,17 @@ func (rs *runScheduler) checkRuns() {
     if rs.server.agent.IsRunning() {
         return
     }
+    // Reload config from disk to get the latest runs (ensures deletion is respected)
+    cfg, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        rs.server.logger.WithError(err).Error("Failed to reload config in scheduler")
+        return
+    }
     now := time.Now()
-    for _, run := range rs.server.cfg.ScheduledRuns {
+    for _, run := range cfg.ScheduledRuns {
         if run.DropTime.Before(now) || run.DropTime.Equal(now) {
-            // Verify run still valid
-            if site, ok := rs.server.cfg.Sites[run.SiteKey]; !ok {
+            // Verify run is still valid
+            if site, ok := cfg.Sites[run.SiteKey]; !ok {
                 rs.server.logger.WithField("run_id", run.ID).Warn("Run site not found, removing")
                 rs.deleteRunByID(run.ID)
                 continue
@@ -395,6 +401,9 @@ func (rs *runScheduler) checkRuns() {
                 continue
             }
             rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
+            // Update the server's config to the reloaded one (keeps everything in sync)
+            rs.server.cfg = cfg
+            rs.server.agent = agent.NewAgent(cfg, rs.server.logger)
             if err := rs.server.agent.Start(run.ID); err != nil {
                 rs.server.logger.WithError(err).Error("Failed to start scheduled run")
                 rs.deleteRunByID(run.ID)
