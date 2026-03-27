@@ -42,7 +42,6 @@ func (s *Server) setupRoutes() {
     s.router = gin.New()
     s.router.Use(gin.Recovery())
 
-    // Serve static files
     staticSub, err := fs.Sub(staticFS, "static")
     if err != nil {
         panic(err)
@@ -75,16 +74,14 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
-// --- Handlers ---
-
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
 }
 
 func (s *Server) updateAdminConfig(c *gin.Context) {
     var req struct {
-        Site string           `json:"site"` // "spl" or "kcls"
-        SiteConfig config.SiteInfo `json:"siteConfig"`
+        SiteKey string        `json:"siteKey"`
+        Site    config.Site `json:"site"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -97,8 +94,8 @@ func (s *Server) updateAdminConfig(c *gin.Context) {
         return
     }
 
-    // Update the specific site's configuration
-    existing.Sites[req.Site] = req.SiteConfig
+    // Update the specific site
+    existing.Sites[req.SiteKey] = req.Site
 
     if err := config.SaveConfig("configs/config.yaml", existing); err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -113,19 +110,19 @@ func (s *Server) updateAdminConfig(c *gin.Context) {
 
 func (s *Server) updateUserConfig(c *gin.Context) {
     var req struct {
-        ActiveSite     string        `json:"activeSite"`
-        PreferredSlug  string        `json:"preferredSlug"`
-        Mode           string        `json:"mode"`
-        PreferredDays  []string      `json:"preferredDays"`
-        StrikeTime     string        `json:"strikeTime"`
-        CheckWindow    time.Duration `json:"checkWindow"`
-        CheckInterval  time.Duration `json:"checkInterval"`
-        RequestJitter  time.Duration `json:"requestJitter"`
-        MonthsToCheck  int           `json:"monthsToCheck"`
-        NtfyTopic      string        `json:"ntfyTopic"`
-        LoginUsername  string        `json:"loginUsername"`
-        LoginPassword  string        `json:"loginPassword"`
-        LoginEmail     string        `json:"loginEmail"`
+        ActiveSite     string          `json:"activeSite"`
+        PreferredSlug  string          `json:"preferredSlug"`
+        Mode           string          `json:"mode"`
+        PreferredDays  []string        `json:"preferredDays"`
+        StrikeTime     string          `json:"strikeTime"`
+        CheckWindow    time.Duration   `json:"checkWindow"`
+        CheckInterval  time.Duration   `json:"checkInterval"`
+        RequestJitter  time.Duration   `json:"requestJitter"`
+        MonthsToCheck  int             `json:"monthsToCheck"`
+        NtfyTopic      string          `json:"ntfyTopic"`
+        LoginUsername  string          `json:"loginUsername"`
+        LoginPassword  string          `json:"loginPassword"`
+        LoginEmail     string          `json:"loginEmail"`
     }
     if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -149,7 +146,7 @@ func (s *Server) updateUserConfig(c *gin.Context) {
     existing.MonthsToCheck = req.MonthsToCheck
     existing.NtfyTopic = req.NtfyTopic
 
-    // Update the active site's preferred slug and login credentials
+    // Update the active site's preferred slug
     if site, ok := existing.Sites[req.ActiveSite]; ok {
         site.PreferredSlug = req.PreferredSlug
         site.LoginForm.Username = req.LoginUsername
@@ -158,15 +155,13 @@ func (s *Server) updateUserConfig(c *gin.Context) {
         existing.Sites[req.ActiveSite] = site
     }
 
-    // Also update credentials for the other site (if they share the same credentials)
-    // For simplicity, we'll update both sites' credentials (assuming they are the same).
-    // If they differ, the admin can override them in the admin modal.
-    for _, site := range existing.Sites {
-        if site.Slug != req.ActiveSite {
+    // Also update the other site's credentials (if they are the same)
+    for k, site := range existing.Sites {
+        if k != req.ActiveSite {
             site.LoginForm.Username = req.LoginUsername
             site.LoginForm.Password = req.LoginPassword
             site.LoginForm.Email = req.LoginEmail
-            existing.Sites[site.Slug] = site
+            existing.Sites[k] = site
         }
     }
 
