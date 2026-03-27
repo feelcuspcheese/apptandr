@@ -85,7 +85,7 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
-// --- Handlers (unchanged from previous version, but all use of fmt has been removed or replaced) ---
+// --- Handlers (unchanged except schedule validation) ---
 
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
@@ -186,7 +186,6 @@ func (s *Server) updateUserConfig(c *gin.Context) {
 }
 
 func (s *Server) runNow(c *gin.Context) {
-    // Get the current active site and preferred museum
     siteKey := s.cfg.ActiveSite
     site, ok := s.cfg.Sites[siteKey]
     if !ok {
@@ -195,7 +194,6 @@ func (s *Server) runNow(c *gin.Context) {
     }
     museumSlug := site.PreferredSlug
     if museumSlug == "" {
-        // fallback to first museum
         for slug := range site.Museums {
             museumSlug = slug
             break
@@ -244,6 +242,17 @@ func (s *Server) schedule(c *gin.Context) {
         return
     }
 
+    // Validate site and museum exist
+    site, ok := s.cfg.Sites[req.SiteKey]
+    if !ok {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "site not found"})
+        return
+    }
+    if _, ok := site.Museums[req.MuseumSlug]; !ok {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "museum not found in site"})
+        return
+    }
+
     loc, err := time.LoadLocation(req.Timezone)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timezone"})
@@ -252,6 +261,12 @@ func (s *Server) schedule(c *gin.Context) {
     t, err := time.ParseInLocation("2006-01-02T15:04", req.DropTime, loc)
     if err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid datetime format, use YYYY-MM-DDTHH:MM"})
+        return
+    }
+
+    // Ensure drop time is in the future
+    if t.Before(time.Now()) {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "drop time must be in the future"})
         return
     }
 
@@ -368,13 +383,41 @@ func (rs *runScheduler) checkRuns() {
     now := time.Now()
     for _, run := range rs.server.cfg.ScheduledRuns {
         if run.DropTime.Before(now) || run.DropTime.Equal(now) {
+            // Verify run is still valid (site and museum exist)
+            if site, ok := rs.server.cfg.Sites[run.SiteKey]; !ok {
+                rs.server.logger.WithField("run_id", run.ID).Warn("Run site not found, removing")
+                rs.deleteRunByID(run.ID)
+                continue
+            } else if _, ok := site.Museums[run.MuseumSlug]; !ok {
+                rs.server.logger.WithField("run_id", run.ID).Warn("Run museum not found, removing")
+                rs.deleteRunByID(run.ID)
+                continue
+            }
             rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
             if err := rs.server.agent.Start(run.ID); err != nil {
                 rs.server.logger.WithError(err).Error("Failed to start scheduled run")
+                // Remove the run if it failed to start (invalid run)
+                rs.deleteRunByID(run.ID)
             }
             break // only start one at a time
         }
     }
+}
+
+func (rs *runScheduler) deleteRunByID(runID string) {
+    existing, err := config.LoadConfig("configs/config.yaml")
+    if err != nil {
+        return
+    }
+    newRuns := []config.ScheduledRun{}
+    for _, r := range existing.ScheduledRuns {
+        if r.ID != runID {
+            newRuns = append(newRuns, r)
+        }
+    }
+    existing.ScheduledRuns = newRuns
+    _ = config.SaveConfig("configs/config.yaml", existing)
+    rs.server.cfg = existing
 }
 
 func (rs *runScheduler) Stop() {
