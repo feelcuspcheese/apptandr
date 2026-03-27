@@ -168,21 +168,60 @@
                         <button id="run-now" class="btn waves-effect waves-light blue">▶ Run Now (in 30s)</button>
                         <button id="schedule" class="btn waves-effect waves-light indigo">📅 Schedule</button>
                         <div id="schedule-panel" style="display:none; margin-top:10px;">
-                            <input type="datetime-local" id="scheduled-time">
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <select id="schedule-site"></select>
+                                    <label>Site</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <select id="schedule-museum"></select>
+                                    <label>Museum</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <select id="schedule-mode">
+                                        <option value="alert">Alert Only</option>
+                                        <option value="booking">Automatic Booking</option>
+                                    </select>
+                                    <label>Mode</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <input type="datetime-local" id="schedule-time">
+                                    <label for="schedule-time">Date & Time</label>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="input-field col s12">
+                                    <select id="schedule-timezone">
+                                        <option value="America/Los_Angeles">PST/PDT (Los Angeles)</option>
+                                        <option value="America/Denver">MST/MDT (Denver)</option>
+                                        <option value="America/Chicago">CST/CDT (Chicago)</option>
+                                        <option value="America/New_York">EST/EDT (New York)</option>
+                                        <option value="UTC">UTC</option>
+                                        <option value="Asia/Kolkata">IST (Kolkata)</option>
+                                    </select>
+                                    <label>Timezone</label>
+                                </div>
+                            </div>
                             <button id="confirm-schedule" class="btn">Confirm Schedule</button>
                         </div>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="card-content">
+                        <span class="card-title">Scheduled Runs</span>
+                        <div id="scheduled-runs-list" style="max-height: 200px; overflow-y: auto;">
+                            <p class="grey-text">No scheduled runs.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <!-- Add after the Actions card or before logs -->
-<div class="card">
-    <div class="card-content">
-        <span class="card-title">Scheduled Runs</span>
-        <div id="scheduled-runs-list" style="max-height: 200px; overflow-y: auto;">
-            <p class="grey-text">No scheduled runs.</p>
-        </div>
-    </div>
-</div>
             <div class="col s12 m6">
                 <div class="card">
                     <div class="card-content">
