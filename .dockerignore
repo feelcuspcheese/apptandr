@@ -8,6 +8,10 @@ dist/
 *.exe
 *.test
 
+# Config files (secrets) – exclude user config, but keep default
+configs/config.yaml
+configs/*.yml
+!configs/default_config.yaml
 
 # IDE files
 .vscode/
@@ -30,3 +34,4 @@ Dockerfile
 #project files
 Requirement
 projectstructure
+
