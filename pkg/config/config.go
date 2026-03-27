@@ -5,21 +5,27 @@ import (
     "time"
 )
 
-type SiteInfo struct {
+// Museum holds data for a single museum within a site
+type Museum struct {
+    Name     string `mapstructure:"name"`
+    Slug     string `mapstructure:"slug"`      // used in UI and referer
+    MuseumID string `mapstructure:"museum_id"` // used in API
+}
+
+// Site holds configuration for a whole site (e.g., SPL, KCLS)
+type Site struct {
     Name                 string            `mapstructure:"name"`
     BaseURL              string            `mapstructure:"base_url"`
-    MuseumID             string            `mapstructure:"museum_id"`
-    Slug                 string            `mapstructure:"slug"`
-    PassID               string            `mapstructure:"pass_id"`
+    AvailabilityEndpoint string            `mapstructure:"availability_endpoint"`
     Digital              bool              `mapstructure:"digital"`
     Physical             bool              `mapstructure:"physical"`
     Location             string            `mapstructure:"location"`
-    AvailabilityEndpoint string            `mapstructure:"availability_endpoint"`
     BookingLinkSelector  string            `mapstructure:"booking_link_selector"`
     LoginForm            LoginFormConfig   `mapstructure:"login_form"`
     BookingForm          BookingFormConfig `mapstructure:"booking_form"`
     SuccessIndicator     string            `mapstructure:"success_indicator"`
-    PreferredSlug        string            `mapstructure:"preferred_slug"` // selected museum for this site
+    Museums              map[string]Museum `mapstructure:"museums"` // key = slug
+    PreferredSlug        string            `mapstructure:"preferred_slug"` // selected museum slug for this site
 }
 
 type LoginFormConfig struct {
@@ -48,18 +54,18 @@ type FormFieldConfig struct {
 }
 
 type AppConfig struct {
-    Sites          map[string]SiteInfo `mapstructure:"sites"`
-    ActiveSite     string              `mapstructure:"active_site"` // e.g., "spl" or "kcls"
-    Mode           string              `mapstructure:"mode"`
-    PreferredDays  []string            `mapstructure:"preferred_days"`
-    StrikeTime     string              `mapstructure:"strike_time"`
-    CheckWindow    time.Duration       `mapstructure:"check_window"`
-    CheckInterval  time.Duration       `mapstructure:"check_interval"`
-    PreWarmOffset  time.Duration       `mapstructure:"pre_warm_offset"`
-    NtfyTopic      string              `mapstructure:"ntfy_topic"`
-    MaxWorkers     int                 `mapstructure:"max_workers"`
-    RequestJitter  time.Duration       `mapstructure:"request_jitter"`
-    MonthsToCheck  int                 `mapstructure:"months_to_check"`
+    Sites          map[string]Site `mapstructure:"sites"` // key = site identifier (e.g., "spl", "kcls")
+    ActiveSite     string          `mapstructure:"active_site"`
+    Mode           string          `mapstructure:"mode"`
+    PreferredDays  []string        `mapstructure:"preferred_days"`
+    StrikeTime     string          `mapstructure:"strike_time"`
+    CheckWindow    time.Duration   `mapstructure:"check_window"`
+    CheckInterval  time.Duration   `mapstructure:"check_interval"`
+    PreWarmOffset  time.Duration   `mapstructure:"pre_warm_offset"`
+    NtfyTopic      string          `mapstructure:"ntfy_topic"`
+    MaxWorkers     int             `mapstructure:"max_workers"`
+    RequestJitter  time.Duration   `mapstructure:"request_jitter"`
+    MonthsToCheck  int             `mapstructure:"months_to_check"`
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
