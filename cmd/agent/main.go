@@ -21,7 +21,8 @@ func main() {
 
     logger := logrus.New()
     logger.SetFormatter(&logrus.TextFormatter{
-        FullTimestamp: true,
+        FullTimestamp:   true,
+        TimestampFormat: "2006-01-02T15:04:05.000000Z07:00", // microseconds
     })
     logger.SetLevel(logrus.InfoLevel)
 
@@ -31,14 +32,12 @@ func main() {
     }
 
     if *webMode {
-        // Start web server
         server := web.NewServer(cfg, logger)
         logger.Info("Starting web server on :8080")
         if err := server.Run(":8080"); err != nil {
             logger.Fatal(err)
         }
     } else {
-        // Standalone mode: create a single run for today's strike time
         logger.Info("Starting in standalone mode")
 
         // Compute the strike time (today or tomorrow)
