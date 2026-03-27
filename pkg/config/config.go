@@ -5,14 +5,12 @@ import (
     "time"
 )
 
-// Museum holds data for a single museum within a site
 type Museum struct {
     Name     string `mapstructure:"name"`
-    Slug     string `mapstructure:"slug"`      // used in UI and referer
-    MuseumID string `mapstructure:"museum_id"` // used in API
+    Slug     string `mapstructure:"slug"`
+    MuseumID string `mapstructure:"museum_id"`
 }
 
-// Site holds configuration for a whole site (e.g., SPL, KCLS)
 type Site struct {
     Name                 string            `mapstructure:"name"`
     BaseURL              string            `mapstructure:"base_url"`
@@ -24,8 +22,8 @@ type Site struct {
     LoginForm            LoginFormConfig   `mapstructure:"login_form"`
     BookingForm          BookingFormConfig `mapstructure:"booking_form"`
     SuccessIndicator     string            `mapstructure:"success_indicator"`
-    Museums              map[string]Museum `mapstructure:"museums"` // key = slug
-    PreferredSlug        string            `mapstructure:"preferred_slug"` // selected museum slug for this site
+    Museums              map[string]Museum `mapstructure:"museums"`
+    PreferredSlug        string            `mapstructure:"preferred_slug"`
 }
 
 type LoginFormConfig struct {
@@ -53,19 +51,28 @@ type FormFieldConfig struct {
     Selector string `mapstructure:"selector"`
 }
 
+type ScheduledRun struct {
+    ID         string    `mapstructure:"id"`
+    SiteKey    string    `mapstructure:"site_key"`
+    MuseumSlug string    `mapstructure:"museum_slug"`
+    DropTime   time.Time `mapstructure:"drop_time"`
+    Mode       string    `mapstructure:"mode"` // "alert" or "booking"
+}
+
 type AppConfig struct {
-    Sites          map[string]Site `mapstructure:"sites"` // key = site identifier (e.g., "spl", "kcls")
-    ActiveSite     string          `mapstructure:"active_site"`
-    Mode           string          `mapstructure:"mode"`
-    PreferredDays  []string        `mapstructure:"preferred_days"`
-    StrikeTime     string          `mapstructure:"strike_time"`
-    CheckWindow    time.Duration   `mapstructure:"check_window"`
-    CheckInterval  time.Duration   `mapstructure:"check_interval"`
-    PreWarmOffset  time.Duration   `mapstructure:"pre_warm_offset"`
-    NtfyTopic      string          `mapstructure:"ntfy_topic"`
-    MaxWorkers     int             `mapstructure:"max_workers"`
-    RequestJitter  time.Duration   `mapstructure:"request_jitter"`
-    MonthsToCheck  int             `mapstructure:"months_to_check"`
+    Sites          map[string]Site   `mapstructure:"sites"`
+    ActiveSite     string            `mapstructure:"active_site"`
+    Mode           string            `mapstructure:"mode"`
+    PreferredDays  []string          `mapstructure:"preferred_days"`
+    StrikeTime     string            `mapstructure:"strike_time"`
+    CheckWindow    time.Duration     `mapstructure:"check_window"`
+    CheckInterval  time.Duration     `mapstructure:"check_interval"`
+    PreWarmOffset  time.Duration     `mapstructure:"pre_warm_offset"`
+    NtfyTopic      string            `mapstructure:"ntfy_topic"`
+    MaxWorkers     int               `mapstructure:"max_workers"`
+    RequestJitter  time.Duration     `mapstructure:"request_jitter"`
+    MonthsToCheck  int               `mapstructure:"months_to_check"`
+    ScheduledRuns  []ScheduledRun    `mapstructure:"scheduled_runs"`
 }
 
 func LoadConfig(path string) (*AppConfig, error) {
@@ -80,6 +87,9 @@ func LoadConfig(path string) (*AppConfig, error) {
     }
     if cfg.MonthsToCheck == 0 {
         cfg.MonthsToCheck = 2
+    }
+    if cfg.PreWarmOffset == 0 {
+        cfg.PreWarmOffset = 30 * time.Second
     }
     return &cfg, nil
 }
@@ -98,5 +108,6 @@ func SaveConfig(path string, cfg *AppConfig) error {
     viper.Set("max_workers", cfg.MaxWorkers)
     viper.Set("request_jitter", cfg.RequestJitter)
     viper.Set("months_to_check", cfg.MonthsToCheck)
+    viper.Set("scheduled_runs", cfg.ScheduledRuns)
     return viper.WriteConfig()
 }
