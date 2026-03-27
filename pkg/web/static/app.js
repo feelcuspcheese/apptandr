@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const timepicker = document.getElementById('strike-time');
     M.Timepicker.init(timepicker, { twelveHour: false, defaultTime: '09:00' });
 
-    // Initialize modals
     const adminModal = document.getElementById('admin-modal');
     if (adminModal) {
         M.Modal.init(adminModal);
@@ -17,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadConfig();
 
-    // Attach click handlers to day chips
     const dayChips = document.querySelectorAll('#days-pills .chip');
     dayChips.forEach(chip => {
         chip.addEventListener('click', (e) => {
@@ -26,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Site toggle buttons
     document.getElementById('btn-spl').addEventListener('click', () => switchSite('spl'));
     document.getElementById('btn-kcls').addEventListener('click', () => switchSite('kcls'));
 
@@ -35,20 +32,26 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
         document.getElementById('schedule-panel').style.display = 'block';
-        populateScheduleSiteSelect(); // populate site dropdown when panel opens
+        populateScheduleSiteSelect();
+        // Set a default datetime (tomorrow at 09:00 local time)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 0, 0, 0);
+        const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+        const localISOTime = new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16);
+        document.getElementById('schedule-time').value = localISOTime;
     });
     document.getElementById('confirm-schedule').addEventListener('click', scheduleRun);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
-    // Populate schedule site select when it changes
     const scheduleSiteSelect = document.getElementById('schedule-site');
     scheduleSiteSelect.addEventListener('change', () => populateScheduleMuseums());
 
     startStatusPolling();
     connectWebSocket();
     loadScheduledRuns();
-    setInterval(loadScheduledRuns, 5000); // refresh every 5 seconds
+    setInterval(loadScheduledRuns, 5000);
 });
 
 function switchSite(site) {
@@ -383,14 +386,13 @@ async function runNow() {
 
 function populateScheduleSiteSelect() {
     const siteSelect = document.getElementById('schedule-site');
-    siteSelect.innerHTML = ''; // clear any existing options
+    siteSelect.innerHTML = '';
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
         option.textContent = site.Name || key.toUpperCase();
         siteSelect.appendChild(option);
     }
-    // If there is at least one site, populate the museum dropdown for the first one
     if (siteSelect.options.length > 0) {
         populateScheduleMuseums();
     }
@@ -408,7 +410,6 @@ function populateScheduleMuseums() {
         option.textContent = m.Name || slug;
         museumSelect.appendChild(option);
     }
-    // Optionally set the default to the site's preferred slug
     if (site.PreferredSlug && museumSelect.querySelector(`option[value="${site.PreferredSlug}"]`)) {
         museumSelect.value = site.PreferredSlug;
     }
@@ -442,7 +443,7 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        loadScheduledRuns(); // refresh list
+        loadScheduledRuns();
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -489,7 +490,6 @@ async function loadScheduledRuns() {
         }
         html += '</ul>';
         container.innerHTML = html;
-        // Attach delete handlers to the newly created delete buttons
         document.querySelectorAll('.delete-run').forEach(el => {
             el.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -498,7 +498,7 @@ async function loadScheduledRuns() {
                 const deleteRes = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
                 if (deleteRes.ok) {
                     M.toast({html: 'Run deleted'});
-                    loadScheduledRuns(); // refresh list
+                    loadScheduledRuns();
                 } else {
                     const err = await deleteRes.json();
                     M.toast({html: err.error || 'Failed to delete run', classes: 'red'});
