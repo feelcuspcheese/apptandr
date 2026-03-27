@@ -9,9 +9,9 @@ import (
     "time"
 
     "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
     "github.com/gorilla/websocket"
     "github.com/sirupsen/logrus"
-    "github.com/google/uuid"
 )
 
 //go:embed static/*
@@ -85,7 +85,7 @@ func (s *Server) Run(addr string) error {
     return s.router.Run(addr)
 }
 
-// --- Handlers (unchanged except schedule validation) ---
+// --- Handlers ---
 
 func (s *Server) getConfig(c *gin.Context) {
     c.JSON(http.StatusOK, s.cfg)
@@ -225,6 +225,7 @@ func (s *Server) runNow(c *gin.Context) {
         return
     }
     s.cfg = existing
+    s.agent = agent.NewAgent(existing, s.logger)
 
     c.JSON(http.StatusOK, gin.H{"status": "started", "dropTime": dropTime.Format(time.RFC3339)})
 }
@@ -242,7 +243,6 @@ func (s *Server) schedule(c *gin.Context) {
         return
     }
 
-    // Validate site and museum exist
     site, ok := s.cfg.Sites[req.SiteKey]
     if !ok {
         c.JSON(http.StatusBadRequest, gin.H{"error": "site not found"})
@@ -263,8 +263,6 @@ func (s *Server) schedule(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "invalid datetime format, use YYYY-MM-DDTHH:MM"})
         return
     }
-
-    // Ensure drop time is in the future
     if t.Before(time.Now()) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "drop time must be in the future"})
         return
@@ -290,6 +288,7 @@ func (s *Server) schedule(c *gin.Context) {
         return
     }
     s.cfg = existing
+    s.agent = agent.NewAgent(existing, s.logger)
 
     c.JSON(http.StatusOK, gin.H{"status": "scheduled", "dropTime": t.Format(time.RFC3339), "id": runID})
 }
@@ -317,6 +316,8 @@ func (s *Server) deleteRun(c *gin.Context) {
         return
     }
     s.cfg = existing
+    s.agent = agent.NewAgent(existing, s.logger)
+
     c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
@@ -383,7 +384,7 @@ func (rs *runScheduler) checkRuns() {
     now := time.Now()
     for _, run := range rs.server.cfg.ScheduledRuns {
         if run.DropTime.Before(now) || run.DropTime.Equal(now) {
-            // Verify run is still valid (site and museum exist)
+            // Verify run still valid
             if site, ok := rs.server.cfg.Sites[run.SiteKey]; !ok {
                 rs.server.logger.WithField("run_id", run.ID).Warn("Run site not found, removing")
                 rs.deleteRunByID(run.ID)
@@ -396,10 +397,9 @@ func (rs *runScheduler) checkRuns() {
             rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
             if err := rs.server.agent.Start(run.ID); err != nil {
                 rs.server.logger.WithError(err).Error("Failed to start scheduled run")
-                // Remove the run if it failed to start (invalid run)
                 rs.deleteRunByID(run.ID)
             }
-            break // only start one at a time
+            break
         }
     }
 }
@@ -418,6 +418,7 @@ func (rs *runScheduler) deleteRunByID(runID string) {
     existing.ScheduledRuns = newRuns
     _ = config.SaveConfig("configs/config.yaml", existing)
     rs.server.cfg = existing
+    rs.server.agent = agent.NewAgent(existing, rs.server.logger)
 }
 
 func (rs *runScheduler) Stop() {
