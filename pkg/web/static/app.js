@@ -33,14 +33,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('save-admin-config').addEventListener('click', saveAdminConfig);
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
-        // Wait for config to be loaded
         if (!currentConfig) {
             M.toast({html: 'Config still loading, please wait...', classes: 'orange'});
             return;
         }
         document.getElementById('schedule-panel').style.display = 'block';
         populateScheduleSiteSelect();
-        // Set default datetime (tomorrow 09:00)
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(9, 0, 0, 0);
@@ -407,12 +405,10 @@ function populateScheduleSiteSelect() {
     for (const [key, site] of Object.entries(currentConfig.Sites)) {
         const option = document.createElement('option');
         option.value = key;
-        // Fallback to key if name is empty or missing
         option.textContent = (site.Name && site.Name.trim()) ? site.Name : key.toUpperCase();
         siteSelect.appendChild(option);
     }
     if (siteSelect.options.length > 0) {
-        // Reinitialize Materialize select
         if (typeof M !== 'undefined' && M.FormSelect) {
             const instance = M.FormSelect.getInstance(siteSelect);
             if (instance) instance.destroy();
@@ -446,7 +442,6 @@ function populateScheduleMuseums() {
             museumSelect.value = site.PreferredSlug;
         }
     }
-    // Reinitialize Materialize select
     if (typeof M !== 'undefined' && M.FormSelect) {
         const instance = M.FormSelect.getInstance(museumSelect);
         if (instance) instance.destroy();
@@ -482,6 +477,8 @@ async function scheduleRun() {
     if (res.ok) {
         M.toast({html: 'Run scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
+        // Reload the config to get the new scheduled run
+        await loadConfig();
         loadScheduledRuns(); // refresh list
     } else {
         const err = await res.json();
@@ -511,6 +508,7 @@ async function loadScheduledRuns() {
         }
         let html = '<ul class="collection">';
         for (const run of runs) {
+            // Use the currentConfig to resolve names
             const site = currentConfig?.Sites[run.site_key]?.Name || run.site_key;
             const museum = currentConfig?.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
             const dropTime = new Date(run.drop_time).toLocaleString();
@@ -538,6 +536,7 @@ async function loadScheduledRuns() {
                 const deleteRes = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
                 if (deleteRes.ok) {
                     M.toast({html: 'Run deleted'});
+                    await loadConfig(); // refresh config after deletion
                     loadScheduledRuns();
                 } else {
                     const err = await deleteRes.json();
