@@ -381,7 +381,6 @@ func (rs *runScheduler) checkRuns() {
     if rs.server.agent.IsRunning() {
         return
     }
-    // Reload config from disk to get the latest runs (ensures deletion is respected)
     cfg, err := config.LoadConfig("configs/config.yaml")
     if err != nil {
         rs.server.logger.WithError(err).Error("Failed to reload config in scheduler")
@@ -389,7 +388,9 @@ func (rs *runScheduler) checkRuns() {
     }
     now := time.Now()
     for _, run := range cfg.ScheduledRuns {
-        if run.DropTime.Before(now) || run.DropTime.Equal(now) {
+        // Compute start time as dropTime - PreWarmOffset
+        startTime := run.DropTime.Add(-cfg.PreWarmOffset)
+        if startTime.Before(now) || startTime.Equal(now) {
             // Verify run is still valid
             if site, ok := cfg.Sites[run.SiteKey]; !ok {
                 rs.server.logger.WithField("run_id", run.ID).Warn("Run site not found, removing")
@@ -400,8 +401,7 @@ func (rs *runScheduler) checkRuns() {
                 rs.deleteRunByID(run.ID)
                 continue
             }
-            rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run")
-            // Update the server's config to the reloaded one (keeps everything in sync)
+            rs.server.logger.WithField("run_id", run.ID).Info("Starting scheduled run (pre‑warm phase)")
             rs.server.cfg = cfg
             rs.server.agent = agent.NewAgent(cfg, rs.server.logger)
             if err := rs.server.agent.Start(run.ID); err != nil {
