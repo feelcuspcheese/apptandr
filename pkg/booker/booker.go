@@ -19,21 +19,22 @@ import (
 
 type Booker struct {
     client     *httpclient.Client
-    siteConfig config.SiteInfo
+    siteConfig config.Site
+    museum     config.Museum
     state      *state.State
     logger     *logrus.Logger
 }
 
-func NewBooker(client *httpclient.Client, cfg config.SiteInfo, state *state.State, logger *logrus.Logger) *Booker {
+func NewBooker(client *httpclient.Client, site config.Site, museum config.Museum, state *state.State, logger *logrus.Logger) *Booker {
     return &Booker{
         client:     client,
-        siteConfig: cfg,
+        siteConfig: site,
+        museum:     museum,
         state:      state,
         logger:     logger,
     }
 }
 
-// Helper to decompress gzip body if needed
 func decompressBody(body []byte) ([]byte, error) {
     if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
         gzReader, err := gzip.NewReader(bytes.NewReader(body))
@@ -62,25 +63,21 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
     b.logger.WithField("url", bookingURL).Info("Starting booking flow")
 
-    // Step 1: Follow the initial booking link (may redirect to auth)
     req, err := http.NewRequestWithContext(ctx, "GET", bookingURL, nil)
     if err != nil {
         return err
     }
-    req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.siteConfig.Slug)
+    req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.museum.Slug)
     resp, err := b.client.Do(req)
     if err != nil {
         return fmt.Errorf("initial booking request failed: %w", err)
     }
     defer resp.Body.Close()
 
-    // Read the raw body
     rawBody, err := io.ReadAll(resp.Body)
     if err != nil {
         return err
     }
-
-    // Decompress if necessary
     bodyBytes, err := decompressBody(rawBody)
     if err != nil {
         return err
@@ -89,33 +86,28 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
     b.logger.WithField("final_url", resp.Request.URL.String()).Info("After initial request (including redirects)")
 
-    // Parse the HTML
     doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
     if err != nil {
         return err
     }
 
-    // Check if we need to login – look for a form with action containing "form_login"
     loginForm := doc.Find("form[action*='form_login']")
     var finalResp *http.Response
     var finalBody []byte
     if loginForm.Length() > 0 {
         b.logger.Info("Login required, performing login")
-        // Extract hidden fields from the login form
         authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
         loginURLField := loginForm.Find("input[name='login_url']").AttrOr("value", "")
         if authID == "" || loginURLField == "" {
             return fmt.Errorf("could not extract auth_id or login_url from login form")
         }
 
-        // Prepare login POST data
         loginData := url.Values{}
         loginData.Set("auth_id", authID)
         loginData.Set("login_url", loginURLField)
         loginData.Set(b.siteConfig.LoginForm.UsernameField, b.siteConfig.LoginForm.Username)
         loginData.Set(b.siteConfig.LoginForm.PasswordField, b.siteConfig.LoginForm.Password)
 
-        // Determine login action URL (may be relative)
         loginAction := loginForm.AttrOr("action", "")
         if strings.HasPrefix(loginAction, "/") {
             u, _ := url.Parse(loginAction)
@@ -140,7 +132,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         }
         defer loginResp.Body.Close()
 
-        // After login, we should be redirected to the booking page (with token)
         finalBodyRaw, err := io.ReadAll(loginResp.Body)
         if err != nil {
             return err
@@ -161,10 +152,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         b.logger.Info("No login form found – assuming already logged in")
     }
 
-    // At this point, doc should contain the booking form
     bookingForm := doc.Find("form#s-lc-bform")
     if bookingForm.Length() == 0 {
-        // Log the response snippet for debugging
         snippet := string(finalBody)
         if len(snippet) > 1000 {
             snippet = snippet[:1000] + "..."
@@ -183,7 +172,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         return fmt.Errorf("booking form not found")
     }
 
-    // Extract hidden fields
     formData := url.Values{}
     bookingForm.Find("input[type='hidden']").Each(func(i int, s *goquery.Selection) {
         name := s.AttrOr("name", "")
@@ -192,14 +180,12 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
             formData.Set(name, value)
         }
     })
-    // Add email field
     email := b.siteConfig.BookingForm.EmailField
     if email == "" {
         email = "email"
     }
     formData.Set(email, b.siteConfig.LoginForm.Email)
 
-    // Determine action URL
     action := bookingForm.AttrOr("action", "")
     if strings.HasPrefix(action, "/") {
         u, _ := url.Parse(action)
@@ -212,7 +198,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
     b.logger.WithField("action", action).Info("Submitting booking form")
 
-    // Submit booking
     submitReq, err := http.NewRequestWithContext(ctx, "POST", action, strings.NewReader(formData.Encode()))
     if err != nil {
         return err
@@ -225,7 +210,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     defer submitResp.Body.Close()
 
-    // Read and decompress the final response
     resultRaw, err := io.ReadAll(submitResp.Body)
     if err != nil {
         return err
@@ -236,7 +220,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
     }
     resultStr := string(resultDecompressed)
 
-    // Log snippet for debugging if not success
     if !(strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:")) {
         snippet := resultStr
         if len(snippet) > 500 {
@@ -245,14 +228,12 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
         b.logger.WithField("snippet", snippet).Warn("Unexpected final response")
     }
 
-    // Success indicator
     if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
         b.logger.Info("Booking successful")
         b.state.MarkSeen(avail.Date)
         return nil
     }
 
-    // Check for failure messages
     if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") {
         return fmt.Errorf("booking limit exceeded")
     }
