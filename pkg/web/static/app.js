@@ -1,8 +1,7 @@
 let ws;
 let currentConfig = null;
 let activeSite = 'spl';
-let scheduledRunTime = null;   // store scheduled drop time (Date)
-let statusTimer = null;        // timer to check if run started
+let scheduledRunList = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     M.AutoInit();
@@ -37,18 +36,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('run-now').addEventListener('click', runNow);
     document.getElementById('schedule').addEventListener('click', () => {
         document.getElementById('schedule-panel').style.display = 'block';
+        // Populate site and museum dropdowns for the schedule panel
+        populateScheduleDropdowns();
     });
-    document.getElementById('confirm-schedule').addEventListener('click', schedule);
+    document.getElementById('confirm-schedule').addEventListener('click', scheduleRun);
     document.getElementById('stop-btn').addEventListener('click', stopAgent);
     document.getElementById('restart-btn').addEventListener('click', restartAgent);
 
     startStatusPolling();
     connectWebSocket();
+    startRunListPolling();
 });
 
 function switchSite(site) {
     activeSite = site;
-    // Update button styles
     const splBtn = document.getElementById('btn-spl');
     const kclsBtn = document.getElementById('btn-kcls');
     if (site === 'spl') {
@@ -59,7 +60,6 @@ function switchSite(site) {
         splBtn.classList.remove('active');
     }
 
-    // Update email requirement: SPL requires email, KCLS does not
     const emailField = document.getElementById('login-email');
     const emailContainer = document.getElementById('email-field-container');
     if (site === 'spl') {
@@ -72,11 +72,10 @@ function switchSite(site) {
         emailField.disabled = true;
     }
 
-    // Re-render museum pills
     renderMuseumPills();
 }
 
-// --- Status polling (still needed for running state) ---
+// --- Status polling ---
 function startStatusPolling() {
     setInterval(async () => {
         try {
@@ -85,33 +84,80 @@ function startStatusPolling() {
             const statusSpan = document.getElementById('status-text');
             const dropInfoSpan = document.getElementById('drop-time-info');
             if (status.running) {
-                // Agent is currently running – override any scheduled display
                 statusSpan.textContent = 'Status: Running';
-                if (status.dropTime) {
-                    const dropDate = new Date(status.dropTime);
-                    const localStr = dropDate.toLocaleString();
-                    dropInfoSpan.textContent = `Started: ${localStr}`;
-                } else {
-                    dropInfoSpan.textContent = '';
-                }
-                // Clear any scheduled state
-                scheduledRunTime = null;
-                if (statusTimer) clearTimeout(statusTimer);
+                dropInfoSpan.textContent = '';
             } else {
-                // Not running – check if we have a scheduled run
-                if (scheduledRunTime && scheduledRunTime > new Date()) {
-                    statusSpan.textContent = 'Status: Scheduled';
-                    const localStr = scheduledRunTime.toLocaleString();
-                    dropInfoSpan.textContent = `Scheduled: ${localStr}`;
-                } else {
-                    statusSpan.textContent = 'Status: Idle';
-                    dropInfoSpan.textContent = '';
-                }
+                statusSpan.textContent = 'Status: Idle';
+                dropInfoSpan.textContent = '';
             }
         } catch (err) {
             console.error('Status polling error:', err);
         }
     }, 2000);
+}
+
+// --- Run list polling ---
+function startRunListPolling() {
+    setInterval(async () => {
+        await loadScheduledRuns();
+    }, 5000);
+}
+
+async function loadScheduledRuns() {
+    try {
+        const res = await fetch('/api/runs');
+        const runs = await res.json();
+        scheduledRunList = runs;
+        renderScheduledRuns();
+    } catch (err) {
+        console.error('Failed to load scheduled runs:', err);
+    }
+}
+
+function renderScheduledRuns() {
+    const container = document.getElementById('scheduled-runs-list');
+    if (!container) return;
+    if (scheduledRunList.length === 0) {
+        container.innerHTML = '<p class="grey-text">No scheduled runs.</p>';
+        return;
+    }
+    const ul = document.createElement('ul');
+    ul.className = 'collection';
+    for (const run of scheduledRunList) {
+        const li = document.createElement('li');
+        li.className = 'collection-item';
+        const siteName = currentConfig?.Sites[run.site_key]?.Name || run.site_key;
+        const museumName = currentConfig?.Sites[run.site_key]?.Museums[run.museum_slug]?.Name || run.museum_slug;
+        const dropTime = new Date(run.drop_time);
+        li.innerHTML = `
+            <div class="row" style="margin-bottom:0;">
+                <div class="col s8">
+                    <strong>${siteName}</strong> - ${museumName}<br>
+                    <span class="grey-text">${dropTime.toLocaleString()}</span><br>
+                    <span class="grey-text">Mode: ${run.mode}</span>
+                </div>
+                <div class="col s4 right-align">
+                    <button class="btn-flat red-text delete-run" data-id="${run.id}">Delete</button>
+                </div>
+            </div>
+        `;
+        ul.appendChild(li);
+    }
+    container.innerHTML = '';
+    container.appendChild(ul);
+    // Attach delete handlers
+    document.querySelectorAll('.delete-run').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const id = btn.dataset.id;
+            const res = await fetch(`/api/runs/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                M.toast({html: 'Run deleted'});
+                await loadScheduledRuns();
+            } else {
+                M.toast({html: 'Failed to delete run', classes: 'red'});
+            }
+        });
+    });
 }
 
 // --- Config loading and populating ---
@@ -127,8 +173,8 @@ async function loadConfig() {
         const modeRadio = document.querySelector(`input[name="mode"][value="${currentConfig.Mode}"]`);
         if (modeRadio) modeRadio.checked = true;
 
-        // Set active site toggle buttons
         switchSite(activeSite);
+        await loadScheduledRuns();
     } catch (err) {
         console.error(err);
         M.toast({html: 'Failed to load config', classes: 'red'});
@@ -136,7 +182,6 @@ async function loadConfig() {
 }
 
 function populateGlobalSettings(cfg) {
-    // SPL
     const splSite = cfg.Sites['spl'];
     if (splSite) {
         document.getElementById('base-url-spl').value = splSite.BaseURL;
@@ -145,7 +190,6 @@ function populateGlobalSettings(cfg) {
         document.getElementById('physical-spl').checked = splSite.Physical;
         document.getElementById('location-spl').value = splSite.Location;
     }
-    // KCLS
     const kclsSite = cfg.Sites['kcls'];
     if (kclsSite) {
         document.getElementById('base-url-kcls').value = kclsSite.BaseURL;
@@ -155,7 +199,6 @@ function populateGlobalSettings(cfg) {
         document.getElementById('location-kcls').value = kclsSite.Location;
     }
 
-    // Global user settings (use any site's login form)
     const anySite = Object.values(cfg.Sites)[0];
     document.getElementById('login-username').value = anySite?.LoginForm?.Username || '';
     document.getElementById('login-password').value = anySite?.LoginForm?.Password || '';
@@ -171,7 +214,6 @@ function populateGlobalSettings(cfg) {
 }
 
 function populateMuseumsLists(sites) {
-    // SPL
     const splMuseums = sites['spl']?.Museums || {};
     const splLines = [];
     for (const [slug, m] of Object.entries(splMuseums)) {
@@ -179,7 +221,6 @@ function populateMuseumsLists(sites) {
     }
     document.getElementById('museums-list-spl').value = splLines.join('\n');
 
-    // KCLS
     const kclsMuseums = sites['kcls']?.Museums || {};
     const kclsLines = [];
     for (const [slug, m] of Object.entries(kclsMuseums)) {
@@ -250,7 +291,6 @@ function renderMuseumPills() {
         chip.addEventListener('click', () => {
             document.querySelectorAll('#museums-pills .chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
-            // Update local preferred slug for the active site
             if (currentConfig && currentConfig.Sites[activeSite]) {
                 currentConfig.Sites[activeSite].PreferredSlug = slug;
             }
@@ -303,7 +343,7 @@ async function saveUserConfig() {
     });
     if (res.ok) {
         M.toast({html: 'User settings saved'});
-        await loadConfig(); // reload to reflect changes
+        await loadConfig();
     } else {
         const err = await res.json();
         M.toast({html: err.error || 'Error saving user settings', classes: 'red'});
@@ -311,7 +351,6 @@ async function saveUserConfig() {
 }
 
 async function saveAdminConfig() {
-    // Build SPL site config
     const splMuseums = parseMuseumsFromTextarea('spl');
     const splSite = {
         Name: "SPL",
@@ -342,7 +381,6 @@ async function saveAdminConfig() {
         PreferredSlug: currentConfig?.Sites['spl']?.PreferredSlug || '',
     };
 
-    // Build KCLS site config
     const kclsMuseums = parseMuseumsFromTextarea('kcls');
     const kclsSite = {
         Name: "KCLS",
@@ -399,43 +437,91 @@ async function runNow() {
     const res = await fetch('/api/run-now', { method: 'POST' });
     if (res.ok) {
         M.toast({html: 'Agent started, drop in 30 seconds'});
-        // Clear any scheduled state because run now overrides
-        scheduledRunTime = null;
-        if (statusTimer) clearTimeout(statusTimer);
+        await loadScheduledRuns(); // refresh runs list
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
     }
 }
 
-async function schedule() {
+function populateScheduleDropdowns() {
+    const siteSelect = document.getElementById('schedule-site');
+    const museumSelect = document.getElementById('schedule-museum');
+    if (!siteSelect) {
+        // Create the dropdowns if they don't exist
+        const panel = document.getElementById('schedule-panel');
+        const selectHtml = `
+            <div class="row">
+                <div class="input-field col s12">
+                    <select id="schedule-site"></select>
+                    <label>Site</label>
+                </div>
+                <div class="input-field col s12">
+                    <select id="schedule-museum"></select>
+                    <label>Museum</label>
+                </div>
+            </div>
+        `;
+        panel.insertAdjacentHTML('afterbegin', selectHtml);
+        M.FormSelect.init(document.querySelectorAll('select'));
+    }
+    // Populate sites
+    const siteSelectEl = document.getElementById('schedule-site');
+    siteSelectEl.innerHTML = '';
+    for (const [key, site] of Object.entries(currentConfig.Sites)) {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = site.Name || key;
+        siteSelectEl.appendChild(option);
+    }
+    M.FormSelect.init(siteSelectEl);
+    siteSelectEl.addEventListener('change', () => populateMuseumsForSite(siteSelectEl.value));
+    // Populate museums for the first site
+    const firstSite = Object.keys(currentConfig.Sites)[0];
+    if (firstSite) populateMuseumsForSite(firstSite);
+}
+
+function populateMuseumsForSite(siteKey) {
+    const museumSelect = document.getElementById('schedule-museum');
+    museumSelect.innerHTML = '';
+    const site = currentConfig.Sites[siteKey];
+    if (!site) return;
+    for (const [slug, museum] of Object.entries(site.Museums)) {
+        const option = document.createElement('option');
+        option.value = slug;
+        option.textContent = museum.Name || slug;
+        museumSelect.appendChild(option);
+    }
+    M.FormSelect.init(museumSelect);
+}
+
+async function scheduleRun() {
+    const siteKey = document.getElementById('schedule-site').value;
+    const museumSlug = document.getElementById('schedule-museum').value;
     const dateTime = document.getElementById('scheduled-time').value;
     const timezone = document.getElementById('timezone').value;
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+
     if (!dateTime) {
         M.toast({html: 'Please select a date and time', classes: 'red'});
         return;
     }
+    const payload = {
+        siteKey,
+        museumSlug,
+        dropTime: dateTime,
+        timezone,
+        mode,
+    };
     const res = await fetch('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dropTime: dateTime, timezone })
+        body: JSON.stringify(payload)
     });
     if (res.ok) {
-        const data = await res.json();
-        const dropTime = new Date(data.dropTime);
-        scheduledRunTime = dropTime;
-        M.toast({html: `Agent scheduled for ${dropTime.toLocaleString()}`});
+        M.toast({html: 'Agent scheduled'});
         document.getElementById('schedule-panel').style.display = 'none';
-        // Start a timer to check when the agent should start (for status display)
-        if (statusTimer) clearTimeout(statusTimer);
-        const now = new Date();
-        const delay = dropTime - now;
-        if (delay > 0) {
-            statusTimer = setTimeout(() => {
-                // The agent should start soon; we'll rely on status polling to catch it.
-                // No action needed.
-            }, delay);
-        }
+        await loadScheduledRuns();
     } else {
         const err = await res.json();
         M.toast({html: err.error, classes: 'red'});
@@ -446,9 +532,7 @@ async function stopAgent() {
     const res = await fetch('/api/stop', { method: 'POST' });
     const data = await res.json();
     M.toast({html: data.status});
-    // Clear scheduled state because agent stopped
-    scheduledRunTime = null;
-    if (statusTimer) clearTimeout(statusTimer);
+    await loadScheduledRuns();
 }
 
 async function restartAgent() {
@@ -467,10 +551,9 @@ function connectWebSocket() {
         logsDiv.appendChild(line);
         logsDiv.scrollTop = logsDiv.scrollHeight;
 
-        // If we see "Agent starting", clear the scheduled state because it has started.
         if (event.data.includes('Agent starting')) {
-            scheduledRunTime = null;
-            if (statusTimer) clearTimeout(statusTimer);
+            // Refresh runs list (the run will be removed automatically when finished)
+            loadScheduledRuns();
         }
     };
     ws.onclose = () => {
