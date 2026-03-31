@@ -1,3 +1,17 @@
 ```
-.gradle/
+# Build artifacts
+build/
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
 ```
