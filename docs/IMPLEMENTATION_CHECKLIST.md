@@ -4,11 +4,11 @@
 # Implementation Checklist
 
 ## Phase 1: Project Setup
-- [ ] Create new Android project with minSdk 26, targetSdk 34, Kotlin.
+- [ ] Create new Android project with minSdk 23, targetSdk 34, Kotlin.
 - [ ] Add Jetpack Compose dependencies (Compose BOM, Material3, etc.).
 - [ ] Add DataStore, WorkManager, AlarmManager permissions.
 - [ ] Place `booking.aar` in `app/libs/` (initially placeholder; will be built later).
-- [ ] Configure `build.gradle.kts` to include the AAR and necessary libraries.
+- [ ] Configure `build.gradle.kts` to include the AAR and necessary libraries, with NDK ABI filters for armeabi-v7a, arm64-v8a, x86, x86_64.
 - [ ] Set up `AndroidManifest.xml` with permissions, foreground service, broadcast receivers.
 
 ## Phase 2: Data Layer
@@ -76,7 +76,7 @@
 - [ ] Test scheduling (use short times, e.g., 1 minute in future).
 - [ ] Test foreground service start/stop.
 - [ ] Test log export.
-- [ ] Test on real device (Android 8+).
+- [ ] Test on real device (Android 6.0+).
 
 ## Phase 9: Build & Release
 - [ ] Set up GitHub Actions workflow (`.github/workflows/build-and-release.yml`).
