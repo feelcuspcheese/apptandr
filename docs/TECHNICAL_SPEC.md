@@ -18,7 +18,7 @@ Purpose: Detailed technical decisions, data models, and component interfaces.
 | Logging              | Timber (optional) + custom file writer | Centralised, exportable |
 | HTTP (in Go agent)   | Already implemented in Go          | No change needed |
 | Go Integration       | Gomobile AAR (built from source)   | Reuse existing code |
-| Supported Architectures | armeabi-v7a, arm64-v8a, x86, x86_64 | Universal APK supporting all major CPU architectures |
+| Supported Architectures | armeabi-v7a, arm64-v8a | ARM-only build for mobile devices (smaller APK) |
 
 ## 2. Data Models (Kotlin)
 
