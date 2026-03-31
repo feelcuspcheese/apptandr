@@ -19,9 +19,9 @@ android {
             useSupportLibrary = true
         }
         
-        // Support multiple CPU architectures for broader device compatibility
+        // Support ARM CPU architectures for mobile devices
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
     }
 

@@ -8,7 +8,7 @@
 - [ ] Add Jetpack Compose dependencies (Compose BOM, Material3, etc.).
 - [ ] Add DataStore, WorkManager, AlarmManager permissions.
 - [ ] Place `booking.aar` in `app/libs/` (initially placeholder; will be built later).
-- [ ] Configure `build.gradle.kts` to include the AAR and necessary libraries, with NDK ABI filters for armeabi-v7a, arm64-v8a, x86, x86_64.
+- [ ] Configure `build.gradle.kts` to include the AAR and necessary libraries, with NDK ABI filters for armeabi-v7a, arm64-v8a (ARM-only for mobile devices).
 - [ ] Set up `AndroidManifest.xml` with permissions, foreground service, broadcast receivers.
 
 ## Phase 2: Data Layer

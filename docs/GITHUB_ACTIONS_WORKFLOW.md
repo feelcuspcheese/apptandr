@@ -79,22 +79,20 @@ The app is configured to support:
 - **Supported CPU Architectures**: 
   - `armeabi-v7a` (32-bit ARM)
   - `arm64-v8a` (64-bit ARM)
-  - `x86` (32-bit Intel)
-  - `x86_64` (64-bit Intel)
 
-This ensures the generated universal APK can run on a wide range of devices including older phones like Pixel 6a with Android 6 and newer devices.
+This ensures the generated universal APK can run on a wide range of Android devices including older phones like Pixel 6a with Android 6 and newer devices. The build targets only ARM architectures since all Android phones use ARM-based processors.
 
 ### Architecture Configuration
 
-The `build.gradle.kts` file includes NDK ABI filters to bundle native libraries for all supported architectures:
+The `build.gradle.kts` file includes NDK ABI filters to bundle native libraries for ARM architectures:
 
 ```kotlin
 ndk {
-    abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+    abiFilters += listOf("armeabi-v7a", "arm64-v8a")
 }
 ```
 
-This produces a larger but universally compatible APK. For production, consider splitting APKs by architecture to reduce download size.
+This produces a smaller APK compared to including x86 architectures, while maintaining compatibility with all Android phones. x86 support is omitted as it's only needed for emulators and rare non-phone devices.
 
 
 ## Tag Requirement for Releases
