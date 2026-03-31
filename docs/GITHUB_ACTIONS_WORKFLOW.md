@@ -94,6 +94,62 @@ ndk {
 
 This produces a smaller APK compared to including x86 architectures, while maintaining compatibility with all Android phones. x86 support is omitted as it's only needed for emulators and rare non-phone devices.
 
+### Critical Android 16 Compatibility Requirements
+
+For the APK to install and run correctly on Android 16 devices (especially ARM64 devices like Pixel 6a), the following requirements must be met:
+
+#### 1. ARM64 Cross-Compilation with 16KB Page Alignment
+
+Android 16 mandates that native shared libraries (.so files) be aligned to 16 KB memory pages. The Go build process must include:
+
+```bash
+export GOARCH=arm64
+export GOOS=android
+export CGO_ENABLED=1
+export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
+gomobile bind -target=android -androidapi 23 -o libs/booking.aar agent/mobile
+```
+
+Without the `-Wl,-z,max-page-size=16384` flag, the APK will fail to install with `INSTALL_FAILED_INVALID_APK`.
+
+#### 2. Native Library Extraction
+
+The `AndroidManifest.xml` must explicitly set `android:extractNativeLibs="true"` to allow Go's cgo runtime to properly load native libraries:
+
+```xml
+<application
+    android:extractNativeLibs="true"
+    ... >
+```
+
+Additionally, `build.gradle.kts` must enable legacy packaging:
+
+```kotlin
+packaging {
+    jniLibs {
+        useLegacyPackaging = true
+    }
+}
+```
+
+#### 3. APK Signature Schemes
+
+For Android 16 compatibility, the APK must be signed with signature schemes v2, v3, and v4. The default Android Gradle Plugin 8.2+ handles this automatically when signing configs are properly configured.
+
+#### 4. Verification Steps
+
+After building the APK, verify it contains the correct ARM64 library:
+
+```bash
+# Check which ABI folders are present
+zipinfo -1 app-release.apk | grep "\.so$"
+# Must include: lib/arm64-v8a/libagent.so
+
+# Verify 16KB page alignment
+unzip -p app-release.apk 'lib/arm64-v8a/*.so' | readelf -l - | grep -A1 LOAD
+# PT_LOAD alignment must be 0x4000 (16384) or higher
+```
+
 
 ## Tag Requirement for Releases
 

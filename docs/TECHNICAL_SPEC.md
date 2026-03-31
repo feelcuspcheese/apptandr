@@ -18,7 +18,7 @@ Purpose: Detailed technical decisions, data models, and component interfaces.
 | Logging              | Timber (optional) + custom file writer | Centralised, exportable |
 | HTTP (in Go agent)   | Already implemented in Go          | No change needed |
 | Go Integration       | Gomobile AAR (built from source)   | Reuse existing code |
-| Supported Architectures | armeabi-v7a, arm64-v8a | ARM-only build for mobile devices (smaller APK) |
+| Supported Architectures | armeabi-v7a, arm64-v8a | ARM-only build for mobile devices (smaller APK); Android 16 requires 16KB page alignment for native libraries |
 
 ## 2. Data Models (Kotlin)
 
@@ -441,7 +441,7 @@ Build APK: ./gradlew assembleRelease
 Sign APK using secrets.
 Create GitHub release with APK and AAR as assets.
 12. Acceptance Criteria
-App installs and runs on Android 6.0+ (API 23) up to Android 16 across ARM CPU architectures (armeabi-v7a, arm64-v8a).
+App installs and runs on Android 6.0+ (API 23) up to Android 16 across ARM CPU architectures (armeabi-v7a, arm64-v8a). The APK must include properly aligned native libraries for ARM64 devices with 16KB page alignment as required by Android 16.
 
 User can configure all fields and save them persistently.
 
