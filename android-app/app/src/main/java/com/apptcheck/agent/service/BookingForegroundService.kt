@@ -31,6 +31,9 @@ class BookingForegroundService : Service() {
         // Static reference for UI to check if service is running
         var isRunning: Boolean = false
             private set
+        
+        // Action for stopping the service
+        const val ACTION_STOP_AGENT = "com.apptcheck.agent.STOP_AGENT"
     }
     
     private var currentRun: ScheduledRun? = null
@@ -41,6 +44,12 @@ class BookingForegroundService : Service() {
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Check for stop action
+        if (intent?.action == ACTION_STOP_AGENT) {
+            stopAgent()
+            return START_NOT_STICKY
+        }
+        
         if (intent == null) {
             stopSelf()
             return START_NOT_STICKY
@@ -54,10 +63,11 @@ class BookingForegroundService : Service() {
         val museumSlug = intent.getStringExtra("museum_slug") ?: ""
         val dropTimeMillis = intent.getLongExtra("drop_time", 0L)
         val mode = intent.getStringExtra("mode") ?: "alert"
+        val startNow = intent.getBooleanExtra("start_now", false)
         
         currentRun = ScheduledRun(runId, siteKey, museumSlug, dropTimeMillis, mode)
         
-        LogManager.addLog("INFO", "Starting booking service for run $runId")
+        LogManager.addLog("INFO", "Starting booking service for run $runId${if (startNow) " (immediate)" else ""}")
         
         // Start as foreground service with notification
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))

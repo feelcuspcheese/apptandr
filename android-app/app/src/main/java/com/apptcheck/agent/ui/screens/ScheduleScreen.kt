@@ -8,21 +8,42 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons.Filled
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.apptcheck.agent.data.ConfigManager
+import com.apptcheck.agent.model.ScheduledRun
+import kotlinx.coroutines.launch
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 /**
  * Schedule Screen following TECHNICAL_SPEC.md section 7.5.
  * Schedule new runs and view/delete existing scheduled runs.
+ * 
+ * Features:
+ * - Site dropdown shows both SPL and KCLS if configured in admin config
+ * - Museum dropdown updates based on selected site and shows museums configured per site
+ * - Visual feedback when schedule is confirmed and ready to trigger the agent
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleScreen() {
-    var selectedSite by remember { mutableStateOf("spl") }
-    var selectedMuseum by remember { mutableStateOf("") }
-    var selectedMode by remember { mutableStateOf("alert") }
-    var selectedDateTime by remember { mutableStateOf("") }
+fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
+    val uiState by viewModel.uiState.collectAsState()
+    val saveResult by viewModel.saveResult.collectAsState()
     
-    // Sample scheduled runs (TODO: Load from ConfigManager)
-    val scheduledRuns = remember { mutableStateListOf<ScheduledRunItem>() }
+    var selectedSite by remember { mutableStateOf(uiState.selectedSite) }
+    var selectedMuseum by remember { mutableStateOf(uiState.selectedMuseum) }
+    var selectedMode by remember { mutableStateOf(uiState.selectedMode) }
+    var selectedDateTime by remember { mutableStateOf(uiState.selectedDateTime) }
+    
+    // Update local state when UI state changes
+    LaunchedEffect(uiState) {
+        selectedSite = uiState.selectedSite
+        selectedMuseum = uiState.selectedMuseum
+        selectedMode = uiState.selectedMode
+        selectedDateTime = uiState.selectedDateTime
+    }
     
     Column(
         modifier = Modifier
@@ -35,16 +56,16 @@ fun ScheduleScreen() {
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
-        // Site Dropdown
+        // Site Dropdown - loads from admin config
         var siteExpanded by remember { mutableStateOf(false) }
-        val sites = listOf("spl", "kcls")
+        val sites = uiState.availableSites
         
         ExposedDropdownMenuBox(
             expanded = siteExpanded,
             onExpandedChange = { siteExpanded = !siteExpanded }
         ) {
             OutlinedTextField(
-                value = selectedSite,
+                value = selectedSite.uppercase(),
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Site") },
@@ -57,10 +78,12 @@ fun ScheduleScreen() {
             ) {
                 sites.forEach { site ->
                     DropdownMenuItem(
-                        text = { Text(site) },
+                        text = { Text(site.uppercase()) },
                         onClick = {
                             selectedSite = site
+                            selectedMuseum = "" // Reset museum when site changes
                             siteExpanded = false
+                            viewModel.onSiteSelected(site)
                         }
                     )
                 }
@@ -69,13 +92,9 @@ fun ScheduleScreen() {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Museum Dropdown
+        // Museum Dropdown - loads from selected site's config
         var museumExpanded by remember { mutableStateOf(false) }
-        val museums = when (selectedSite) {
-            "spl" -> listOf("seattle-art-museum", "zoo")
-            "kcls" -> listOf("kidsquest")
-            else -> emptyList()
-        }
+        val museums = uiState.availableMuseums
         
         ExposedDropdownMenuBox(
             expanded = museumExpanded,
@@ -87,7 +106,8 @@ fun ScheduleScreen() {
                 readOnly = true,
                 label = { Text("Museum") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = museumExpanded) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = museums.isNotEmpty()
             )
             ExposedDropdownMenu(
                 expanded = museumExpanded,
@@ -99,10 +119,20 @@ fun ScheduleScreen() {
                         onClick = {
                             selectedMuseum = museum
                             museumExpanded = false
+                            viewModel.onMuseumSelected(museum)
                         }
                     )
                 }
             }
+        }
+        
+        if (museums.isEmpty()) {
+            Text(
+                text = "No museums configured for this site. Please configure museums in Admin Config.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -133,6 +163,7 @@ fun ScheduleScreen() {
                         onClick = {
                             selectedMode = mode
                             modeExpanded = false
+                            viewModel.onModeSelected(mode)
                         }
                     )
                 }
@@ -144,7 +175,10 @@ fun ScheduleScreen() {
         // Date & Time Picker
         OutlinedTextField(
             value = selectedDateTime,
-            onValueChange = { selectedDateTime = it },
+            onValueChange = { 
+                selectedDateTime = it
+                viewModel.onDateTimeSelected(it)
+            },
             label = { Text("Date & Time (YYYY-MM-DD HH:MM)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
@@ -157,15 +191,44 @@ fun ScheduleScreen() {
         Button(
             onClick = {
                 if (selectedMuseum.isNotEmpty() && selectedDateTime.isNotEmpty()) {
-                    // TODO: Parse datetime and create ScheduledRun
-                    scheduledRuns.add(
-                        ScheduledRunItem(selectedSite, selectedMuseum, selectedMode, selectedDateTime)
-                    )
+                    viewModel.scheduleRun(selectedSite, selectedMuseum, selectedMode, selectedDateTime)
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = selectedMuseum.isNotEmpty() && selectedDateTime.isNotEmpty()
         ) {
             Text("Schedule")
+        }
+        
+        // Visual feedback for successful scheduling
+        if (saveResult != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (saveResult!!.success) 
+                        MaterialTheme.colorScheme.primaryContainer 
+                    else 
+                        MaterialTheme.colorScheme.errorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = if (saveResult!!.success) 
+                            "✓ Schedule confirmed! Agent will trigger at $selectedDateTime" 
+                        else 
+                            "✗ Failed to schedule: ${saveResult!!.error}",
+                        color = if (saveResult!!.success)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -177,14 +240,14 @@ fun ScheduleScreen() {
             modifier = Modifier.padding(bottom = 8.dp)
         )
         
-        if (scheduledRuns.isEmpty()) {
+        if (uiState.scheduledRuns.isEmpty()) {
             Text(
                 text = "No scheduled runs",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            scheduledRuns.forEachIndexed { index, run ->
+            uiState.scheduledRuns.forEach { run ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -198,11 +261,15 @@ fun ScheduleScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text("${run.site}/${run.museum}")
-                            Text(run.dateTime, style = MaterialTheme.typography.bodySmall)
+                            Text("${run.siteKey}/${run.museumSlug}")
+                            val dateTimeStr = LocalDateTime.ofInstant(
+                                java.time.Instant.ofEpochMilli(run.dropTimeMillis),
+                                ZoneId.systemDefault()
+                            ).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                            Text(dateTimeStr, style = MaterialTheme.typography.bodySmall)
                             Text(run.mode, style = MaterialTheme.typography.bodySmall)
                         }
-                        IconButton(onClick = { scheduledRuns.removeAt(index) }) {
+                        IconButton(onClick = { viewModel.deleteScheduledRun(run.id) }) {
                             Icon(
                                 imageVector = androidx.compose.material.icons.Icons.Filled.Delete,
                                 contentDescription = "Delete"
@@ -215,9 +282,7 @@ fun ScheduleScreen() {
     }
 }
 
-data class ScheduledRunItem(
-    val site: String,
-    val museum: String,
-    val mode: String,
-    val dateTime: String
+data class ScheduleResult(
+    val success: Boolean,
+    val error: String? = null
 )
