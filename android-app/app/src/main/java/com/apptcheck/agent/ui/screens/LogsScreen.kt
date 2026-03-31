@@ -12,6 +12,9 @@ import androidx.compose.ui.unit.dp
 import com.apptcheck.agent.data.LogManager
 import com.apptcheck.agent.model.LogEntry
 import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.material.icons.Icons.Filled
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Delete
 
 /**
  * Logs Screen following TECHNICAL_SPEC.md section 7.6.
