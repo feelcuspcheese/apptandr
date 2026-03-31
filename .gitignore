@@ -1,49 +1,85 @@
 ```
-# Dependencies
-.gradle/
-node_modules/
+# Go build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
 
-# Build artifacts
-build/
-dist/
+# Go cache and tools
+go.work.sum
+*.mod
+*.sum
+!go.mod
+!go.sum
+
+# Dependencies
+vendor/
+
+# Build directories
+bin/
+pkg/
 target/
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Logs
+# Logs and temp files
 *.log
+*.tmp
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
-# Python
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python (if co-existing)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
 venv/
 .venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git*
+.env
+.env.*
+.mypy_cache/
 .pytest_cache/
-.hypothesis/
-.coverage*
+.tox/
+
+# Node.js (if co-existing)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.nyc_output/
+coverage/
+*.lcov
+
+# Java (if co-existing)
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+build/
+!go.mod
+!go.sum
 ```
