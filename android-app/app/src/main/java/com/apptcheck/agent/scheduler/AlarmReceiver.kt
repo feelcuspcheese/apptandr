@@ -10,6 +10,8 @@ import com.apptcheck.agent.service.BookingForegroundService
  * Broadcast receiver that fires when a scheduled alarm triggers.
  * Following TECHNICAL_SPEC.md section 6 and OVERVIEW.md key flows.
  * Starts the ForegroundService which launches the Go agent.
+ * 
+ * Supports immediate start via "start_now" flag for Dashboard's Start Now button.
  */
 class AlarmReceiver : BroadcastReceiver() {
     
@@ -19,8 +21,9 @@ class AlarmReceiver : BroadcastReceiver() {
         val museumSlug = intent.getStringExtra("museum_slug") ?: return
         val dropTimeMillis = intent.getLongExtra("drop_time", 0L)
         val mode = intent.getStringExtra("mode") ?: "alert"
+        val startNow = intent.getBooleanExtra("start_now", false)
         
-        LogManager.addLog("INFO", "Alarm triggered for run $runId at site $siteKey, museum $museumSlug")
+        LogManager.addLog("INFO", "Alarm triggered for run $runId at site $siteKey, museum $museumSlug${if (startNow) " (immediate start)" else ""}")
         
         // Start the foreground service to run the booking agent
         val serviceIntent = Intent(context, BookingForegroundService::class.java).apply {
@@ -29,6 +32,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra("museum_slug", museumSlug)
             putExtra("drop_time", dropTimeMillis)
             putExtra("mode", mode)
+            putExtra("start_now", startNow)
         }
         
         // Start as foreground service (Android 8+ requires startForegroundService)

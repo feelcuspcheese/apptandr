@@ -334,9 +334,14 @@ Shows current run status (Idle / Running / Waiting)
 
 Displays countdown to next scheduled run (if any)
 
-Start Now button (creates run in 30 seconds)
+**Start Now button**: Creates a run scheduled for 30 seconds from now using the active site and preferred museum from config. Provides visual feedback:
+- "Starting agent in 30 seconds..." on success
+- "No museum configured. Please configure in Admin Config." if no museum is set
+- "Failed to start: <error>" on error
 
-Stop button (cancels current run)
+**Stop button**: Stops the currently running agent by sending a stop intent to the ForegroundService. Provides visual feedback:
+- "Stopping agent..." on success
+- "Failed to stop: <error>" on error
 
 Quick stats: active site, mode, preferred museum
 
@@ -357,10 +362,12 @@ Performance Tuning – Collapsible section with sliders/text fields for check wi
 
 Save button
 
+_Saves all settings for the currently selected site_
+
 7.4 Admin Config Screen (PIN‑protected)
 PIN: 1234 (hardcoded for MVP, can be changed later)
 
-Site selector (SPL/KCLS)
+**Site selector dropdown**: Switch between SPL and KCLS. All settings are saved per-site.
 
 For selected site:
 
@@ -374,24 +381,35 @@ Physical – Checkbox
 
 Location – TextField
 
-Museums – List view with add/delete/edit (name, slug, museumId)
+**Museums – Bulk Import Section**:
+- Multi-line text field for entering museums in format: `name:slug:id` (one per line)
+- "Parse Museums" button: Validates and parses the input, shows count of parsed museums or error message
+- "Reset to Defaults" button: Restores default museums for the selected site
+- Visual feedback showing parse result (success/error)
+- List display of currently configured museums with name, slug, and ID
 
 Login Username, Password, Email – TextFields
 
 Save button
 
-7.5 Schedule Screen
-Site dropdown
+_Saves all settings for the currently selected site_
 
-Museum dropdown (updates when site changes)
+7.5 Schedule Screen
+**Site dropdown**: Shows both SPL and KCLS options. Loads available sites from admin config.
+
+**Museum dropdown**: Dynamically populated based on selected site. Shows only museums configured for that site in admin config. Displays warning if no museums are configured.
 
 Mode dropdown
 
 Date & Time picker (must be future)
 
-Schedule button
+Schedule button (enabled only when museum and datetime are selected)
 
-List of scheduled runs (future only) with delete icon
+**Visual feedback after scheduling**:
+- Success: "✓ Schedule confirmed! Agent will trigger at <datetime>"
+- Error: "✗ Failed to schedule: <error>"
+
+List of scheduled runs (future only) with delete icon. Each run shows site/museum, formatted datetime, and mode.
 
 7.6 Logs Screen
 Scrollable text area (auto‑scroll toggle)

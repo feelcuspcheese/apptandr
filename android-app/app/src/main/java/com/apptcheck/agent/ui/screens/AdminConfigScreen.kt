@@ -2,10 +2,13 @@ package com.apptcheck.agent.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apptcheck.agent.viewmodel.AdminConfigViewModel
@@ -15,6 +18,9 @@ import kotlinx.coroutines.launch
  * Admin Config Screen following TECHNICAL_SPEC.md section 7.4.
  * PIN-protected screen for site-specific settings.
  * Integrated with AdminConfigViewModel for persistent state across navigation.
+ * 
+ * Supports configuring museums by site - museums are imported in bulk format:
+ * name:slug:id (one per line)
  */
 @Composable
 fun AdminConfigScreen(viewModel: AdminConfigViewModel = viewModel()) {
@@ -95,6 +101,11 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
     // Track sites map
     var sites by remember { mutableStateOf(adminConfig.sites) }
     
+    // Museum bulk import text field
+    var museumImportText by remember { mutableStateOf("") }
+    var importMessage by remember { mutableStateOf<String?>(null) }
+    var importSuccess by remember { mutableStateOf(false) }
+    
     // Update local state when ViewModel state changes
     LaunchedEffect(adminConfig, activeSite) {
         activeSite = adminConfig.activeSite
@@ -107,6 +118,10 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
         loginPassword = adminConfig.sites[activeSite]?.loginPassword ?: ""
         loginEmail = adminConfig.sites[activeSite]?.loginEmail ?: ""
         sites = adminConfig.sites.toMutableMap()
+        // Load current museums into import text for editing
+        museumImportText = adminConfig.sites[activeSite]?.museums?.values?.joinToString("\n") { 
+            "${it.name}:${it.slug}:${it.museumId}" 
+        } ?: ""
     }
     
     Column(
@@ -121,14 +136,37 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
-        // Site Selector
-        OutlinedTextField(
-            value = activeSite,
-            onValueChange = { activeSite = it },
-            label = { Text("Active Site") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        // Site Selector Dropdown
+        var siteExpanded by remember { mutableStateOf(false) }
+        val availableSites = listOf("spl", "kcls")
+        
+        ExposedDropdownMenuBox(
+            expanded = siteExpanded,
+            onExpandedChange = { siteExpanded = !siteExpanded }
+        ) {
+            OutlinedTextField(
+                value = activeSite,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Active Site") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = siteExpanded) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            ExposedDropdownMenu(
+                expanded = siteExpanded,
+                onDismissRequest = { siteExpanded = false }
+            ) {
+                availableSites.forEach { site ->
+                    DropdownMenuItem(
+                        text = { Text(site.uppercase()) },
+                        onClick = {
+                            activeSite = site
+                            siteExpanded = false
+                        }
+                    )
+                }
+            }
+        }
         
         Spacer(modifier = Modifier.height(16.dp))
         
@@ -185,6 +223,141 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
+        // Museums Section with Bulk Import
+        Text("Museums (Bulk Import)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "Enter museums in format: name:slug:id (one per line)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedTextField(
+            value = museumImportText,
+            onValueChange = { museumImportText = it },
+            label = { Text("Museums (one per line)") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp),
+            placeholder = { Text("Seattle Art Museum:seattle-art-museum:7f2ac5c414b2") },
+            minLines = 5,
+            maxLines = 10
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Import button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    val currentSite = sites[activeSite]
+                    if (currentSite != null) {
+                        val newMuseums = mutableMapOf<String, com.apptcheck.agent.model.Museum>()
+                        val lines = museumImportText.split("\n").filter { it.isNotBlank() }
+                        var parseError: String? = null
+                        
+                        lines.forEach { line ->
+                            val parts = line.split(":")
+                            if (parts.size >= 3) {
+                                val name = parts[0].trim()
+                                val slug = parts[1].trim()
+                                val id = parts[2].trim()
+                                if (name.isNotEmpty() && slug.isNotEmpty() && id.isNotEmpty()) {
+                                    newMuseums[slug] = com.apptcheck.agent.model.Museum(name, slug, id)
+                                } else {
+                                    parseError = "Invalid format on line: $line"
+                                }
+                            } else {
+                                parseError = "Invalid format on line: $line (expected name:slug:id)"
+                            }
+                        }
+                        
+                        if (parseError == null) {
+                            val updatedSite = currentSite.copy(museums = newMuseums)
+                            sites[activeSite] = updatedSite
+                            importMessage = "Parsed ${newMuseums.size} museums successfully"
+                            importSuccess = true
+                        } else {
+                            importMessage = parseError
+                            importSuccess = false
+                        }
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Parse Museums")
+            }
+            
+            Button(
+                onClick = {
+                    // Reset to default museums for this site
+                    museumImportText = when (activeSite) {
+                        "spl" -> "Seattle Art Museum:seattle-art-museum:7f2ac5c414b2\nWoodland Park Zoo:zoo:033bbf08993f"
+                        "kcls" -> "KidsQuest Children's Museum:kidsquest:9ec25160a8a0"
+                        else -> ""
+                    }
+                    importMessage = "Reset to defaults"
+                    importSuccess = true
+                },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Text("Reset to Defaults")
+            }
+        }
+        
+        // Import message feedback
+        if (importMessage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (importSuccess) 
+                        MaterialTheme.colorScheme.primaryContainer 
+                    else 
+                        MaterialTheme.colorScheme.errorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        importMessage!!,
+                        color = if (importSuccess)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+        
+        // Display current museums list
+        val currentMuseums = sites[activeSite]?.museums ?: emptyMap()
+        if (currentMuseums.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Current Museums (${currentMuseums.size}):", style = MaterialTheme.typography.bodyMedium)
+            currentMuseums.values.forEach { museum ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("${museum.name} (${museum.slug})", style = MaterialTheme.typography.bodySmall)
+                    Text(museum.museumId, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
         // Login Credentials
         Text("Login Credentials", style = MaterialTheme.typography.titleMedium)
         
@@ -221,7 +394,7 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
         // Save Button
         Button(
             onClick = {
-                // Update the site config with current values
+                // Update the site config with current values including parsed museums
                 val currentSite = sites[activeSite]
                 if (currentSite != null) {
                     val updatedSite = currentSite.copy(
