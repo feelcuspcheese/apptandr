@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.apptcheck.agent"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.apptcheck.agent"
         minSdk = 23
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 

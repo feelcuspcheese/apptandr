@@ -75,12 +75,12 @@ No secrets required - the workflow builds an unsigned APK. The gradlew script mu
 The app is configured to support:
 
 - **Minimum SDK**: 23 (Android 6.0 Marshmallow)
-- **Target SDK**: 34 (Android 14)
+- **Target SDK**: 36 (Android 16)
 - **Supported CPU Architectures**: 
   - `armeabi-v7a` (32-bit ARM)
   - `arm64-v8a` (64-bit ARM)
 
-This ensures the generated universal APK can run on a wide range of Android devices including older phones like Pixel 6a with Android 6 and newer devices. The build targets only ARM architectures since all Android phones use ARM-based processors.
+This ensures the generated universal APK can run on a wide range of Android devices from Android 6.0 up to Android 16, including devices like Pixel 6a. The build targets only ARM architectures since all Android phones use ARM-based processors.
 
 ### Architecture Configuration
 

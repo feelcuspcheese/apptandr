@@ -4,7 +4,7 @@
 # Implementation Checklist
 
 ## Phase 1: Project Setup
-- [ ] Create new Android project with minSdk 23, targetSdk 34, Kotlin.
+- [ ] Create new Android project with minSdk 23, targetSdk 36, Kotlin.
 - [ ] Add Jetpack Compose dependencies (Compose BOM, Material3, etc.).
 - [ ] Add DataStore, WorkManager, AlarmManager permissions.
 - [ ] Place `booking.aar` in `app/libs/` (initially placeholder; will be built later).
