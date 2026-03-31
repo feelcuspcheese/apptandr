@@ -15,8 +15,17 @@ Purpose: Test scenarios and acceptance tests.
 
 ## 3. Manual UI Tests
 - **Dashboard**: Start Now, verify countdown, logs appear, stop works.
-- **User Config**: Change all fields, save, reload, verify.
-- **Admin Config**: Enter wrong PIN, correct PIN, edit site, add museum, save, verify.
+- **User Config**: 
+  - Change all fields, save, reload, verify.
+  - Expand Performance Tuning section, verify all fields are visible without overlapping.
+  - Scroll down when Performance Tuning is expanded, verify all fields are accessible.
+  - Save configuration, verify visual feedback (success message) appears.
+  - Navigate away and back, verify saved values persist.
+- **Admin Config**: 
+  - Enter wrong PIN, correct PIN, edit site, add museum, save, verify.
+  - Scroll to bottom, verify login credentials fields are not cramped.
+  - Verify Save button is fully visible and clickable.
+  - Save configuration, verify visual feedback (success message) appears.
 - **Schedule**: Add run, delete run, verify list updates.
 - **Logs**: Auto‑scroll toggle, export, clear.
 
@@ -33,3 +42,8 @@ Purpose: Test scenarios and acceptance tests.
 | AC-8 | App survives reboot and restores scheduled runs | Manual | |
 | AC-9 | GitHub release produces signed APK | CI | |
 | AC-10 | APK installs on Android 6.0+ (API 23) up to Android 16 and works correctly with ARM CPU architectures (armeabi-v7a, arm64-v8a). The APK must include properly aligned native libraries for ARM64 devices with 16KB page alignment as required by Android 16 | Manual | |
+| AC-11 | User Config screen is scrollable when content overflows, Performance Tuning section expands without field overlap | Manual | |
+| AC-12 | Admin Config screen is scrollable, all fields including login credentials are accessible, Save button is fully visible | Manual | |
+| AC-13 | Save operations provide visual feedback (success/error message) to user | Manual | |
+| AC-14 | Saved configuration values persist when navigating between screens | Manual | |
+

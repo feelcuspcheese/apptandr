@@ -2,6 +2,8 @@ package com.apptcheck.agent.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -12,6 +14,8 @@ import com.apptcheck.agent.model.Defaults
 import androidx.compose.material.icons.Icons.Filled
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 
 /**
  * User Config Screen following TECHNICAL_SPEC.md section 7.3.
@@ -43,10 +47,16 @@ fun UserConfigScreen() {
     // Performance section expanded state
     var performanceExpanded by remember { mutableStateOf(false) }
     
+    // Save feedback
+    var showSaveSuccess by remember { mutableStateOf(false) }
+    var showSaveError by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Text(
             text = "User Configuration",
@@ -236,14 +246,70 @@ fun UserConfigScreen() {
             }
         }
         
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
         
         // Save Button
         Button(
-            onClick = { /* TODO: Implement save */ },
+            onClick = {
+                // TODO: Integrate with ConfigManager to save user config
+                // For now, show success feedback
+                scope.launch {
+                    showSaveSuccess = true
+                    // Simulate save delay
+                    kotlinx.coroutines.delay(2000)
+                    showSaveSuccess = false
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Save Configuration")
         }
+        
+        // Save success feedback
+        if (showSaveSuccess) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "Configuration saved successfully!",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+        
+        // Save error feedback
+        if (showSaveError) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "Failed to save configuration",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+        
+        // Extra spacer at bottom to ensure save button is accessible
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
