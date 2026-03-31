@@ -1,50 +1,49 @@
 ```
-# Android build artifacts
-*.aar
-*.apk
-*.dex
-*.so
-*.jar
-
-# Gradle
+# Dependencies
 .gradle/
+node_modules/
+
+# Build artifacts
 build/
-app/build/
+dist/
+target/
 
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Log Files
-*.log
-
-# Android Studio Navigation editor temp files
-.navigation/
-
-# External native build folder generated in Android Studio 2.2 and later
-.externalNativeBuild
-
-# Committed local edit settings
-*.iml
+# IDE files
+.vscode/
 .idea/
+*.swp
+*.swo
+*.tmp
 
-# Generated files
-gen/
-out/
-
-# Proguard
-proguard/
-
-# Debug
-debug/
-release/
+# Logs
+*.log
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# Temp files
-*.tmp
-*.swp
-*~
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git*
+.pytest_cache/
+.hypothesis/
+.coverage*
 ```
