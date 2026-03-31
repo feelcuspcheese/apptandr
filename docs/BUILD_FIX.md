@@ -1,67 +1,75 @@
-1	# Build Fix Documentation
-     2	
-     3	## Issue: Experimental Material3 API Compilation Errors
-     4	
-     5	### Problem
-     6	The build failed with compilation errors in `ScheduleScreen.kt` and `UserConfigScreen.kt`:
-     7	```
-     8	This material API is experimental and is likely to change or to be removed in the future.
-     9	```
-    10	
-    11	The affected APIs were:
-    12	- `ExposedDropdownMenuBox` (ScheduleScreen.kt lines 40, 78, 112)
-    13	- `ExposedDropdownMenuDefaults.TrailingIcon` (ScheduleScreen.kt lines 49, 87, 121)
-    14	- `ExposedDropdownMenu` (ScheduleScreen.kt lines 52, 90, 124)
-    15	- `FlowRow` (UserConfigScreen.kt line 88)
-    16	- `FilterChip` (UserConfigScreen.kt line 94)
-    17	
-    18	### Root Cause
-    19	Material3 components like `ExposedDropdownMenuBox`, `FlowRow`, and `FilterChip` are marked as experimental APIs in the current version of the Material3 library. Kotlin compiler treats these as errors by default when used without proper opt-in annotation.
-    20	
-    21	### Solution
-    22	Added `@OptIn(ExperimentalMaterial3Api::class)` and `@OptIn(ExperimentalFoundationApi::class)` annotations to the composables that use these experimental APIs:
-    23	
-    24	**ScheduleScreen.kt:**
-    25	```kotlin
-    26	@OptIn(ExperimentalMaterial3Api::class)
-    27	@Composable
-    28	fun ScheduleScreen() {
-    29	    // ... uses ExposedDropdownMenuBox, ExposedDropdownMenu
-    30	}
-    31	```
-    32	
-    33	**UserConfigScreen.kt:**
-    34	```kotlin
-    35	@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
-    36	@Composable
-    37	fun UserConfigScreen() {
-    38	    // ... uses FlowRow (requires ExperimentalFoundationApi), FilterChip (requires ExperimentalMaterial3Api)
-    39	}
-    40	```
-    41	
-    42	Note: `FlowRow` is from `androidx.compose.foundation.layout` and requires `@OptIn(ExperimentalFoundationApi::class)`, while `FilterChip` requires `@OptIn(ExperimentalMaterial3Api::class)`.
-    43	
-    44	### Design Alignment
-    45	This fix aligns with TECHNICAL_SPEC.md section 7 which specifies Jetpack Compose for UI. The experimental APIs used are stable enough for production use and are the recommended way to implement dropdown menus and filter chips in Material3.
-    46	
-    47	### Files Modified
-    48	1. `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/ScheduleScreen.kt`
-    49	   - Added `@OptIn(ExperimentalMaterial3Api::class)` annotation
-    50	
-    51	2. `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/UserConfigScreen.kt`
-    52	   - Added `@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)` annotation
-    53	   - Added import for `androidx.compose.foundation.ExperimentalFoundationApi`
-    54	
-    55	3. `/workspace/android-app/app/src/main/java/com/apptcheck/agent/model/Defaults.kt`
-    56	   - Created supporting model file referenced by UserConfigScreen (contains constants like CHECK_WINDOW, CHECK_INTERVAL, etc.)
-    57	
-    58	### Centralization Maintained
-    59	- No changes to central configuration management
-    60	- No changes to logging system
-    61	- Defaults remain in a single source (`Defaults.kt`)
-    62	
-    63	### Testing
-    64	After this fix, the build should pass the Kotlin compilation step. Manual testing should verify:
-    65	1. Dropdown menus work correctly in ScheduleScreen
-    66	2. Filter chips work correctly in UserConfigScreen
-    67	3. All UI interactions function as documented in TECHNICAL_SPEC.md section 7
+# Build Fix Documentation
+
+## Issue: Experimental Material3 API Compilation Errors
+
+### Problem
+The build failed with compilation errors in `ScheduleScreen.kt` and `UserConfigScreen.kt`:
+```
+This material API is experimental and is likely to change or to be removed in the future.
+```
+
+The affected APIs were:
+- `ExposedDropdownMenuBox` (ScheduleScreen.kt lines 42, 80, 114)
+- `ExposedDropdownMenuDefaults.TrailingIcon` (ScheduleScreen.kt lines 51, 89, 123)
+- `ExposedDropdownMenu` (ScheduleScreen.kt lines 54, 92, 126)
+- `FlowRow` (UserConfigScreen.kt line 92)
+- `FilterChip` (UserConfigScreen.kt line 98)
+
+### Root Cause
+Material3 components like `ExposedDropdownMenuBox`, `FlowRow`, and `FilterChip` are marked as experimental APIs in the current version of the Material3 library. Kotlin compiler treats these as errors by default when used without proper opt-in annotation.
+
+### Solution
+Added compiler-level opt-in flags in the app-level `build.gradle.kts` file to suppress experimental API warnings globally for the entire project. This ensures all modules use the same configuration and avoids the need for repetitive `@OptIn` annotations on every composable.
+
+**Updated `/workspace/android-app/app/build.gradle.kts`:**
+```kotlin
+kotlinOptions {
+    jvmTarget = "17"
+    freeCompilerArgs = listOf(
+        "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+        "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+        "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi"
+    )
+}
+```
+
+This approach:
+1. Centralizes the experimental API opt-in configuration in a single location
+2. Applies to all Kotlin source files in the module
+3. Aligns with the project's design principle of single configuration source
+4. Eliminates the need for per-file `@OptIn` annotations while still acknowledging the experimental nature of these APIs
+
+### Design Alignment
+This fix aligns with:
+- TECHNICAL_SPEC.md section 7 which specifies Jetpack Compose for UI
+- The project's centralization principle (single config source)
+- BUILD_FIX.md best practices for handling experimental Compose APIs
+
+The experimental APIs used (`ExposedDropdownMenuBox`, `FlowRow`, `FilterChip`) are stable enough for production use and are the recommended way to implement dropdown menus and filter chips in Material3.
+
+### Files Modified
+1. `/workspace/android-app/app/build.gradle.kts`
+   - Added `freeCompilerArgs` with opt-in flags for:
+     - `ExperimentalMaterial3Api` (for `ExposedDropdownMenuBox`, `FilterChip`, etc.)
+     - `ExperimentalFoundationApi` (for `FlowRow` from foundation)
+     - `ExperimentalLayoutApi` (for `FlowRow` from layout)
+
+2. `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/UserConfigScreen.kt`
+   - Already has `@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)` annotation (defensive, can be removed if desired since gradle handles it)
+   - Has import for `androidx.compose.foundation.ExperimentalFoundationApi`
+   - Has import for `androidx.compose.foundation.layout.ExperimentalLayoutApi`
+
+3. `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/ScheduleScreen.kt`
+   - Already has `@OptIn(ExperimentalMaterial3Api::class)` annotation (defensive, can be removed if desired since gradle handles it)
+
+### Centralization Maintained
+- No changes to central configuration management
+- No changes to logging system
+- Defaults remain in a single source (`Defaults.kt`)
+- Experimental API opt-in is now centralized in `build.gradle.kts`
+
+### Testing
+After this fix, the build should pass the Kotlin compilation step. Manual testing should verify:
+1. Dropdown menus work correctly in ScheduleScreen
+2. Filter chips and FlowRow work correctly in UserConfigScreen
+3. All UI interactions function as documented in TECHNICAL_SPEC.md section 7
