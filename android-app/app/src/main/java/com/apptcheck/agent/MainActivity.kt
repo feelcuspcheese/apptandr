@@ -1,6 +1,7 @@
 package com.apptcheck.agent
 
 import android.Manifest
+import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -82,7 +84,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppointmentAgentApp() {
     val navController = rememberNavController()
-    var selectedTab by remember { mutableStateOf(0) }
+    val selectedTab by remember { mutableStateOf(0) }
+    val context = LocalContext.current
     
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -122,7 +125,7 @@ fun AppointmentAgentApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("dashboard") {
-                DashboardScreen(application = this@MainActivity.application)
+                DashboardScreen(application = context.applicationContext as Application)
             }
             composable("user_config") {
                 UserConfigScreen()

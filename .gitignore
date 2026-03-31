@@ -1,16 +1,30 @@
 ```
 # Compiled and build artifacts
 *.class
-*.dex
+*.o
+*.obj
+*.exe
+*.dll
 *.so
-*.aar
-*.apk
-*.jar
+*.a
+*.out
+build/
+dist/
 
 # Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
 .gradle/
-build/
-app/build/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
 # Environment
 .env
@@ -23,13 +37,17 @@ app/build/
 *.swp
 *.swo
 
-# OS generated files
+# System files
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
-# Temporary files
-*.tmp
+# Android specific
+*.apk
+*.aar
+local.properties
 ```
