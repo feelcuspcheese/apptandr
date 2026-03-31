@@ -62,3 +62,20 @@ jobs:
 ```
 
 No secrets required - the workflow builds an unsigned APK. The gradlew script must be present in the `android-app/` directory and executable. The Go AAR is built first and placed in `android-app/app/libs/` where the Android build expects it.
+
+
+
+Required Files for Successful Build:
+android-app/gradle.properties 
+# Project-wide Gradle settings.
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.enableJetifier=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+
+
+android-app/gradlew - Must be executable 
+android-app/gradle/wrapper/gradle-wrapper.jar - Must exist
+android-app/app/build.gradle.kts - should have AndroidX dependencies
+.github/workflows/build-and-release.yml 
