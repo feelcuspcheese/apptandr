@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir -p android-app/app/libs
           go mod download
-          gomobile bind -target=android -o android-app/app/libs/booking.aar -androidapi 21 ./mobile
+          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 

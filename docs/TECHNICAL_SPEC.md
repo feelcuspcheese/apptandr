@@ -8,7 +8,7 @@ Purpose: Detailed technical decisions, data models, and component interfaces.
 | Component            | Technology                         | Justification |
 |----------------------|------------------------------------|---------------|
 | Language             | Kotlin                             | Modern, coroutines, official |
-| Minimum SDK          | 26 (Android 8.0)                   | Required for exact alarms, foreground service |
+| Minimum SDK          | 23 (Android 6.0)                   | Supports Android 6.0+ for broader device compatibility |
 | Target SDK           | 34 (Android 14)                    | Latest stable |
 | UI                   | Jetpack Compose                    | Declarative, fast development |
 | Dependency Injection | Manual (no framework)              | Keep simple, avoid complexity |
@@ -18,6 +18,7 @@ Purpose: Detailed technical decisions, data models, and component interfaces.
 | Logging              | Timber (optional) + custom file writer | Centralised, exportable |
 | HTTP (in Go agent)   | Already implemented in Go          | No change needed |
 | Go Integration       | Gomobile AAR (built from source)   | Reuse existing code |
+| Supported Architectures | armeabi-v7a, arm64-v8a, x86, x86_64 | Universal APK supporting all major CPU architectures |
 
 ## 2. Data Models (Kotlin)
 
@@ -435,12 +436,12 @@ Checkout code.
 Set up JDK 17.
 Set up Go (to build the AAR).
 Install gomobile.
-Build AAR: gomobile bind -target=android -o libs/booking.aar ./go-agent/mobile
+Build AAR: gomobile bind -target=android -androidapi 23 -o libs/booking.aar ./go-agent/mobile
 Build APK: ./gradlew assembleRelease
 Sign APK using secrets.
 Create GitHub release with APK and AAR as assets.
 12. Acceptance Criteria
-App installs and runs on Android 8+.
+App installs and runs on Android 6.0+ (API 23) across all major CPU architectures (armeabi-v7a, arm64-v8a, x86, x86_64).
 
 User can configure all fields and save them persistently.
 

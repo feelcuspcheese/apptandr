@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p android-app/app/libs
           go mod download
-          gomobile bind -target=android -o android-app/app/libs/booking.aar -androidapi 21 ./mobile
+          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
@@ -68,6 +68,33 @@ jobs:
 ```
 
 No secrets required - the workflow builds an unsigned APK. The gradlew script must be present in the `android-app/` directory and executable. The Go AAR is built first and placed in `android-app/app/libs/` where the Android build expects it.
+
+
+## Supported Android Versions and Architectures
+
+The app is configured to support:
+
+- **Minimum SDK**: 23 (Android 6.0 Marshmallow)
+- **Target SDK**: 34 (Android 14)
+- **Supported CPU Architectures**: 
+  - `armeabi-v7a` (32-bit ARM)
+  - `arm64-v8a` (64-bit ARM)
+  - `x86` (32-bit Intel)
+  - `x86_64` (64-bit Intel)
+
+This ensures the generated universal APK can run on a wide range of devices including older phones like Pixel 6a with Android 6 and newer devices.
+
+### Architecture Configuration
+
+The `build.gradle.kts` file includes NDK ABI filters to bundle native libraries for all supported architectures:
+
+```kotlin
+ndk {
+    abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+}
+```
+
+This produces a larger but universally compatible APK. For production, consider splitting APKs by architecture to reduce download size.
 
 
 ## Tag Requirement for Releases
