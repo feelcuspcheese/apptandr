@@ -1,1 +1,3 @@
-Nothing should be ignored since the only change is a Kotlin source file modification, which falls under source code that shouldn't be ignored.
+```
+.gradle/
+```
