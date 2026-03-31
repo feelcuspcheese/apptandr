@@ -11,6 +11,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apptcheck.agent.data.ConfigManager
 import com.apptcheck.agent.model.ScheduledRun
+import com.apptcheck.agent.model.ScheduleResult
+import com.apptcheck.agent.viewmodel.ScheduleViewModel
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -76,7 +78,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
                 expanded = siteExpanded,
                 onDismissRequest = { siteExpanded = false }
             ) {
-                sites.forEach { site ->
+                sites.forEach { site: String ->
                     DropdownMenuItem(
                         text = { Text(site.uppercase()) },
                         onClick = {
@@ -113,7 +115,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
                 expanded = museumExpanded,
                 onDismissRequest = { museumExpanded = false }
             ) {
-                museums.forEach { museum ->
+                museums.forEach { museum: String ->
                     DropdownMenuItem(
                         text = { Text(museum) },
                         onClick = {
@@ -157,7 +159,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
                 expanded = modeExpanded,
                 onDismissRequest = { modeExpanded = false }
             ) {
-                modes.forEach { mode ->
+                modes.forEach { mode: String ->
                     DropdownMenuItem(
                         text = { Text(mode) },
                         onClick = {
@@ -175,9 +177,9 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
         // Date & Time Picker
         OutlinedTextField(
             value = selectedDateTime,
-            onValueChange = { 
-                selectedDateTime = it
-                viewModel.onDateTimeSelected(it)
+            onValueChange = { newDateTime: String -> 
+                selectedDateTime = newDateTime
+                viewModel.onDateTimeSelected(newDateTime)
             },
             label = { Text("Date & Time (YYYY-MM-DD HH:MM)") },
             modifier = Modifier.fillMaxWidth(),
@@ -247,7 +249,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
-            uiState.scheduledRuns.forEach { run ->
+            uiState.scheduledRuns.forEach { run: ScheduledRun ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -281,8 +283,3 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
         }
     }
 }
-
-data class ScheduleResult(
-    val success: Boolean,
-    val error: String? = null
-)

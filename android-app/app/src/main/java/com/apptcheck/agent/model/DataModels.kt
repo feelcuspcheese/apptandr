@@ -101,3 +101,9 @@ data class LogEntry(
     val level: String,
     val message: String
 )
+
+// Schedule result for UI feedback
+data class ScheduleResult(
+    val success: Boolean,
+    val error: String? = null
+)

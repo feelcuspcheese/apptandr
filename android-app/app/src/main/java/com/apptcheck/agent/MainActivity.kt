@@ -122,7 +122,7 @@ fun AppointmentAgentApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("dashboard") {
-                DashboardScreen()
+                DashboardScreen(application = this@MainActivity.application)
             }
             composable("user_config") {
                 UserConfigScreen()
