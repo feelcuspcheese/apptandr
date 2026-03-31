@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.material.icons.Icons.Filled
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Divider
 
 /**
  * Logs Screen following TECHNICAL_SPEC.md section 7.6.
@@ -121,7 +122,7 @@ fun LogsScreen() {
                     items(logs.size) { index ->
                         val entry = logs[index]
                         LogEntryItem(entry)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
                     }
                     
                     // Auto-scroll to bottom
