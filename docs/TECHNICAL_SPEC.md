@@ -9,7 +9,7 @@ Purpose: Detailed technical decisions, data models, and component interfaces.
 |----------------------|------------------------------------|---------------|
 | Language             | Kotlin                             | Modern, coroutines, official |
 | Minimum SDK          | 23 (Android 6.0)                   | Supports Android 6.0+ for broader device compatibility |
-| Target SDK           | 34 (Android 14)                    | Latest stable |
+| Target SDK           | 36 (Android 16)                    | Latest stable for Android 16 compatibility |
 | UI                   | Jetpack Compose                    | Declarative, fast development |
 | Dependency Injection | Manual (no framework)              | Keep simple, avoid complexity |
 | Persistence          | DataStore (Preferences)            | Type‑safe, async, simple |
@@ -441,7 +441,7 @@ Build APK: ./gradlew assembleRelease
 Sign APK using secrets.
 Create GitHub release with APK and AAR as assets.
 12. Acceptance Criteria
-App installs and runs on Android 6.0+ (API 23) across all major CPU architectures (armeabi-v7a, arm64-v8a, x86, x86_64).
+App installs and runs on Android 6.0+ (API 23) up to Android 16 across ARM CPU architectures (armeabi-v7a, arm64-v8a).
 
 User can configure all fields and save them persistently.
 
