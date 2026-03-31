@@ -32,4 +32,4 @@ Purpose: Test scenarios and acceptance tests.
 | AC-7 | Logs can be exported and shared | Manual | |
 | AC-8 | App survives reboot and restores scheduled runs | Manual | |
 | AC-9 | GitHub release produces signed APK | CI | |
-| AC-10 | APK installs on Android 6.0+ (API 23) up to Android 16 and works correctly with ARM CPU architectures (armeabi-v7a, arm64-v8a) | Manual | |
+| AC-10 | APK installs on Android 6.0+ (API 23) up to Android 16 and works correctly with ARM CPU architectures (armeabi-v7a, arm64-v8a). The APK must include properly aligned native libraries for ARM64 devices with 16KB page alignment as required by Android 16 | Manual | |

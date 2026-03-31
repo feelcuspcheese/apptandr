@@ -9,7 +9,8 @@
 - [ ] Add DataStore, WorkManager, AlarmManager permissions.
 - [ ] Place `booking.aar` in `app/libs/` (initially placeholder; will be built later).
 - [ ] Configure `build.gradle.kts` to include the AAR and necessary libraries, with NDK ABI filters for armeabi-v7a, arm64-v8a (ARM-only for mobile devices).
-- [ ] Set up `AndroidManifest.xml` with permissions, foreground service, broadcast receivers.
+- [ ] Set up `AndroidManifest.xml` with permissions, foreground service, broadcast receivers, and `android:extractNativeLibs="true"` for Go cgo compatibility.
+- [ ] Configure `packaging { jniLibs { useLegacyPackaging = true } }` in build.gradle.kts for native library extraction.
 
 ## Phase 2: Data Layer
 - [ ] Create `data` package.
@@ -80,8 +81,8 @@
 
 ## Phase 9: Build & Release
 - [ ] Set up GitHub Actions workflow (`.github/workflows/build-and-release.yml`).
-- [ ] Build AAR using `gomobile` (add script `scripts/build-go.sh`).
-- [ ] Build signed APK.
+- [ ] Build AAR using `gomobile` with ARM64 cross-compilation and 16KB page alignment flags (`GOARCH=arm64`, `CGO_LDFLAGS="-Wl,-z,max-page-size=16384"`).
+- [ ] Build signed APK with v2/v3/v4 signature schemes for Android 16 compatibility.
 - [ ] Create release with APK and AAR.
 
 ## Phase 10: Documentation

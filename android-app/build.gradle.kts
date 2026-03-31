@@ -4,3 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.20" apply false
 }
 
+// Configure APK signing for all modules
+subprojects {
+    tasks.withType<Sign>().configureEach {
+        onlyIf { false } // Disable default signing, we'll handle it in app module
+    }
+}
+

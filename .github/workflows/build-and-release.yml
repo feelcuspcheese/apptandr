@@ -35,10 +35,20 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           gomobile init
 
-      - name: Build Go AAR
+      - name: Build Go AAR (ARM64)
         run: |
           mkdir -p android-app/app/libs
           go mod download
+          
+          # Set up Android NDK toolchain for ARM64 cross-compilation
+          export ANDROID_NDK_HOME=${ANDROID_NDK_HOME:-/usr/local/lib/android/sdk/ndk}
+          export CC=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          export CGO_ENABLED=1
+          export GOARCH=arm64
+          export GOOS=android
+          export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
+          
+          # Build Go shared library with 16KB page alignment for Android 16
           gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar agent/mobile
         env:
           GO111MODULE: on

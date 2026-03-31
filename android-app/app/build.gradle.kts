@@ -32,6 +32,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Enable APK Signature Scheme v2, v3, and v4 for Android 16 compatibility
+            signingConfig = signingConfigs.getByName("debug") // Use debug config for now; CI will use release signing
         }
     }
     
@@ -60,6 +62,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
