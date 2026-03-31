@@ -15,41 +15,63 @@ import androidx.compose.material.icons.Icons.Filled
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.apptcheck.agent.viewmodel.UserConfigViewModel
 import kotlinx.coroutines.launch
 
 /**
  * User Config Screen following TECHNICAL_SPEC.md section 7.3.
  * All user-editable fields with Save button.
+ * Integrated with UserConfigViewModel for persistent state across navigation.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun UserConfigScreen() {
-    // State variables for all user config fields
-    var mode by remember { mutableStateOf("alert") }
-    var strikeTime by remember { mutableStateOf("09:00") }
-    var ntfyTopic by remember { mutableStateOf("myappointments") }
-    var preferredSlug by remember { mutableStateOf("") }
+fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
+    // Observe config from ViewModel
+    val userConfig by viewModel.userConfig.collectAsState()
+    val saveSuccess by viewModel.saveSuccess.collectAsState()
+    val saveError by viewModel.saveError.collectAsState()
+    
+    // Local state variables bound to ViewModel state
+    var mode by remember { mutableStateOf(userConfig.mode) }
+    var strikeTime by remember { mutableStateOf(userConfig.strikeTime) }
+    var ntfyTopic by remember { mutableStateOf(userConfig.ntfyTopic) }
+    var preferredSlug by remember { mutableStateOf(userConfig.preferredSlug) }
     
     // Performance tuning fields
-    var checkWindow by remember { mutableStateOf(Defaults.CHECK_WINDOW) }
-    var checkInterval by remember { mutableStateOf(Defaults.CHECK_INTERVAL) }
-    var requestJitter by remember { mutableStateOf(Defaults.REQUEST_JITTER) }
-    var monthsToCheck by remember { mutableStateOf(Defaults.MONTHS_TO_CHECK.toString()) }
-    var preWarmOffset by remember { mutableStateOf(Defaults.PRE_WARM_OFFSET) }
-    var maxWorkers by remember { mutableStateOf(Defaults.MAX_WORKERS.toString()) }
-    var restCycleChecks by remember { mutableStateOf(Defaults.REST_CYCLE_CHECKS.toString()) }
-    var restCycleDuration by remember { mutableStateOf(Defaults.REST_CYCLE_DURATION) }
+    var checkWindow by remember { mutableStateOf(userConfig.checkWindow) }
+    var checkInterval by remember { mutableStateOf(userConfig.checkInterval) }
+    var requestJitter by remember { mutableStateOf(userConfig.requestJitter) }
+    var monthsToCheck by remember { mutableStateOf(userConfig.monthsToCheck.toString()) }
+    var preWarmOffset by remember { mutableStateOf(userConfig.preWarmOffset) }
+    var maxWorkers by remember { mutableStateOf(userConfig.maxWorkers.toString()) }
+    var restCycleChecks by remember { mutableStateOf(userConfig.restCycleChecks.toString()) }
+    var restCycleDuration by remember { mutableStateOf(userConfig.restCycleDuration) }
     
     // Preferred days
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    var selectedDays by remember { mutableStateOf(setOf("Monday", "Wednesday", "Friday")) }
+    var selectedDays by remember { mutableStateOf(userConfig.preferredDays.toSet()) }
+    
+    // Update local state when ViewModel state changes
+    LaunchedEffect(userConfig) {
+        mode = userConfig.mode
+        strikeTime = userConfig.strikeTime
+        ntfyTopic = userConfig.ntfyTopic
+        preferredSlug = userConfig.preferredSlug
+        checkWindow = userConfig.checkWindow
+        checkInterval = userConfig.checkInterval
+        requestJitter = userConfig.requestJitter
+        monthsToCheck = userConfig.monthsToCheck.toString()
+        preWarmOffset = userConfig.preWarmOffset
+        maxWorkers = userConfig.maxWorkers.toString()
+        restCycleChecks = userConfig.restCycleChecks.toString()
+        restCycleDuration = userConfig.restCycleDuration
+        selectedDays = userConfig.preferredDays.toSet()
+    }
     
     // Performance section expanded state
     var performanceExpanded by remember { mutableStateOf(false) }
     
-    // Save feedback
-    var showSaveSuccess by remember { mutableStateOf(false) }
-    var showSaveError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
     Column(
@@ -251,14 +273,21 @@ fun UserConfigScreen() {
         // Save Button
         Button(
             onClick = {
-                // TODO: Integrate with ConfigManager to save user config
-                // For now, show success feedback
-                scope.launch {
-                    showSaveSuccess = true
-                    // Simulate save delay
-                    kotlinx.coroutines.delay(2000)
-                    showSaveSuccess = false
-                }
+                viewModel.saveConfig(
+                    mode = mode,
+                    strikeTime = strikeTime,
+                    preferredDays = selectedDays.toList(),
+                    ntfyTopic = ntfyTopic,
+                    preferredSlug = preferredSlug,
+                    checkWindow = checkWindow,
+                    checkInterval = checkInterval,
+                    requestJitter = requestJitter,
+                    monthsToCheck = monthsToCheck.toIntOrNull() ?: Defaults.MONTHS_TO_CHECK,
+                    preWarmOffset = preWarmOffset,
+                    maxWorkers = maxWorkers.toIntOrNull() ?: Defaults.MAX_WORKERS,
+                    restCycleChecks = restCycleChecks.toIntOrNull() ?: Defaults.REST_CYCLE_CHECKS,
+                    restCycleDuration = restCycleDuration
+                )
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -266,7 +295,7 @@ fun UserConfigScreen() {
         }
         
         // Save success feedback
-        if (showSaveSuccess) {
+        if (saveSuccess) {
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(
@@ -288,7 +317,7 @@ fun UserConfigScreen() {
         }
         
         // Save error feedback
-        if (showSaveError) {
+        if (saveError) {
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(

@@ -7,14 +7,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.apptcheck.agent.viewmodel.AdminConfigViewModel
 import kotlinx.coroutines.launch
 
 /**
  * Admin Config Screen following TECHNICAL_SPEC.md section 7.4.
  * PIN-protected screen for site-specific settings.
+ * Integrated with AdminConfigViewModel for persistent state across navigation.
  */
 @Composable
-fun AdminConfigScreen() {
+fun AdminConfigScreen(viewModel: AdminConfigViewModel = viewModel()) {
     var showPinDialog by remember { mutableStateOf(true) }
     var pinInput by remember { mutableStateOf("") }
     var isAuthenticated by remember { mutableStateOf(false) }
@@ -32,7 +35,7 @@ fun AdminConfigScreen() {
     }
     
     if (isAuthenticated) {
-        AdminConfigContent()
+        AdminConfigContent(viewModel)
     }
 }
 
@@ -72,21 +75,39 @@ private fun PinDialog(
 }
 
 @Composable
-private fun AdminConfigContent() {
-    var activeSite by remember { mutableStateOf("spl") }
-    var baseUrl by remember { mutableStateOf("https://spl.libcal.com") }
-    var availabilityEndpoint by remember { mutableStateOf("/pass/availability/institution") }
-    var digital by remember { mutableStateOf(true) }
-    var physical by remember { mutableStateOf(false) }
-    var location by remember { mutableStateOf("0") }
-    var loginUsername by remember { mutableStateOf("") }
-    var loginPassword by remember { mutableStateOf("") }
-    var loginEmail by remember { mutableStateOf("") }
+private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
+    // Observe config from ViewModel
+    val adminConfig by viewModel.adminConfig.collectAsState()
+    val saveSuccess by viewModel.saveSuccess.collectAsState()
+    val saveError by viewModel.saveError.collectAsState()
     
-    // Save feedback
-    var showSaveSuccess by remember { mutableStateOf(false) }
-    var showSaveError by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    // Local state variables bound to ViewModel state
+    var activeSite by remember { mutableStateOf(adminConfig.activeSite) }
+    var baseUrl by remember { mutableStateOf(adminConfig.sites[activeSite]?.baseUrl ?: "") }
+    var availabilityEndpoint by remember { mutableStateOf(adminConfig.sites[activeSite]?.availabilityEndpoint ?: "") }
+    var digital by remember { mutableStateOf(adminConfig.sites[activeSite]?.digital ?: true) }
+    var physical by remember { mutableStateOf(adminConfig.sites[activeSite]?.physical ?: false) }
+    var location by remember { mutableStateOf(adminConfig.sites[activeSite]?.location ?: "0") }
+    var loginUsername by remember { mutableStateOf(adminConfig.sites[activeSite]?.loginUsername ?: "") }
+    var loginPassword by remember { mutableStateOf(adminConfig.sites[activeSite]?.loginPassword ?: "") }
+    var loginEmail by remember { mutableStateOf(adminConfig.sites[activeSite]?.loginEmail ?: "") }
+    
+    // Track sites map
+    var sites by remember { mutableStateOf(adminConfig.sites) }
+    
+    // Update local state when ViewModel state changes
+    LaunchedEffect(adminConfig, activeSite) {
+        activeSite = adminConfig.activeSite
+        baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
+        availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
+        digital = adminConfig.sites[activeSite]?.digital ?: true
+        physical = adminConfig.sites[activeSite]?.physical ?: false
+        location = adminConfig.sites[activeSite]?.location ?: "0"
+        loginUsername = adminConfig.sites[activeSite]?.loginUsername ?: ""
+        loginPassword = adminConfig.sites[activeSite]?.loginPassword ?: ""
+        loginEmail = adminConfig.sites[activeSite]?.loginEmail ?: ""
+        sites = adminConfig.sites.toMutableMap()
+    }
     
     Column(
         modifier = Modifier
@@ -200,13 +221,21 @@ private fun AdminConfigContent() {
         // Save Button
         Button(
             onClick = {
-                // TODO: Integrate with ConfigManager to save admin config
-                // For now, show success feedback
-                scope.launch {
-                    showSaveSuccess = true
-                    // Simulate save delay
-                    kotlinx.coroutines.delay(2000)
-                    showSaveSuccess = false
+                // Update the site config with current values
+                val currentSite = sites[activeSite]
+                if (currentSite != null) {
+                    val updatedSite = currentSite.copy(
+                        baseUrl = baseUrl,
+                        availabilityEndpoint = availabilityEndpoint,
+                        digital = digital,
+                        physical = physical,
+                        location = location,
+                        loginUsername = loginUsername,
+                        loginPassword = loginPassword,
+                        loginEmail = loginEmail
+                    )
+                    sites[activeSite] = updatedSite
+                    viewModel.saveConfig(activeSite, sites)
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -215,7 +244,7 @@ private fun AdminConfigContent() {
         }
         
         // Save success feedback
-        if (showSaveSuccess) {
+        if (saveSuccess) {
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(
@@ -237,7 +266,7 @@ private fun AdminConfigContent() {
         }
         
         // Save error feedback
-        if (showSaveError) {
+        if (saveError) {
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 colors = CardDefaults.cardColors(
