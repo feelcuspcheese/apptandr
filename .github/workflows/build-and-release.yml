@@ -32,9 +32,9 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p libs
+          mkdir -p android-app/app/libs
           go mod download
-          gomobile bind -target=android -o libs/booking.aar -androidapi 21 ./mobile
+          gomobile bind -target=android -o android-app/app/libs/booking.aar -androidapi 21 ./mobile
         env:
           GO111MODULE: on
 
@@ -47,8 +47,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app/build/outputs/apk/release/*.apk
-            libs/booking.aar
+            android-app/app/build/outputs/apk/release/*.apk
+            android-app/app/libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
