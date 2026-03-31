@@ -9,8 +9,6 @@
 *.a
 *.out
 build/
-dist/
-
 # Dependencies
 node_modules/
 venv/
@@ -20,34 +18,18 @@ __pycache__/
 .pytest_cache/
 target/
 .gradle/
-
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-
 # Environment
 .env
 .env.local
 *.env.*
-
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
 # System files
 .DS_Store
 Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Android specific
-*.apk
-*.aar
-local.properties
 ```

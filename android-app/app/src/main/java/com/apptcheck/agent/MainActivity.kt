@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppointmentAgentApp() {
     val navController = rememberNavController()
-    val selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
     
     Scaffold(
