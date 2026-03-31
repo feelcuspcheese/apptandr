@@ -39,7 +39,9 @@ jobs:
           GO111MODULE: on
 
       - name: Build Android APK
-        run: ./gradlew assembleRelease
+        run: |
+          cd android-app
+          ./gradlew assembleRelease
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
