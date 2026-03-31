@@ -6,7 +6,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apptcheck.agent.service.BookingForegroundService
 import com.apptcheck.agent.data.LogManager
 import com.apptcheck.agent.data.ConfigManager
@@ -24,7 +23,7 @@ import android.app.Application
  * - Live status updates from the service
  */
 @Composable
-fun DashboardScreen(application: Application = androidx.lifecycle.viewmodel.compose.viewModel<Application>()) {
+fun DashboardScreen(application: Application) {
     var status by remember { mutableStateOf("Idle") }
     val isRunning = BookingForegroundService.isRunning
     

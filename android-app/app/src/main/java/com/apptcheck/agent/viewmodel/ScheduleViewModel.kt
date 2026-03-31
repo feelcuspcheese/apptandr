@@ -5,8 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apptcheck.agent.data.ConfigManager
 import com.apptcheck.agent.model.ScheduledRun
+import com.apptcheck.agent.model.ScheduleResult
 import com.apptcheck.agent.scheduler.AlarmScheduler
-import com.apptcheck.agent.ui.screens.ScheduleResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
