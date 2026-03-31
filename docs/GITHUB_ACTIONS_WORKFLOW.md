@@ -39,25 +39,26 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p libs
+          mkdir -p android-app/app/libs
           go mod download
-          gomobile bind -target=android -o libs/booking.aar -androidapi 21 ./mobile
+          gomobile bind -target=android -o android-app/app/libs/booking.aar -androidapi 21 ./mobile
         env:
           GO111MODULE: on
 
       - name: Build Android APK
-        run: ./gradlew assembleRelease
+        run: |
+          cd android-app
+          ./gradlew assembleRelease
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app/build/outputs/apk/release/*.apk
-            libs/booking.aar
+            android-app/app/build/outputs/apk/release/*.apk
+            android-app/app/libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 ```
 
-No secrets required - the workflow builds an unsigned APK.
+No secrets required - the workflow builds an unsigned APK. The gradlew script must be present in the `android-app/` directory and executable. The Go AAR is built first and placed in `android-app/app/libs/` where the Android build expects it.
