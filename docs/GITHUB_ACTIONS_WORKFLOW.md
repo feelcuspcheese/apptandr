@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25'
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -39,49 +39,25 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          cd go-agent
+          mkdir -p libs
           go mod download
-          gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
+          gomobile bind -target=android -o libs/booking.aar -androidapi 21 ./mobile
         env:
           GO111MODULE: on
 
       - name: Build Android APK
         run: ./gradlew assembleRelease
 
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app/build/outputs/apk/release/*-unsigned.apk
+            app/build/outputs/apk/release/*.apk
             libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+```
 
-
-
-
-
-
-
-
-Secrets required in repository:
-
-SIGNING_KEY – base64‑encoded keystore
-
-ALIAS – key alias
-
-KEY_STORE_PASSWORD – keystore password
-
-KEY_PASSWORD – key password
+No secrets required - the workflow builds an unsigned APK.
