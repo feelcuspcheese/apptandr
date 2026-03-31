@@ -14,7 +14,7 @@ import androidx.compose.material.icons.filled.ExpandMore
  * User Config Screen following TECHNICAL_SPEC.md section 7.3.
  * All user-editable fields with Save button.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun UserConfigScreen() {
     // State variables for all user config fields
