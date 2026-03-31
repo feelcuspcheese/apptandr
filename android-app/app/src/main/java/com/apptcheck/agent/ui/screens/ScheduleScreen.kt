@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Delete
  * Schedule Screen following TECHNICAL_SPEC.md section 7.5.
  * Schedule new runs and view/delete existing scheduled runs.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen() {
     var selectedSite by remember { mutableStateOf("spl") }
