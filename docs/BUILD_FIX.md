@@ -97,42 +97,66 @@ The following UI issues were reported after successful app installation:
 
 ### Solution
 
-#### 1. Added Vertical Scrolling
-Both screens now use `Modifier.verticalScroll(rememberScrollState())` on the main Column to enable scrolling when content exceeds screen height.
+#### Phase 1: Immediate UI Fixes (Completed)
 
-#### 2. Fixed Spacer Behavior
-Changed `Spacer(modifier = Modifier.weight(1f))` to `Spacer(modifier = Modifier.height(16.dp))` to prevent pushing the save button off-screen while maintaining proper spacing.
+1. **Added Vertical Scrolling**: Both screens now use `Modifier.verticalScroll(rememberScrollState())` on the main Column to enable scrolling when content exceeds screen height.
 
-#### 3. Added Save Feedback UI
-Implemented visual feedback using conditional Cards that display success/error messages after save operations:
-- Success message in primaryContainer color scheme
-- Error message in errorContainer color scheme
-- Messages auto-hide after 2 seconds (simulated delay)
+2. **Fixed Spacer Behavior**: Changed `Spacer(modifier = Modifier.weight(1f))` to `Spacer(modifier = Modifier.height(16.dp))` to prevent pushing the save button off-screen while maintaining proper spacing.
 
-#### 4. Added Extra Bottom Spacing
-Added `Spacer(modifier = Modifier.height(32.dp))` at the bottom to ensure the save button is always accessible even on smaller screens.
+3. **Added Save Feedback UI**: Implemented visual feedback using conditional Cards that display success/error messages after save operations.
+
+4. **Added Extra Bottom Spacing**: Added `Spacer(modifier = Modifier.height(32.dp))` at the bottom to ensure the save button is always accessible even on smaller screens.
+
+#### Phase 2: State Persistence with ViewModels (Completed)
+
+To fully resolve issue #5 (state persistence across navigation), we implemented:
+
+1. **ViewModel Integration**: Created `UserConfigViewModel` and `AdminConfigViewModel` that:
+   - Load configuration from `ConfigManager` on screen creation (via `init` block)
+   - Save configuration to `ConfigManager` when user clicks save
+   - Expose state as `StateFlow` for reactive UI updates
+   - Use `collectAsState()` in composables for automatic UI updates
+
+2. **Screen Updates**: 
+   - Modified `UserConfigScreen` to accept `UserConfigViewModel` parameter with default `viewModel()` factory
+   - Modified `AdminConfigScreen` to accept `AdminConfigViewModel` parameter with default `viewModel()` factory
+   - Added `LaunchedEffect` blocks to sync local state with ViewModel state changes
+   - Updated save handlers to call ViewModel methods which persist to DataStore via ConfigManager
+
+3. **Navigation State Preservation**: The navigation graph in `MainActivity.kt` already has `saveState = true` and `restoreState = true` configured, which preserves ViewModel instances when navigating between tabs.
 
 ### Files Modified
 
-1. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/UserConfigScreen.kt`**
-   - Added imports: `rememberScrollState`, `verticalScroll`, `kotlinx.coroutines.launch`
-   - Added state variables: `showSaveSuccess`, `showSaveError`, `scope`
-   - Added `.verticalScroll(rememberScrollState())` modifier to main Column
-   - Changed bottom spacer from `weight(1f)` to `height(16.dp)`
-   - Implemented save button onClick with feedback mechanism
-   - Added success/error Card displays
-   - Added extra bottom spacer (32.dp)
+1. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/viewmodel/UserConfigViewModel.kt`** (NEW)
+   - Created ViewModel for UserConfigScreen
+   - Loads config from ConfigManager on init
+   - Provides `saveConfig()` method with all user config parameters
+   - Exposes `userConfig`, `saveSuccess`, `saveError` as StateFlow
 
-2. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/AdminConfigScreen.kt`**
-   - Added imports: `rememberScrollState`, `verticalScroll`, `kotlinx.coroutines.launch`
-   - Added state variables: `showSaveSuccess`, `showSaveError`, `scope`
-   - Added `.verticalScroll(rememberScrollState())` modifier to main Column
-   - Changed bottom spacer from `weight(1f)` to `height(16.dp)`
-   - Implemented save button onClick with feedback mechanism
-   - Added success/error Card displays
-   - Added extra bottom spacer (32.dp)
+2. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/viewmodel/AdminConfigViewModel.kt`** (NEW)
+   - Created ViewModel for AdminConfigScreen
+   - Loads config from ConfigManager on init
+   - Provides `saveConfig()` method for admin settings
+   - Exposes `adminConfig`, `saveSuccess`, `saveError` as StateFlow
 
-3. **`/workspace/docs/TEST_PLAN.md`**
+3. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/UserConfigScreen.kt`**
+   - Added imports: `viewModel`, `UserConfigViewModel`, `collectAsState`, `LaunchedEffect`
+   - Changed function signature to accept `viewModel: UserConfigViewModel = viewModel()`
+   - Replaced hardcoded defaults with ViewModel state observation
+   - Added `LaunchedEffect` to sync local state when ViewModel state changes
+   - Updated save button to call `viewModel.saveConfig()` with all field values
+   - Changed feedback variables from local state to ViewModel StateFlow observation
+
+4. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/AdminConfigScreen.kt`**
+   - Added imports: `viewModel`, `AdminConfigViewModel`, `collectAsState`, `LaunchedEffect`
+   - Changed function signature to accept `viewModel: AdminConfigViewModel = viewModel()`
+   - Passed viewModel to `AdminConfigContent()`
+   - Replaced hardcoded defaults with ViewModel state observation
+   - Added `LaunchedEffect` to sync local state when ViewModel state changes
+   - Updated save button to update site config and call `viewModel.saveConfig()`
+   - Changed feedback variables from local state to ViewModel StateFlow observation
+
+5. **`/workspace/docs/TEST_PLAN.md`**
    - Updated Manual UI Tests section with detailed test steps for:
      - Performance Tuning expansion without overlap
      - Scroll functionality verification
@@ -140,28 +164,20 @@ Added `Spacer(modifier = Modifier.height(32.dp))` at the bottom to ensure the sa
      - State persistence across navigation
    - Added new acceptance criteria AC-11 through AC-14
 
+6. **`/workspace/docs/BUILD_FIX.md`**
+   - Updated Issue 2 section with complete Phase 1 and Phase 2 solutions
+   - Documented ViewModel architecture for state persistence
+   - Updated testing instructions
+
 ### Design Alignment
 
 This fix aligns with:
+- **TECHNICAL_SPEC.md Section 3**: Centralised Configuration Manager - ViewModels use ConfigManager as single source of truth
 - **TECHNICAL_SPEC.md Section 7.3**: User Config Screen specification with all required fields
 - **TECHNICAL_SPEC.md Section 7.4**: Admin Config Screen specification with PIN protection
-- **Centralization Principle**: The fix maintains the existing architecture; full ConfigManager integration is noted as TODO for future implementation
-- **UI Best Practices**: Jetpack Compose scrolling layouts for fluid, accessible interfaces
-
-### Next Steps for Full Implementation
-
-To fully resolve issue #5 (state persistence across navigation), the following integration with `ConfigManager` is needed:
-
-1. **ViewModel Integration**: Create ViewModels for UserConfig and AdminConfig screens that:
-   - Load configuration from `ConfigManager` on screen creation
-   - Save configuration to `ConfigManager` when user clicks save
-   - Expose state as `StateFlow` for reactive UI updates
-
-2. **ConfigManager Enhancement**: The existing `ConfigManager.updateUserConfig()` and `ConfigManager.updateAdminConfig()` methods are ready for use.
-
-3. **MainActivity Update**: Integrate ViewModel providers and pass ConfigManager instance to screens.
-
-This phased approach ensures the immediate UI bugs (overlap, scrolling, feedback) are fixed first, while the persistence layer can be integrated in a follow-up iteration without blocking the critical usability fixes.
+- **MVVM Architecture Pattern**: Separation of concerns with ViewModels handling business logic
+- **Jetpack Best Practices**: Using StateFlow for reactive UI, ViewModel for lifecycle-aware state management
+- **Centralization Principle**: All config persists through ConfigManager → DataStore pipeline
 
 ### Testing
 
@@ -170,21 +186,36 @@ After this fix, manual testing should verify:
 1. **User Config Screen**:
    - Expand Performance Tuning section - all fields visible without overlap
    - Scroll down when expanded - all 8 performance fields accessible
-   - Click Save - success message appears for 2 seconds
-   - All fields remain accessible on small screens
+   - Enter values in all fields and click Save - success message appears for 2 seconds
+   - Navigate to Admin Config screen
+   - Navigate back to User Config - previously entered values are preserved
+   - Kill and restart app - values persist from DataStore
 
 2. **Admin Config Screen**:
+   - Enter PIN (1234) to access
    - Scroll to bottom - login credentials not cramped
    - Save button fully visible and clickable
-   - Click Save - success message appears for 2 seconds
+   - Modify site settings and click Save - success message appears for 2 seconds
+   - Navigate to User Config screen
+   - Navigate back to Admin Config - previously entered values are preserved
 
 3. **Cross-screen Navigation**:
-   - Note: Full persistence requires ConfigManager integration (future work)
-   - Current fix provides visual feedback and scrollable layouts
+   - Values persist when switching between tabs
+   - Navigation state is preserved (scroll position, expanded sections)
+   - App restart restores all saved configurations
 
 ### Centralization Maintained
 
-- No changes to `ConfigManager.kt` (centralized configuration)
-- No changes to `LogManager.kt` (centralized logging)
-- Defaults remain in single source (`Defaults.kt`)
-- UI fixes are isolated to screen composables
+- **ConfigManager**: Single source of truth for configuration storage/retrieval
+- **LogManager**: No changes, centralized logging maintained
+- **DataStore**: Single persistence layer for all configuration
+- **Defaults**: Hardcoded defaults remain in `Defaults.kt`
+- **ViewModels**: Act as intermediaries between UI and ConfigManager, maintaining separation of concerns
+
+### Next Steps
+
+No further action required. The state persistence issue is fully resolved with ViewModel integration. Future enhancements could include:
+- Adding input validation for numeric fields
+- Adding loading indicators during save operations
+- Unit tests for ViewModels
+- UI automation tests for navigation scenarios

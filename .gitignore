@@ -1,1 +1,49 @@
-(docs/BUILD_FIX.md and docs/TEST_PLAN.md are documentation files, not build artifacts or temporary files, so they should not trigger any gitignore additions)
+```
+# Compiled and build artifacts
+*.class
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+build/
+target/
+
+# Dependencies
+.gradle/
+node_modules/
+venv/
+.venv/
+__pycache__/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# MyPy
+.mypy_cache/
+
+# PyTest
+.pytest_cache/
+```
