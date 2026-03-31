@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.20" apply false
 }
 
-kotlinOptions {
-    freeCompilerArgs += "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+android {
+    // Ensure kotlinOptions is inside the android block
+    kotlinOptions {
+        // Use freeCompilerArgs.addAll() for better compatibility in KTS
+        freeCompilerArgs.addAll("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
+    }
 }
