@@ -53,8 +53,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val config = configManager.loadConfig()
                 val currentSite = _uiState.value.selectedSite
                 
-                // Get available sites from admin config (both SPL and KCLS)
-                val availableSites = listOf("spl", "kcls")
+                // Get available sites from admin config - dynamically load from saved config
+                val availableSites = config.admin.sites.keys.toList()
                 
                 // Get museums for currently selected site from the loaded config
                 val museums = config.admin.sites[currentSite]?.museums?.keys?.toList() ?: emptyList()
