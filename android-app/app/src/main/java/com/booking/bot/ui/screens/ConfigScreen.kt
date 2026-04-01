@@ -786,49 +786,71 @@ private fun SitesTab(
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Museums", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Museums", style = MaterialTheme.typography.titleMedium)
+                        Row {
+                            // Bulk Import Button
+                            IconButton(onClick = { showBulkImportDialog = true }) {
+                                Icon(Icons.Default.ImportExport, contentDescription = "Bulk Import")
+                            }
+                            // Add Museum FloatingActionButton (small)
+                            FloatingActionButton(
+                                onClick = { editingMuseum = null; showMuseumDialog = true },
+                                modifier = Modifier.size(40.dp),
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Museum", modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val site = config?.admin?.sites?.get(selectedSiteKey)
                     val museums = site?.museums?.values?.toList() ?: emptyList()
                     
-                    museums.forEach { museum ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(museum.name, style = MaterialTheme.typography.bodyLarge)
-                                Text("${museum.slug} (${museum.museumId})", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Row {
-                                IconButton(onClick = { /* Edit museum */ }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    if (museums.isEmpty()) {
+                        Text("No museums added yet", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        museums.forEach { museum ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(museum.name, style = MaterialTheme.typography.bodyLarge)
+                                    Text("${museum.slug} (${museum.museumId})", style = MaterialTheme.typography.bodySmall)
                                 }
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        val updatedSites = config.admin.sites.toMutableMap()
-                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                            museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
-                                                remove(museum.slug)
-                                            }
-                                        )
-                                        if (updatedSite != null) {
-                                            updatedSites[selectedSiteKey] = updatedSite
-                                            val updatedAdmin = config.admin.copy(sites = updatedSites)
-                                            configManager.updateAdmin(updatedAdmin)
-                                        }
+                                Row {
+                                    IconButton(onClick = { editingMuseum = museum; showMuseumDialog = true }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
-                                }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                                museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
+                                                    remove(museum.slug)
+                                                }
+                                            )
+                                            if (updatedSite != null) {
+                                                updatedSites[selectedSiteKey] = updatedSite
+                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                configManager.updateAdmin(updatedAdmin)
+                                            }
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    }
                                 }
                             }
                         }
                     }
-                    
-                    Text("Bulk import: name:slug:museumId format", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -837,67 +859,83 @@ private fun SitesTab(
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Credentials", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Credentials", style = MaterialTheme.typography.titleMedium)
+                        // Add Credential FloatingActionButton (small)
+                        FloatingActionButton(
+                            onClick = { editingCredential = null; showCredentialDialog = true },
+                            modifier = Modifier.size(40.dp),
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Credential", modifier = Modifier.size(20.dp))
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val site = config?.admin?.sites?.get(selectedSiteKey)
                     val credentials = site?.credentials ?: emptyList()
                     
-                    credentials.forEach { cred ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(cred.label, style = MaterialTheme.typography.bodyLarge)
-                                Text("${cred.username} ••••••", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Row {
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        val updatedSites = config.admin.sites.toMutableMap()
-                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                            defaultCredentialId = cred.id
-                                        )
-                                        if (updatedSite != null) {
-                                            updatedSites[selectedSiteKey] = updatedSite
-                                            val updatedAdmin = config.admin.copy(sites = updatedSites)
-                                            configManager.updateAdmin(updatedAdmin)
-                                        }
-                                    }
-                                }) {
-                                    Icon(
-                                        if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                                        contentDescription = "Set Default"
-                                    )
+                    if (credentials.isEmpty()) {
+                        Text("No credentials added yet", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        credentials.forEach { cred ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(cred.label, style = MaterialTheme.typography.bodyLarge)
+                                    Text("${cred.username} ••••••", style = MaterialTheme.typography.bodySmall)
                                 }
-                                IconButton(onClick = { /* Edit credential */ }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
-                                }
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        val updatedSites = config.admin.sites.toMutableMap()
-                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                            credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
-                                                removeAll { it.id == cred.id }
+                                Row {
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                                defaultCredentialId = cred.id
+                                            )
+                                            if (updatedSite != null) {
+                                                updatedSites[selectedSiteKey] = updatedSite
+                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                configManager.updateAdmin(updatedAdmin)
                                             }
-                                        )
-                                        if (updatedSite != null) {
-                                            updatedSites[selectedSiteKey] = updatedSite
-                                            val updatedAdmin = config.admin.copy(sites = updatedSites)
-                                            configManager.updateAdmin(updatedAdmin)
                                         }
+                                    }) {
+                                        Icon(
+                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                            contentDescription = "Set Default"
+                                        )
                                     }
-                                }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    IconButton(onClick = { editingCredential = cred; showCredentialDialog = true }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                    }
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                                credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
+                                                    removeAll { it.id == cred.id }
+                                                }
+                                            )
+                                            if (updatedSite != null) {
+                                                updatedSites[selectedSiteKey] = updatedSite
+                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                configManager.updateAdmin(updatedAdmin)
+                                            }
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                    }
                                 }
                             }
                         }
                     }
-                    
-                    Text("Add credentials to enable booking", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
