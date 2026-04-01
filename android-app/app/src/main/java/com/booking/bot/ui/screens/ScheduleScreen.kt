@@ -16,6 +16,8 @@ import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import android.app.DatePickerDialog as AndroidDatePickerDialog
+import android.app.TimePickerDialog as AndroidTimePickerDialog
 
 /**
  * ScheduleScreen following TECHNICAL_SPEC.md section 5.3.
@@ -30,27 +32,29 @@ fun ScheduleScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val config by configManager.configFlow.collectAsState(initial = null)
-    
+
     // Selection state
     var selectedSiteKey by remember { mutableStateOf(config?.admin?.activeSite ?: "spl") }
     var selectedMuseumSlug by remember { mutableStateOf<String?>(null) }
     var selectedCredentialId by remember { mutableStateOf<String?>(null) }
     var selectedMode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
     var selectedDateTime by remember { mutableStateOf<Long?>(null) }
-    
+
     // Dropdown expansion states
     var siteExpanded by remember { mutableStateOf(false) }
     var museumExpanded by remember { mutableStateOf(false) }
     var credentialExpanded by remember { mutableStateOf(false) }
     var modeExpanded by remember { mutableStateOf(false) }
-    
-    // Date/Time picker dialog
+
+    // Date/Time picker dialog state - using proper Android DatePickerDialog + TimePickerDialog (section 5.3)
     var showDatePicker by remember { mutableStateOf(false) }
-    
+    var showTimePicker by remember { mutableStateOf(false) }
+    var tempSelectedDate by remember { mutableStateOf<Calendar?>(null) }
+
     // Feedback state
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
     var feedbackSuccess by remember { mutableStateOf(false) }
-    
+
     // Update selections when config changes
     LaunchedEffect(config) {
         config?.let { cfg ->
@@ -60,7 +64,7 @@ fun ScheduleScreen(
             selectedMode = cfg.general.mode
         }
     }
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -72,7 +76,7 @@ fun ScheduleScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Site", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 ExposedDropdownMenuBox(
                     expanded = siteExpanded,
                     onExpandedChange = { siteExpanded = it }
@@ -106,16 +110,16 @@ fun ScheduleScreen(
                 }
             }
         }
-        
+
         // Museum Dropdown
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Museum", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 val museums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.values?.toList() ?: emptyList()
                 val selectedMuseum = museums.find { it.slug == selectedMuseumSlug }
-                
+
                 ExposedDropdownMenuBox(
                     expanded = museumExpanded,
                     onExpandedChange = { museumExpanded = it }
@@ -147,24 +151,24 @@ fun ScheduleScreen(
                 }
             }
         }
-        
+
         // Credential Dropdown
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Credential", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 val site = config?.admin?.sites?.get(selectedSiteKey)
                 val credentials = site?.credentials ?: emptyList()
                 val defaultCredId = site?.defaultCredentialId
-                
+
                 // Pre-select default credential if available
                 LaunchedEffect(site) {
                     if (selectedCredentialId == null && defaultCredId != null) {
                         selectedCredentialId = defaultCredId
                     }
                 }
-                
+
                 ExposedDropdownMenuBox(
                     expanded = credentialExpanded,
                     onExpandedChange = { credentialExpanded = it }
@@ -203,13 +207,13 @@ fun ScheduleScreen(
                 }
             }
         }
-        
+
         // Mode Dropdown
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Mode", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 ExposedDropdownMenuBox(
                     expanded = modeExpanded,
                     onExpandedChange = { modeExpanded = it }
@@ -241,17 +245,17 @@ fun ScheduleScreen(
                 }
             }
         }
-        
+
         // Date/Time Picker
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Date & Time", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 val dateTimeText = selectedDateTime?.let {
                     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it))
                 } ?: "Not selected"
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -266,14 +270,14 @@ fun ScheduleScreen(
                 }
             }
         }
-        
+
         // Schedule Button
         Button(
             onClick = {
                 val runSiteKey = selectedSiteKey
                 val runMuseumSlug = selectedMuseumSlug
                 val runDateTime = selectedDateTime
-                
+
                 when {
                     runMuseumSlug.isNullOrEmpty() -> {
                         feedbackMessage = "Please select a museum"
@@ -298,10 +302,10 @@ fun ScheduleScreen(
                                     dropTimeMillis = runDateTime,
                                     mode = selectedMode
                                 )
-                                
+
                                 configManager.addScheduledRun(run)
                                 AlarmScheduler(context).scheduleRun(run)
-                                
+
                                 feedbackMessage = "Run scheduled successfully!"
                                 feedbackSuccess = true
                                 selectedDateTime = null
@@ -317,7 +321,7 @@ fun ScheduleScreen(
         ) {
             Text("Schedule Run")
         }
-        
+
         // Feedback message
         if (feedbackMessage != null) {
             Card(
@@ -339,13 +343,13 @@ fun ScheduleScreen(
                 )
             }
         }
-        
+
         // Scheduled Runs List
         Text("Scheduled Runs", style = MaterialTheme.typography.titleLarge)
-        
+
         config?.scheduledRuns?.let { runs ->
             val sortedRuns = runs.sortedBy { it.dropTimeMillis }
-            
+
             if (sortedRuns.isEmpty()) {
                 Text("No scheduled runs", style = MaterialTheme.typography.bodyMedium)
             } else {
@@ -368,7 +372,7 @@ fun ScheduleScreen(
             }
         } ?: Text("Loading...")
     }
-    
+
     // Date Picker Dialog
     if (showDatePicker) {
         DatePickerDialog(
@@ -402,7 +406,7 @@ private fun RunItem(
     val site = config?.admin?.sites?.get(run.siteKey)
     val museum = site?.museums?.get(run.museumSlug)
     val credential = run.credentialId?.let { id -> site?.credentials?.find { it.id == id } }
-    
+
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -453,7 +457,7 @@ private fun CalendarView(
     val day = calendar.get(Calendar.DAY_OF_MONTH)
     val hour = calendar.get(Calendar.HOUR_OF_DAY)
     val minute = calendar.get(Calendar.MINUTE)
-    
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Selected: $year-${month + 1}-$day $hour:$minute")
         // In production, implement full calendar UI
