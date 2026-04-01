@@ -3,6 +3,8 @@
 ## Overview
 This document describes fixes for multiple bugs related to reactive data flow, site/museum display, and centralized configuration management across screens.
 
+**Last Updated:** Fixed compilation errors related to `androidApplication` reference and `selectedMuseum` variable.
+
 ## Bugs Fixed
 
 ### Bug 1: DataStore Writes Weren't Notifying Other Screens
@@ -128,6 +130,32 @@ We maintain separate ViewModels but ensure they're reactive to the same data sou
 - `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/ScheduleScreen.kt`
   - Changed from one-time load to Flow collection
 
+### Bug 7: Compilation Errors - Unresolved References
+
+**Problem:**
+Build failed with the following errors:
+```
+Unresolved reference: androidApplication
+Unresolved reference: selectedMuseum
+```
+
+**Root Cause:**
+1. `viewModel.androidApplication` - The `AndroidViewModel` class provides `getApplication<Application>()` method, not `androidApplication` property
+2. `selectedMuseum` - Variable name mismatch; the actual variable was named `selectedMuseumSlug`
+
+**Solution:**
+1. Replace `viewModel.androidApplication.applicationContext` with `LocalContext.current.applicationContext` using Compose's `LocalContext` API
+2. Fix variable name from `selectedMuseum` to `selectedMuseumSlug` to match the declared variable
+
+**Files Modified:**
+- `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/ScheduleScreen.kt`
+  - Added import: `import androidx.compose.ui.platform.LocalContext`
+  - Changed: `val context = LocalContext.current.applicationContext`
+  - Fixed: `selectedMuseum = ""` → `selectedMuseumSlug = ""`
+- `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/UserConfigScreen.kt`
+  - Added import: `import androidx.compose.ui.platform.LocalContext`
+  - Changed: `val context = LocalContext.current.applicationContext`
+
 ## Implementation Details
 
 ### Flow-based Reactive Architecture
@@ -171,6 +199,21 @@ DropdownMenuItem(
 )
 ```
 
+### Context Access in Composables
+
+```kotlin
+// Correct way to get ApplicationContext in Composable
+val context = LocalContext.current.applicationContext
+val configManager = remember { ConfigManager(context) }
+
+// Collect config flow reactively
+LaunchedEffect(Unit) {
+    configManager.configFlow.collect { config ->
+        // Update UI state
+    }
+}
+```
+
 ## Testing
 
 ### Manual Test Scenarios
@@ -196,6 +239,11 @@ DropdownMenuItem(
    - Verify displays "Seattle Art Museum" not "seattle-art-museum"
    - Select museum → Save → Verify slug stored correctly
 
+5. **Build Verification:**
+   - Run `./gradlew assembleRelease` or `./gradlew build`
+   - Verify no compilation errors related to `androidApplication` or `selectedMuseum`
+   - Verify app runs without crashes
+
 ## Files Modified Summary
 
 1. **ConfigManager.kt**
@@ -217,10 +265,13 @@ DropdownMenuItem(
 6. **UserConfigScreen.kt**
    - Museum dropdown displays names, stores slugs
    - Continuous config observation
+   - **Bug 7 Fix:** Use `LocalContext.current.applicationContext` instead of `viewModel.androidApplication`
 
 7. **ScheduleScreen.kt**
    - Museum dropdown displays names, stores slugs
    - Continuous config observation
+   - **Bug 7 Fix:** Use `LocalContext.current.applicationContext` instead of `viewModel.androidApplication`
+   - **Bug 7 Fix:** Fixed variable name `selectedMuseum` → `selectedMuseumSlug`
 
 ## Design Principles Maintained
 
@@ -229,6 +280,7 @@ DropdownMenuItem(
 - **Reactive UI**: StateFlow ensures automatic UI updates on data changes
 - **Separation of Concerns**: ViewModels handle business logic, screens handle presentation
 - **Lifecycle Awareness**: Flow collection respects coroutine scope lifecycle
+- **Compose Best Practices**: Use `LocalContext` for context access in composables
 
 ## Next Steps
 
@@ -237,3 +289,4 @@ No further action required. All reported bugs have been fixed with a cohesive Fl
 - Proper museum name display
 - Reactive site filtering
 - Persistent configuration across navigation
+- Successful compilation without errors

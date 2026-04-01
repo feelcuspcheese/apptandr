@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +37,8 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
     val saveError by viewModel.saveError.collectAsState()
     
     // Load admin config to get museums for dropdown (with names)
-    val configManager = remember { ConfigManager(viewModel.androidApplication.applicationContext) }
+    val context = LocalContext.current.applicationContext
+    val configManager = remember { ConfigManager(context) }
     var availableMuseumNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var museumSlugMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // name -> slug mapping
     

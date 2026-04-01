@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons.Filled
 import androidx.compose.material.icons.filled.Delete
@@ -40,7 +41,8 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
     var selectedDateTime by remember { mutableStateOf(uiState.selectedDateTime) }
     
     // Load museum name mapping for display (slug -> name)
-    val configManager = remember { ConfigManager(viewModel.androidApplication.applicationContext) }
+    val context = LocalContext.current.applicationContext
+    val configManager = remember { ConfigManager(context) }
     var museumNameMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // slug -> name
     
     // Collect config flow to get museum names reactively
@@ -100,7 +102,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
                         text = { Text(site.uppercase()) },
                         onClick = {
                             selectedSite = site
-                            selectedMuseum = "" // Reset museum when site changes
+                            selectedMuseumSlug = "" // Reset museum when site changes
                             siteExpanded = false
                             viewModel.onSiteSelected(site)
                         }
