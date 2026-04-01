@@ -63,6 +63,9 @@ Purpose: Test scenarios and acceptance tests.
 | AC-29 | Dashboard Stats: Quick Stats card loads active site, mode, and museum from saved config (not hardcoded) | Manual | |
 | AC-30 | Museum Dropdown Refresh: Museum dropdown updates when site changes in Schedule screen | Manual | |
 | AC-31 | Config Keys: DataStore JSON keys correctly map to/from default_config.yaml fields | Manual | |
+| AC-32 | User Config Museum Dropdown: Preferred Museum field is a dropdown populated from admin-configured museums for active site | Manual | |
+| AC-33 | Schedule Screen Refresh: Site, Museum, and Mode fields refresh when returning from Admin Config after saving changes | Manual | |
+| AC-34 | Mode Persistence: Schedule screen Mode field loads saved user config mode value on screen load | Manual | |
 
 ## 5. Go Agent Integration Tests
 
@@ -274,4 +277,61 @@ Purpose: Test scenarios and acceptance tests.
 - No data loss during save/load cycles
 
 **Pass Criteria**: ConfigManager correctly maps between Kotlin camelCase and JSON/YAML snake_case where applicable
+
+### TC-32: User Config Museum Dropdown
+**Preconditions**:
+- Admin has configured museums for active site (e.g., SPL has "seattle-art-museum", "zoo")
+
+**Steps**:
+1. Navigate to User Config screen
+2. Click on "Preferred Museum" field
+3. Verify dropdown appears with museum options
+4. Select a museum from dropdown
+5. Save configuration
+6. Navigate away and back to User Config
+
+**Expected Results**:
+- Preferred Museum field is a dropdown (not text input)
+- Dropdown shows only museums configured for the current active site in Admin Config
+- Selected museum persists after save
+- Dropdown repopulates correctly when returning to screen
+
+**Pass Criteria**: User can select preferred museum from dropdown populated by admin-configured museums
+
+### TC-33: Schedule Screen Refresh After Admin Config Changes
+**Preconditions**:
+- Schedule screen open with default values
+- Admin Config has SPL with museums ["museum-a"]
+
+**Steps**:
+1. In Schedule screen, note current Site, Museum, Mode values
+2. Navigate to Admin Config
+3. Add new museum "museum-b" to SPL
+4. Change user mode to "booking" in User Config
+5. Save both configurations
+6. Navigate back to Schedule screen
+
+**Expected Results**:
+- Site dropdown shows updated sites if changed
+- Museum dropdown now includes "museum-b" for SPL
+- Mode field shows "booking" (loaded from saved user config)
+- All fields reflect latest saved configuration without requiring app restart
+
+**Pass Criteria**: Schedule screen reloads config when becoming visible, reflecting all recent saves
+
+### TC-34: Mode Persistence in Schedule Screen
+**Preconditions**:
+- User config mode set to "booking"
+
+**Steps**:
+1. Close and reopen app (or navigate away and back)
+2. Open Schedule screen
+3. Check Mode dropdown value
+
+**Expected Results**:
+- Mode dropdown shows "booking" (not default "alert")
+- Value loaded from config.user.mode in DataStore
+- User can still change mode if needed
+
+**Pass Criteria**: Schedule screen initializes Mode field from saved user config, not hardcoded default
 

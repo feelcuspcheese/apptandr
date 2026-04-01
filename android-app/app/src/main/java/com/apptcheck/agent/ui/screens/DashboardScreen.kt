@@ -194,12 +194,13 @@ fun DashboardScreen(application: Application) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                // Load config reactively
+                // Load config reactively with proper lifecycle management
                 val configManager = remember { ConfigManager(application) }
                 var activeSite by remember { mutableStateOf("SPL") }
                 var mode by remember { mutableStateOf("Alert") }
                 var museum by remember { mutableStateOf("Not configured") }
                 
+                // Reload config when screen becomes visible or when returning from other screens
                 LaunchedEffect(Unit) {
                     try {
                         val config = configManager.loadConfig()
