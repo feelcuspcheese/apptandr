@@ -3,11 +3,8 @@ package com.booking.bot.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
+import androidx.core.app.NotificationCompat
 import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
@@ -18,24 +15,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
 
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
- * 
- * Extends LifecycleService to provide lifecycle-aware coroutine scopes.
+ *
  * Provides StateFlow<Boolean> for isRunning state that UI can observe.
  */
 class BookingForegroundService : LifecycleService() {
-    
+
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "booking_service"
         private const val NOTIFICATION_ID = 1001
         private const val STOP_ACTION = "com.booking.bot.STOP_AGENT"
-        
+
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
-        
+
         /**
          * Start the service with a scheduled run.
          */
@@ -48,14 +48,14 @@ class BookingForegroundService : LifecycleService() {
                 putExtra("drop_time", run.dropTimeMillis)
                 putExtra("mode", run.mode)
             }
-            
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)
             }
         }
-        
+
         /**
          * Stop the service.
          */
@@ -66,22 +66,22 @@ class BookingForegroundService : LifecycleService() {
             context.startService(intent)
         }
     }
-    
+
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var mobileAgent: Any? = null // Will hold MobileAgent instance from AAR
-    
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
     }
-    
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.let {
             if (it.action == STOP_ACTION) {
                 stopAgent()
                 return START_NOT_STICKY
             }
-            
+
             val run = ScheduledRun(
                 id = it.getStringExtra("run_id") ?: return START_NOT_STICKY,
                 siteKey = it.getStringExtra("site_key") ?: return START_NOT_STICKY,
@@ -90,23 +90,23 @@ class BookingForegroundService : LifecycleService() {
                 dropTimeMillis = it.getLongExtra("drop_time", 0),
                 mode = it.getStringExtra("mode") ?: "alert"
             )
-            
+
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
-            
+
             serviceScope.launch {
                 try {
                     // Load current config
                     val configManager = ConfigManager.getInstance(this@BookingForegroundService)
                     val config = configManager.configFlow.first()
-                    
+
                     // Build JSON for Go agent
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
-                    
+
                     // TODO: Initialize MobileAgent from AAR when available
                     // For now, log that we would start the agent
                     LogManager.addLog("INFO", "Would start Go agent with config: $agentConfigJson")
-                    
+
                     // When AAR is available:
                     // mobileAgent = MobileAgent()
                     // mobileAgent?.setLogCallback { json ->
@@ -116,10 +116,10 @@ class BookingForegroundService : LifecycleService() {
                     //     updateNotification(status)
                     // }
                     // mobileAgent?.start(agentConfigJson)
-                    
+
                     LogManager.addLog("INFO", "Go agent started successfully")
                     updateNotification("Running...")
-                    
+
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Failed to start agent: ${e.message}")
                     updateNotification("Error: ${e.message}")
@@ -127,23 +127,19 @@ class BookingForegroundService : LifecycleService() {
                 }
             }
         }
-        
+
         return START_STICKY
     }
-    
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         stopAgent()
     }
-    
-    override fun onBind(intent: Intent?): android.os.IBinder? {
-        return super.onBind(intent)
-    }
-    
+
     /**
      * Stop the Go agent and clean up.
      */
@@ -153,7 +149,7 @@ class BookingForegroundService : LifecycleService() {
                 // TODO: When AAR is available:
                 // mobileAgent?.stop()
                 // mobileAgent = null
-                
+
                 LogManager.addLog("INFO", "Agent stopped")
             } catch (e: Exception) {
                 LogManager.addLog("ERROR", "Error stopping agent: ${e.message}")
@@ -163,7 +159,7 @@ class BookingForegroundService : LifecycleService() {
             }
         }
     }
-    
+
     /**
      * Create notification channel for Android O+.
      */
@@ -176,12 +172,12 @@ class BookingForegroundService : LifecycleService() {
             ).apply {
                 description = "Shows status of booking agent"
             }
-            
+
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
     }
-    
+
     /**
      * Create or update the foreground service notification.
      */
@@ -195,7 +191,7 @@ class BookingForegroundService : LifecycleService() {
             stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Booking Agent")
             .setContentText(status)
@@ -204,7 +200,7 @@ class BookingForegroundService : LifecycleService() {
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
             .build()
     }
-    
+
     /**
      * Update the notification with new status.
      */
