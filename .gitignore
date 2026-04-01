@@ -2,10 +2,6 @@
 *.class
 *.o
 *.obj
-*.exe
-*.dll
-*.so
-*.a
 *.out
 
 # Dependencies
@@ -18,22 +14,23 @@ __pycache__/
 target/
 .gradle/
 
-# Editors
-.vscode/
-.idea/
+# Logs and temp files
+*.log
+*.tmp
 *.swp
-*.swo
 
-# System/Environment
-.DS_Store
-Thumbs.db
+# Environment
 .env
 .env.local
 *.env.*
 
-# Logs and temp files
-*.log
-*.tmp
+# Editors
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
 
 # Coverage
 coverage/

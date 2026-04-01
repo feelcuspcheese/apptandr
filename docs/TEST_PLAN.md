@@ -52,4 +52,63 @@ Purpose: Test scenarios and acceptance tests.
 | AC-18 | Schedule Screen: Mode dropdown offers both "alert" and "booking" options | Manual | |
 | AC-19 | Schedule Screen: Scheduled runs show correct site/museum combination and can be deleted | Manual | |
 | AC-20 | Configuration Manager: Sites and their configs (including museums) are stored and retrieved per-site according to central structure | Manual | |
+| AC-21 | Go Agent Integration: Clicking "Start Now" triggers actual Go agent (not simulation); logs show real execution without [SIMULATED] prefix | Manual | |
+| AC-22 | Go Agent Logs: Logs screen displays actual Go agent output with proper log levels ([INFO], [ERROR], etc.) forwarded from MobileAgent | Manual | |
+| AC-23 | Go Agent Config: Agent starts with correct site-specific configuration loaded from DataStore via ConfigManager.buildAgentConfig() | Manual | |
+
+## 5. Go Agent Integration Tests
+
+### TC-21: Go Agent Execution Verification
+**Preconditions**: 
+- Go AAR (booking.aar) built and included in libs/
+- Admin config has valid site credentials configured
+
+**Steps**:
+1. Navigate to Dashboard screen
+2. Click "Start Now" button
+3. Wait 30 seconds for agent to start
+4. Navigate to Logs screen
+5. Observe log entries
+
+**Expected Results**:
+- Log shows "[REAL] Go agent started in <mode> mode" (not [SIMULATED])
+- Subsequent logs show actual Go agent execution with levels like "[INFO]", "[ERROR]"
+- Logs include museum check progress, availability results, notification status
+- No ClassNotFoundException or similar errors
+
+**Pass Criteria**: All expected log entries appear without simulation markers
+
+### TC-22: Go Agent Callback Verification
+**Preconditions**: Go agent running from Dashboard
+
+**Steps**:
+1. Start agent from Dashboard
+2. While running, navigate to Logs screen
+3. Observe real-time log updates
+4. Wait for agent to complete or click Stop
+
+**Expected Results**:
+- Logs appear in real-time as Go agent executes
+- Status callback updates UI notification text
+- On completion, log shows "Go agent status: finished" or "stopped"
+- Service stops cleanly after completion
+
+**Pass Criteria**: Callbacks properly forward Go logs and status to Android UI
+
+### TC-23: Site-Specific Config Verification
+**Preconditions**: Both SPL and KCLS sites configured with different museums
+
+**Steps**:
+1. In Admin Config, set active site to SPL, configure museums
+2. Save and return to Dashboard
+3. Start agent, verify logs show SPL museum
+4. Change active site to KCLS in Admin Config
+5. Start agent again, verify logs show KCLS museum
+
+**Expected Results**:
+- Each run uses correct site's configuration
+- Museum slug and ID match selected site
+- Base URL and endpoint reflect chosen site
+
+**Pass Criteria**: ConfigManager correctly builds per-site config JSON
 
