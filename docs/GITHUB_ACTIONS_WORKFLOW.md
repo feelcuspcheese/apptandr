@@ -74,47 +74,35 @@ No secrets required - the workflow builds an unsigned APK. The gradlew script mu
 
 The app is configured to support:
 
-- **Minimum SDK**: 23 (Android 6.0 Marshmallow)
-- **Target SDK**: 36 (Android 16)
+- **Minimum SDK**: 26 (Android 8.0 Oreo) - as per TECHNICAL_SPEC.md section 1
+- **Target SDK**: 34 (Android 14) - as per TECHNICAL_SPEC.md section 11
 - **Supported CPU Architectures**: 
   - `armeabi-v7a` (32-bit ARM)
   - `arm64-v8a` (64-bit ARM)
+  - `x86` (32-bit Intel)
+  - `x86_64` (64-bit Intel)
 
-This ensures the generated universal APK can run on a wide range of Android devices from Android 6.0 up to Android 16, including devices like Pixel 6a. The build targets only ARM architectures since all Android phones use ARM-based processors.
+This ensures the generated universal APK can run on a wide range of Android devices from Android 8.0 up to Android 14. The build targets all major architectures to ensure compatibility with both phones and emulators.
 
 ### Architecture Configuration
 
-The `build.gradle.kts` file includes NDK ABI filters to bundle native libraries for ARM architectures:
+The `build.gradle.kts` file includes NDK ABI filters to bundle native libraries for all supported architectures per TECHNICAL_SPEC.md section 1:
 
 ```kotlin
 ndk {
-    abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+    abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 }
 ```
 
-This produces a smaller APK compared to including x86 architectures, while maintaining compatibility with all Android phones. x86 support is omitted as it's only needed for emulators and rare non-phone devices.
+This produces a universal APK that supports both ARM-based phones and x86-based emulators.
 
-### Critical Android 16 Compatibility Requirements
+### Native Library Compatibility Requirements
 
-For the APK to install and run correctly on Android 16 devices (especially ARM64 devices like Pixel 6a), the following requirements must be met:
+For the APK to install and run correctly with the Go agent's native libraries, the following requirements must be met:
 
-#### 1. ARM64 Cross-Compilation with 16KB Page Alignment
+#### 1. Native Library Extraction
 
-Android 16 mandates that native shared libraries (.so files) be aligned to 16 KB memory pages. The Go build process must include:
-
-```bash
-export GOARCH=arm64
-export GOOS=android
-export CGO_ENABLED=1
-export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
-gomobile bind -target=android -androidapi 23 -o libs/booking.aar agent/mobile
-```
-
-Without the `-Wl,-z,max-page-size=16384` flag, the APK will fail to install with `INSTALL_FAILED_INVALID_APK`.
-
-#### 2. Native Library Extraction
-
-The `AndroidManifest.xml` must explicitly set `android:extractNativeLibs="true"` to allow Go's cgo runtime to properly load native libraries:
+The `AndroidManifest.xml` must explicitly set `android:extractNativeLibs="true"` to allow Go's cgo runtime to properly load native libraries (as updated in the manifest):
 
 ```xml
 <application
@@ -122,7 +110,7 @@ The `AndroidManifest.xml` must explicitly set `android:extractNativeLibs="true"`
     ... >
 ```
 
-Additionally, `build.gradle.kts` must enable legacy packaging:
+Additionally, `build.gradle.kts` must enable legacy packaging (as updated per TECHNICAL_SPEC.md section 11):
 
 ```kotlin
 packaging {
@@ -132,23 +120,9 @@ packaging {
 }
 ```
 
-#### 3. APK Signature Schemes
+#### 2. APK Signature Schemes
 
-For Android 16 compatibility, the APK must be signed with signature schemes v2, v3, and v4. The default Android Gradle Plugin 8.2+ handles this automatically when signing configs are properly configured.
-
-#### 4. Verification Steps
-
-After building the APK, verify it contains the correct ARM64 library:
-
-```bash
-# Check which ABI folders are present
-zipinfo -1 app-release.apk | grep "\.so$"
-# Must include: lib/arm64-v8a/libagent.so
-
-# Verify 16KB page alignment
-unzip -p app-release.apk 'lib/arm64-v8a/*.so' | readelf -l - | grep -A1 LOAD
-# PT_LOAD alignment must be 0x4000 (16384) or higher
-```
+For Android compatibility, the APK must be signed with signature schemes v2, v3, and v4. The default Android Gradle Plugin 8.2+ handles this automatically when signing configs are properly configured.
 
 
 ## Tag Requirement for Releases
