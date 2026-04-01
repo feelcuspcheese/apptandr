@@ -180,7 +180,7 @@ fun DashboardScreen(application: Application) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Quick Stats Card
+        // Quick Stats Card - Load from config properly with StateFlow
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -193,10 +193,34 @@ fun DashboardScreen(application: Application) {
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                // TODO: Load from config properly with StateFlow
-                Text("Active Site: SPL") // TODO: Load from config
-                Text("Mode: Alert") // TODO: Load from config
-                Text("Preferred Museum: Seattle Art Museum") // TODO: Load from config
+                
+                // Load config reactively
+                val configManager = remember { ConfigManager(application) }
+                var activeSite by remember { mutableStateOf("SPL") }
+                var mode by remember { mutableStateOf("Alert") }
+                var museum by remember { mutableStateOf("Not configured") }
+                
+                LaunchedEffect(Unit) {
+                    try {
+                        val config = configManager.loadConfig()
+                        activeSite = config.admin.activeSite.uppercase()
+                        mode = config.user.mode.replaceFirstChar { it.uppercase() }
+                        
+                        // Get preferred museum name from slug
+                        val siteKey = config.admin.activeSite
+                        val preferredSlug = config.user.preferredSlug.ifEmpty {
+                            config.admin.sites[siteKey]?.museums?.keys?.firstOrNull() ?: ""
+                        }
+                        museum = config.admin.sites[siteKey]?.museums?.get(preferredSlug)?.name
+                            ?: preferredSlug.ifEmpty { "Not configured" }
+                    } catch (e: Exception) {
+                        // Keep defaults on error
+                    }
+                }
+                
+                Text("Active Site: $activeSite")
+                Text("Mode: $mode")
+                Text("Preferred Museum: $museum")
             }
         }
         
