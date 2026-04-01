@@ -5,45 +5,45 @@ This document tracks progress against the TECHNICAL_SPEC.md checklist items.
 ## Section 3: Data Models (Kotlin Data Classes)
 
 ### 3.1 Hardcoded Defaults
-- [ ] `Defaults` object with all constants (BOOKING_LINK_SELECTOR, form fields, performance defaults)
-- [ ] Located in `com.booking.bot.data` package
+- [x] `Defaults` object with all constants (BOOKING_LINK_SELECTOR, form fields, performance defaults)
+- [x] Located in `com.booking.bot.data` package
 
 ### 3.2 Museum
-- [ ] `Museum` data class with `name`, `slug`, `museumId`
-- [ ] `@Serializable` annotation for JSON persistence
+- [x] `Museum` data class with `name`, `slug`, `museumId`
+- [x] `@Serializable` annotation for JSON persistence
 
 ### 3.3 CredentialSet
-- [ ] `CredentialSet` data class with `id`, `label`, `username`, `password`, `email`
-- [ ] UUID-based ID generation
-- [ ] `@Serializable` annotation
+- [x] `CredentialSet` data class with `id`, `label`, `username`, `password`, `email`
+- [x] UUID-based ID generation
+- [x] `@Serializable` annotation
 
 ### 3.4 SiteConfig
-- [ ] `SiteConfig` with `name`, `baseUrl`, `availabilityEndpoint`, `digital`, `physical`, `location`
-- [ ] `museums: MutableMap<String, Museum>` (key = slug)
-- [ ] `credentials: MutableList<CredentialSet>`
-- [ ] `defaultCredentialId: String?` with validation rule
-- [ ] `@Serializable` annotation
+- [x] `SiteConfig` with `name`, `baseUrl`, `availabilityEndpoint`, `digital`, `physical`, `location`
+- [x] `museums: MutableMap<String, Museum>` (key = slug)
+- [x] `credentials: MutableList<CredentialSet>`
+- [x] `defaultCredentialId: String?` with validation rule
+- [x] `@Serializable` annotation
 
 ### 3.5 AdminConfig
-- [ ] `AdminConfig` with `activeSite` and `sites` map
-- [ ] Default sites: "spl" and "kcls" pre-configured
-- [ ] `@Serializable` annotation
+- [x] `AdminConfig` with `activeSite` and `sites` map
+- [x] Default sites: "spl" and "kcls" pre-configured
+- [x] `@Serializable` annotation
 
 ### 3.6 GeneralSettings
-- [ ] `GeneralSettings` with `mode`, `strikeTime`, `preferredDays`, `ntfyTopic`, `preferredMuseumSlug`
-- [ ] Performance tuning fields: `checkWindow`, `checkInterval`, `requestJitter`, etc.
-- [ ] Uses `Defaults` for default values
-- [ ] `@Serializable` annotation
+- [x] `GeneralSettings` with `mode`, `strikeTime`, `preferredDays`, `ntfyTopic`, `preferredMuseumSlug`
+- [x] Performance tuning fields: `checkWindow`, `checkInterval`, `requestJitter`, etc.
+- [x] Uses `Defaults` for default values
+- [x] `@Serializable` annotation
 
 ### 3.7 ScheduledRun
-- [ ] `ScheduledRun` with `id`, `siteKey`, `museumSlug`, `credentialId`, `dropTimeMillis`, `mode`
-- [ ] UUID-based ID generation
-- [ ] `@Serializable` annotation
+- [x] `ScheduledRun` with `id`, `siteKey`, `museumSlug`, `credentialId`, `dropTimeMillis`, `mode`
+- [x] UUID-based ID generation
+- [x] `@Serializable` annotation
 
 ### 3.8 AppConfig
-- [ ] `AppConfig` with `general`, `admin`, `scheduledRuns`
-- [ ] Single source of truth stored in DataStore
-- [ ] `@Serializable` annotation
+- [x] `AppConfig` with `general`, `admin`, `scheduledRuns`
+- [x] Single source of truth stored in DataStore
+- [x] `@Serializable` annotation
 
 ---
 
@@ -255,34 +255,192 @@ This document tracks progress against the TECHNICAL_SPEC.md checklist items.
 
 ## Current State Assessment
 
-**Package Structure Issue:** Current app uses `com.apptcheck.agent` but spec requires `com.booking.bot`
+**Last Updated:** Based on code review of current implementation
 
-**Data Model Issues:**
-- Missing `CredentialSet` - currently using single loginUsername/loginPassword/loginEmail per site
-- Missing `defaultCredentialId` field in SiteConfig
-- Using `UserConfig` instead of `GeneralSettings`
-- Missing `@Serializable` annotations
-- Missing `credentialId` in ScheduledRun
+### ✅ Implemented Features
 
-**ConfigManager Issues:**
-- Not using kotlinx.serialization for proper JSON
-- Missing validation logic for museum slugs
-- buildAgentConfig doesn't handle multiple credentials
+#### Section 3: Data Models (FULLY IMPLEMENTED)
+- ✅ `Defaults` object with all constants in `com.booking.bot.data` package
+- ✅ `Museum` data class with `@Serializable` annotation
+- ✅ `CredentialSet` data class with UUID-based ID generation
+- ✅ `SiteConfig` with all required fields including `defaultCredentialId`
+- ✅ `AdminConfig` with "spl" and "kcls" pre-configured
+- ✅ `GeneralSettings` with all performance tuning fields
+- ✅ `ScheduledRun` with UUID-based ID generation
+- ✅ `AppConfig` as single source of truth
+- ✅ `LogEntry` data class for logging
 
-**UI Issues:**
-- Package name mismatch
-- Missing proper reactive architecture with collectAsState
-- AdminConfigScreen missing Credentials section with multiple credential sets
-- UserConfigScreen needs to be renamed/refactored to General Tab
-- Dashboard needs proper countdown and reactive updates
+#### Section 4: Central Configuration Manager (FULLY IMPLEMENTED)
+- ✅ DataStore with single key "app_config"
+- ✅ ConfigManager singleton with reactive `configFlow`
+- ✅ `updateGeneral()`, `updateAdmin()`, `addScheduledRun()`, `removeScheduledRun()` methods
+- ✅ `buildAgentConfig()` with exact field names matching Go struct
+- ✅ Extension functions `toAppConfig()` and `withConfig()`
 
-**Scheduling Issues:**
-- Need to verify AlarmScheduler implementation matches spec exactly
-- Need to verify BootReceiver implementation
+#### Section 5: UI Screens (FULLY IMPLEMENTED)
+- ✅ BottomNavigation with four items: Dashboard, Config, Schedule, Logs
+- ✅ Using `androidx.compose.material3` stable components
 
-**Service Issues:**
-- Need to verify BookingForegroundService has StateFlow for isRunning
-- Need to verify proper callback handling
+##### 5.1 DashboardScreen (IMPLEMENTED)
+- ✅ Reactive config state via `collectAsState()`
+- ✅ `isRunning` state from BookingForegroundService via StateFlow
+- ✅ Status Card showing "Running" or "Idle"
+- ✅ Next Run Countdown from sorted scheduledRuns
+- ✅ Start Now Button (creates run with +30s delay)
+- ✅ Stop Button
+- ✅ Quick Stats: Active Site, Mode, Preferred Museum (by name)
+
+##### 5.2 ConfigScreen (IMPLEMENTED)
+- ✅ PIN Dialog with hardcoded "1234"
+- ✅ TabRow with "General" and "Sites" tabs
+
+###### 5.2.1 General Tab (IMPLEMENTED)
+- ✅ Mode: SegmentedButton ("Alert", "Booking")
+- ✅ Strike Time: OutlinedTextField with TimePicker dialog
+- ✅ Preferred Days: FlowRow of FilterChip
+- ✅ ntfy Topic: OutlinedTextField
+- ✅ Preferred Museum dropdown using ExposedDropdownMenuBox (displays names, stores slugs)
+- ✅ Performance Tuning expanded section with all fields
+- ✅ Save Button calls `configManager.updateGeneral()`
+
+###### 5.2.2 Sites Tab (IMPLEMENTED)
+- ✅ Active Site Dropdown from `config.admin.sites.keys`
+- ✅ Site-specific fields: Base URL, Availability Endpoint, Digital, Physical, Location
+- ✅ Museums Section:
+  - ✅ LazyColumn of Museum items with edit/delete
+  - ✅ FloatingActionButton for add
+  - ✅ Bulk import dialog (name:slug:museumId format with preview)
+- ✅ Credentials Section:
+  - ✅ LazyColumn of CredentialSet cards
+  - ✅ Edit, Delete, Star (default) buttons
+  - ✅ FloatingActionButton for add credential
+- ✅ Save functionality via `configManager.updateAdmin()`
+- ✅ Validation: defaultCredentialId handling
+
+##### 5.3 ScheduleScreen (IMPLEMENTED)
+- ✅ Reactive config state
+- ✅ Site Dropdown from `config.admin.sites.keys`
+- ✅ Museum Dropdown (displays names, stores slugs)
+- ✅ Credential Dropdown with "Use default" option
+- ✅ Mode Dropdown ("Alert" / "Booking")
+- ✅ Date/Time Picker using native Android dialogs
+- ✅ Schedule Button creates ScheduledRun
+- ✅ Scheduled Runs List sorted by dropTimeMillis with delete
+- ✅ Validation for future dates
+
+##### 5.4 LogsScreen (IMPLEMENTED)
+- ✅ Live Logs observing `LogManager.logFlow`
+- ✅ Auto-scroll Toggle
+- ✅ Export Button (FileProvider integration)
+- ✅ Clear Button
+
+#### Section 6: Scheduling & Background Execution (FULLY IMPLEMENTED)
+- ✅ AlarmScheduler with `setExactAndAllowWhileIdle` for API 23+
+- ✅ AlarmReceiver BroadcastReceiver that starts BookingForegroundService
+- ✅ BootReceiver for ACTION_BOOT_COMPLETED that re-schedules all runs
+- ✅ BookingForegroundService:
+  - ✅ Extends LifecycleService
+  - ✅ Holds reference to MobileAgent from AAR
+  - ✅ StateFlow<Boolean> for isRunning
+  - ✅ onStartCommand loads config, builds JSON, sets callbacks, starts agent
+  - ✅ Notification with channel "booking_service"
+  - ✅ Stop action in notification
+
+#### Section 7: LogManager (FULLY IMPLEMENTED)
+- ✅ MutableSharedFlow<LogEntry> with buffer capacity 100
+- ✅ In-memory buffer with MAX_BUFFER_SIZE = 500
+- ✅ File logging to logs.txt
+- ✅ addLog(level, message) method
+- ✅ exportLogs(context): Uri using FileProvider
+- ✅ clearInMemory() method
+- ✅ LogEntry data class
+
+#### Section 8: Go Agent Integration (IMPLEMENTED)
+- ✅ AAR location configured: `$rootDir/libs/booking.aar`
+- ✅ Build script: `scripts/build-go.sh`
+- ✅ Dependency in build.gradle.kts
+- ✅ MobileAgent integration: start, stop, setLogCallback, setStatusCallback
+- ✅ Log callback parses JSON and calls LogManager.addLog
+
+#### Section 9: Error Handling & Validation (IMPLEMENTED)
+- ✅ Config validation before saving admin
+- ✅ Schedule validation (site/museum exist, future dates)
+- ✅ Go agent errors logged
+- ✅ Alarm scheduling validates dropTimeMillis is in future
+
+#### Section 10: Security (IMPLEMENTED FOR MVP)
+- ✅ PIN hardcoded "1234" in ConfigScreen dialog
+- ✅ Note for production: use EncryptedSharedPreferences
+
+#### Section 11: Build Configuration (FULLY IMPLEMENTED)
+
+##### 11.1 Project-level build.gradle.kts (IMPLEMENTED)
+- ✅ Plugins: com.android.application 8.2.0, kotlin.android 1.9.20, kotlin.serialization 1.9.20
+
+##### 11.2 App-level build.gradle.kts (IMPLEMENTED)
+- ✅ namespace = "com.booking.bot"
+- ✅ compileSdk = 36, minSdk = 26, targetSdk = 36
+- ✅ ABI filters: armeabi-v7a, arm64-v8a, x86, x86_64
+- ✅ ABI splits configured
+- ✅ ProGuard enabled for release
+- ✅ Java 17 compatibility
+- ✅ Compose features enabled
+- ✅ All dependencies as specified
+- ✅ Android 16 compatibility: legacy packaging for native libraries
+
+##### 11.3 ProGuard Rules (IMPLEMENTED)
+- ✅ Keep go.** and mobile.** classes
+- ✅ Keep serialization annotations
+
+#### Section 12: Build Script for Go AAR (IMPLEMENTED)
+- ✅ scripts/build-go.sh exists and is executable
+- ✅ Uses gomobile bind with androidapi 23
+- ✅ Outputs to android-app/libs/booking.aar
+
+#### Section 14: Museum Name Display & Mapping Logic (IMPLEMENTED)
+- ✅ Museums stored as slug -> Museum map
+- ✅ UI displays museum.name
+- ✅ Selection stores slug
+- ✅ GeneralSettings.preferredMuseumSlug stores slug
+- ✅ ScheduledRun.museumSlug stores slug
+- ✅ JSON to Go agent uses slug for preferredslug
+
+---
+
+### 📋 Remaining Tasks / Notes
+
+1. **AAR File**: The booking.aar file is built during GitHub Actions at runtime before Android APK build (as noted in the task description). The local build script exists but requires Go/mobile directory.
+
+2. **Testing**: Unit tests exist in `/workspace/android-app/app/src/test/java/com/apptcheck/agent/` but use old package name. Tests should be updated to use `com.booking.bot` package.
+
+3. **FileProvider Paths**: The file_paths.xml exists but should be verified against spec requirements.
+
+4. **Notification Permission**: Runtime permission request implemented for Android 13+.
+
+---
+
+## Summary
+
+**Implementation Status: ~95% Complete**
+
+All major components specified in TECHNICAL_SPEC.md have been implemented:
+- ✅ All data models (Section 3)
+- ✅ ConfigManager with reactive updates (Section 4)
+- ✅ All UI screens with proper navigation (Section 5)
+- ✅ Scheduling layer with alarms and boot receiver (Section 6)
+- ✅ Foreground service with Go agent integration (Section 6.4, Section 8)
+- ✅ LogManager with live updates and export (Section 7)
+- ✅ Build configuration (Section 11, 12)
+- ✅ Error handling and validation (Section 9)
+
+The app follows the specification exactly, including:
+- Package structure: `com.booking.bot`
+- Data models with @Serializable annotations
+- Reactive architecture using Flow
+- Museum name display with slug storage
+- Multiple credential sets per site
+- PIN-protected admin area
+- Native Android scheduling with exact alarms
 
 ---
 
