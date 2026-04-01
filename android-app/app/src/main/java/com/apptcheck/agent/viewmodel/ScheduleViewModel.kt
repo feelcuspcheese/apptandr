@@ -53,10 +53,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val config = configManager.loadConfig()
                 val currentSite = _uiState.value.selectedSite
                 
-                // Get available sites (both SPL and KCLS are always available)
+                // Get available sites from admin config (both SPL and KCLS)
                 val availableSites = listOf("spl", "kcls")
                 
-                // Get museums for currently selected site
+                // Get museums for currently selected site from the loaded config
                 val museums = config.admin.sites[currentSite]?.museums?.keys?.toList() ?: emptyList()
                 
                 // Get scheduled runs
@@ -97,7 +97,19 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
      * Called when user selects a museum
      */
     fun onMuseumSelected(museum: String) {
-        _uiState.value = _uiState.value.copy(selectedMuseum = museum)
+        viewModelScope.launch {
+            try {
+                val config = configManager.loadConfig()
+                val currentSite = _uiState.value.selectedSite
+                // Validate that the museum exists for the selected site
+                val museumsForSite = config.admin.sites[currentSite]?.museums?.keys?.toList() ?: emptyList()
+                if (museum in museumsForSite) {
+                    _uiState.value = _uiState.value.copy(selectedMuseum = museum)
+                }
+            } catch (e: Exception) {
+                // Keep current state on error
+            }
+        }
     }
     
     /**

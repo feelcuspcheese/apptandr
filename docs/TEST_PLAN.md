@@ -46,4 +46,10 @@ Purpose: Test scenarios and acceptance tests.
 | AC-12 | Admin Config screen is scrollable, all fields including login credentials are accessible, Save button is fully visible | Manual | |
 | AC-13 | Save operations provide visual feedback (success/error message) to user | Manual | |
 | AC-14 | Saved configuration values persist when navigating between screens | Manual | |
+| AC-15 | Admin Config: Active Site dropdown shows SPL and KCLS options; selecting a site loads its specific config (base URL, endpoint, museums, etc.) | Manual | |
+| AC-16 | Admin Config: Museums parsed from bulk import text field are saved per-site and persist after navigation | Manual | |
+| AC-17 | Schedule Screen: Site dropdown shows both SPL and KCLS; Museum dropdown dynamically loads museums configured for the selected site | Manual | |
+| AC-18 | Schedule Screen: Mode dropdown offers both "alert" and "booking" options | Manual | |
+| AC-19 | Schedule Screen: Scheduled runs show correct site/museum combination and can be deleted | Manual | |
+| AC-20 | Configuration Manager: Sites and their configs (including museums) are stored and retrieved per-site according to central structure | Manual | |
 

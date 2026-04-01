@@ -8,7 +8,7 @@
 *.so
 *.a
 *.out
-build/
+
 # Dependencies
 node_modules/
 venv/
@@ -18,18 +18,39 @@ __pycache__/
 .pytest_cache/
 target/
 .gradle/
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-# Environment
-.env
-.env.local
-*.env.*
-# Editors
+
+# Editor/IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+*.tmp
+
 # System files
 .DS_Store
 Thumbs.db
+.env
+.env.local
+*.env.*
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Android specific
+*.apk
+*.aar
+local.properties
+.gradle/
+/build/
+app/build/
+*.iml
+*.iws
+
+# Kotlin/Android build
+*.kotlin_metadata
 ```
