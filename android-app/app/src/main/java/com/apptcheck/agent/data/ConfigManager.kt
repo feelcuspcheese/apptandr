@@ -31,21 +31,27 @@ class ConfigManager(private val context: Context) {
     private val CONFIG_KEY = stringPreferencesKey("app_config_json")
     
     /**
+     * Flow that emits AppConfig whenever DataStore changes.
+     * This enables reactive updates across all screens.
+     */
+    val configFlow: Flow<AppConfig> = context.dataStore.data.map { preferences ->
+        val json = preferences[CONFIG_KEY]
+        if (json != null) {
+            try {
+                parseAppConfig(json)
+            } catch (e: Exception) {
+                AppConfig() // Return defaults on parse error
+            }
+        } else {
+            AppConfig()
+        }
+    }
+    
+    /**
      * Load config from DataStore, fallback to defaults
      */
     suspend fun loadConfig(): AppConfig {
-        return context.dataStore.data.map { preferences ->
-            val json = preferences[CONFIG_KEY]
-            if (json != null) {
-                try {
-                    parseAppConfig(json)
-                } catch (e: Exception) {
-                    AppConfig() // Return defaults on parse error
-                }
-            } else {
-                AppConfig()
-            }
-        }.first()
+        return configFlow.first()
     }
     
     /**

@@ -35,21 +35,33 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
     val saveResult by viewModel.saveResult.collectAsState()
     
     var selectedSite by remember { mutableStateOf(uiState.selectedSite) }
-    var selectedMuseum by remember { mutableStateOf(uiState.selectedMuseum) }
+    var selectedMuseumSlug by remember { mutableStateOf(uiState.selectedMuseum) }
     var selectedMode by remember { mutableStateOf(uiState.selectedMode) }
     var selectedDateTime by remember { mutableStateOf(uiState.selectedDateTime) }
+    
+    // Load museum name mapping for display (slug -> name)
+    val configManager = remember { ConfigManager(viewModel.androidApplication.applicationContext) }
+    var museumNameMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // slug -> name
+    
+    // Collect config flow to get museum names reactively
+    LaunchedEffect(Unit) {
+        try {
+            configManager.configFlow.collect { config ->
+                val siteKey = config.admin.activeSite
+                val museums = config.admin.sites[siteKey]?.museums ?: emptyMap()
+                museumNameMap = museums.values.associateBy({ it.slug }, { it.name })
+            }
+        } catch (e: Exception) {
+            // Keep empty map on error
+        }
+    }
     
     // Update local state when UI state changes
     LaunchedEffect(uiState) {
         selectedSite = uiState.selectedSite
-        selectedMuseum = uiState.selectedMuseum
+        selectedMuseumSlug = uiState.selectedMuseum
         selectedMode = uiState.selectedMode
         selectedDateTime = uiState.selectedDateTime
-    }
-    
-    // Reload config when screen becomes visible (e.g., after returning from Admin Config)
-    LaunchedEffect(Unit) {
-        viewModel.loadConfig()
     }
     
     Column(
@@ -99,41 +111,60 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Museum Dropdown - loads from selected site's config
+        // Museum Dropdown - displays friendly names, stores slugs
         var museumExpanded by remember { mutableStateOf(false) }
-        val museums = uiState.availableMuseums
+        val museumSlugs = uiState.availableMuseums  // These are slugs from ViewModel
+        
+        // Get display names for museums (slug -> name mapping)
+        val museumDisplayNames = museumSlugs.mapNotNull { slug -> 
+            museumNameMap[slug] 
+        }.sorted()
+        
+        // Display value: show name if available, otherwise show slug
+        val displayMuseumValue = selectedMuseumSlug.let { slug ->
+            museumNameMap[slug] ?: slug.ifEmpty { "" }
+        }
         
         ExposedDropdownMenuBox(
             expanded = museumExpanded,
             onExpandedChange = { museumExpanded = !museumExpanded }
         ) {
             OutlinedTextField(
-                value = selectedMuseum,
+                value = displayMuseumValue,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Museum") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = museumExpanded) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = museums.isNotEmpty()
+                enabled = museumSlugs.isNotEmpty()
             )
             ExposedDropdownMenu(
                 expanded = museumExpanded,
                 onDismissRequest = { museumExpanded = false }
             ) {
-                museums.forEach { museum: String ->
+                if (museumDisplayNames.isEmpty()) {
                     DropdownMenuItem(
-                        text = { Text(museum) },
-                        onClick = {
-                            selectedMuseum = museum
-                            museumExpanded = false
-                            viewModel.onMuseumSelected(museum)
-                        }
+                        text = { Text("No museums configured") },
+                        onClick = { }
                     )
+                } else {
+                    museumDisplayNames.forEach { museumName: String ->
+                        DropdownMenuItem(
+                            text = { Text(museumName) },  // Display friendly name
+                            onClick = {
+                                // Find slug for this name
+                                val slug = museumNameMap.entries.find { it.value == museumName }?.key ?: ""
+                                selectedMuseumSlug = slug
+                                museumExpanded = false
+                                viewModel.onMuseumSelected(slug)
+                            }
+                        )
+                    }
                 }
             }
         }
         
-        if (museums.isEmpty()) {
+        if (museumSlugs.isEmpty()) {
             Text(
                 text = "No museums configured for this site. Please configure museums in Admin Config.",
                 style = MaterialTheme.typography.bodySmall,
@@ -197,12 +228,12 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
         // Schedule Button
         Button(
             onClick = {
-                if (selectedMuseum.isNotEmpty() && selectedDateTime.isNotEmpty()) {
-                    viewModel.scheduleRun(selectedSite, selectedMuseum, selectedMode, selectedDateTime)
+                if (selectedMuseumSlug.isNotEmpty() && selectedDateTime.isNotEmpty()) {
+                    viewModel.scheduleRun(selectedSite, selectedMuseumSlug, selectedMode, selectedDateTime)
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = selectedMuseum.isNotEmpty() && selectedDateTime.isNotEmpty()
+            enabled = selectedMuseumSlug.isNotEmpty() && selectedDateTime.isNotEmpty()
         ) {
             Text("Schedule")
         }
