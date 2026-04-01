@@ -178,8 +178,15 @@ class BookingForegroundService : LifecycleService() {
                     val configManager = ConfigManager.getInstance(this@BookingForegroundService)
                     val config = configManager.configFlow.first()
 
-                    // Build JSON for Go agent
+                    // Build JSON for Go agent (returns null if site/museum/credential not found)
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
+                    
+                    // Handle null config gracefully (SRV-09)
+                    if (agentConfigJson == null) {
+                        LogManager.addLog("ERROR", "Failed to build agent config for run ${run.id} - site/museum/credential not found")
+                        cleanupAndStop(run.id)
+                        return@launch
+                    }
 
                     // Initialize MobileAgent from AAR (section 8 of TECHNICAL_SPEC.md)
                     mobileAgent = MobileAgent()
