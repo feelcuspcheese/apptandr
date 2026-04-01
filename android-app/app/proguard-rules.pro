@@ -1,7 +1,8 @@
-# Add project specific ProGuard rules here.
-# By default, the flags in this file are appended to flags specified
-# in /sdk/tools/proguard/proguard-android.txt
-
-# Keep Go agent classes
+# Following TECHNICAL_SPEC.md section 11.3
+-keep class go.** { *; }
 -keep class mobile.** { *; }
--keep interface mobile.** { *; }
+-keep class com.booking.bot.data.** { *; }
+-keep class kotlinx.serialization.** { *; }
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <fields>;
+}
