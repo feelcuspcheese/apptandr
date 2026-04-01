@@ -606,10 +606,10 @@ private fun GeneralTab(
                             checkWindow = checkWindow,
                             checkInterval = checkInterval,
                             requestJitter = requestJitter,
-                            monthsToCheck = monthsToCheck.toIntOrNull() ?: Defaults.MONTHS_TO_CHECK,
+                            monthsToCheck = monthsToCheck.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MONTHS_TO_CHECK,
                             preWarmOffset = preWarmOffset,
-                            maxWorkers = maxWorkers.toIntOrNull() ?: Defaults.MAX_WORKERS,
-                            restCycleChecks = restCycleChecks.toIntOrNull() ?: Defaults.REST_CYCLE_CHECKS,
+                            maxWorkers = maxWorkers.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MAX_WORKERS,
+                            restCycleChecks = restCycleChecks.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.REST_CYCLE_CHECKS,
                             restCycleDuration = restCycleDuration
                         )
                         configManager.updateGeneral(newGeneral)
@@ -847,7 +847,18 @@ private fun SitesTab(
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
                                                 val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                                
+                                                // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
+                                                val currentConfig = configManager.configFlow.first()
+                                                val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
+                                                    currentConfig.general.copy(preferredMuseumSlug = "")
+                                                } else {
+                                                    currentConfig.general
+                                                }
                                                 configManager.updateAdmin(updatedAdmin)
+                                                if (newGeneral != currentConfig.general) {
+                                                    configManager.updateGeneral(newGeneral)
+                                                }
                                             }
                                         }
                                     }) {
@@ -932,7 +943,22 @@ private fun SitesTab(
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
                                                 val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
-                                                configManager.updateAdmin(updatedAdmin)
+                                                
+                                                // Referential integrity: clear defaultCredentialId if deleted credential was default
+                                                val currentConfig = configManager.configFlow.first()
+                                                val siteConfig = updatedAdmin.sites[selectedSiteKey]
+                                                val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == cred.id) {
+                                                    null
+                                                } else {
+                                                    siteConfig?.defaultCredentialId
+                                                }
+                                                val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
+                                                val finalAdmin = if (finalSite != null) {
+                                                    updatedAdmin.copy(sites = updatedAdmin.sites + (selectedSiteKey to finalSite))
+                                                } else {
+                                                    updatedAdmin
+                                                }
+                                                configManager.updateAdmin(finalAdmin)
                                             }
                                         }
                                     }) {

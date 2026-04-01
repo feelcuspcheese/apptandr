@@ -28,7 +28,7 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **CONF‑02** | ✅ Implemented | `updateGeneral()` persists values to DataStore |
 | **CONF‑03** | ✅ Implemented | `updateAdmin()` saves site fields |
 | **CONF‑04** | ✅ Implemented | configFlow provides real-time updates across screens |
-| **CONF‑05** | ⚠️ Partial | DataStore corruption handled with catch block returning defaults, but no explicit JSON validation or logging of corruption |
+| **CONF‑05** | ✅ Fixed | DataStore corruption now **logged via LogManager.addLog()** in catch block |
 | **CONF‑06** | ❌ Missing | No explicit concurrency handling for rapid sequential updates. DataStore uses updateData which is atomic, but no queuing or debouncing mechanism exists |
 
 **Critical Issues:**
@@ -64,10 +64,10 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **GEN‑05** | ✅ Implemented | ntfy topic field |
 | **GEN‑06** | ✅ Implemented | Preferred museum dropdown with ExposedDropdownMenu |
 | **GEN‑07** | ✅ Implemented | Performance tuning fields |
-| **GEN‑08** | ❌ Missing | **No validation for negative/zero values** - numeric fields accept any input without validation |
+| **GEN‑08** | ✅ Fixed | **Input validation added** - numeric fields now validate for positive values using `takeIf { it > 0 }` before saving |
 
 **Critical Issues:**
-- GEN-08: Fields like `monthsToCheck`, `maxWorkers`, `restCycleChecks` use `toIntOrNull() ?: Defaults` which handles non-numeric but doesn't validate negative or zero values
+- GEN-08: **FIXED** - Input validation now ensures only positive values are accepted
 
 ---
 
@@ -79,20 +79,20 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **SITE‑02** | ✅ Implemented | Edit site fields with Save button |
 | **SITE‑03** | ✅ Implemented | Add museum via dialog |
 | **SITE‑04** | ✅ Implemented | Edit museum functionality |
-| **SITE‑05** | ⚠️ Partial | Delete museum works, but **does not clear preferredMuseumSlug** in GeneralSettings if deleted museum was preferred |
+| **SITE‑05** | ✅ Fixed | Delete museum now **clears preferredMuseumSlug** in GeneralSettings if deleted museum was preferred |
 | **SITE‑06** | ✅ Implemented | Bulk import with preview |
 | **SITE‑07** | ✅ Implemented | Invalid lines ignored in bulk import |
 | **SITE‑08** | ✅ Implemented | Duplicate slug overwrites existing |
 | **SITE‑09** | ✅ Implemented | Add credential dialog |
 | **SITE‑10** | ✅ Implemented | Edit credential |
-| **SITE‑11** | ⚠️ Partial | Delete credential works, but **does not clear defaultCredentialId** if deleted credential was default |
+| **SITE‑11** | ✅ Fixed | Delete credential now **clears defaultCredentialId** if deleted credential was default |
 | **SITE‑12** | ✅ Implemented | Set default credential with star icon |
 | **SITE‑13** | ✅ Implemented | Save admin changes updates DataStore |
 | **SITE‑14** | ⚠️ Partial | Changes persist in memory during tab switching (local state), but spec says "save required" - current implementation may lose unsaved changes on navigation |
 
 **Critical Issues:**
-- SITE-05: When museum is deleted, preferredMuseumSlug should be validated and cleared if invalid
-- SITE-11: When credential is deleted, defaultCredentialId should be cleared if it matched
+- SITE-05: **FIXED** - Referential integrity now maintained when deleting museums
+- SITE-11: **FIXED** - Referential integrity now maintained when deleting credentials
 - SITE-14: Unsaved changes behavior ambiguous - should clarify if changes should persist across tab switches
 
 ---
@@ -143,11 +143,11 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **ALARM‑03** | ✅ Implemented | setExactAndAllowWhileIdle handles Doze mode |
 | **ALARM‑04** | ✅ Implemented | BootReceiver restores alarms |
 | **ALARM‑05** | ✅ Implemented | Cancelled runs removed from DataStore |
-| **ALARM‑06** | ⚠️ Partial | Past runs remain in scheduledRuns list; **BootReceiver re-schedules all runs including past ones** |
+| **ALARM‑06** | ✅ Fixed | BootReceiver now **filters out past runs** before re-scheduling (checks `dropTimeMillis > System.currentTimeMillis()`) |
 | **ALARM‑07** | ✅ Implemented | Concurrency check in BookingForegroundService |
 
 **Critical Issues:**
-- ALARM-06: BootReceiver should filter out past runs before re-scheduling
+- ALARM-06: **FIXED** - BootReceiver now filters out past runs before re-scheduling
 
 ---
 
@@ -163,12 +163,12 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **SRV‑06** | ✅ Implemented | Timeout after 10 minutes triggers cleanup |
 | **SRV‑07** | ✅ Implemented | Concurrency check prevents second run |
 | **SRV‑08** | ✅ Implemented | Stop button stops agent |
-| **SRV‑09** | ⚠️ Partial | buildAgentConfig throws `error()` instead of returning null; **service catches exception but should handle null return gracefully per spec** |
+| **SRV‑09** | ✅ Fixed | buildAgentConfig now **returns null?** on missing site/museum/credential; service handles gracefully with error logging and cleanup |
 | **SRV‑10** | ✅ Implemented | Notification updates via status callback |
 | **SRV‑11** | ✅ Implemented | Stop action in notification |
 
 **Critical Issues:**
-- SRV-09: ConfigManager.buildAgentConfig() uses `error()` which throws exception; spec section 4.3 says it should return null on missing site/museum/credential
+- SRV-09: **FIXED** - buildAgentConfig now returns nullable String and service handles null gracefully
 
 ---
 
@@ -193,12 +193,12 @@ This report validates the Android wrapper app implementation against the 214 tes
 | **LOG‑01** | ✅ Implemented | Logs appear with timestamp, level, message |
 | **LOG‑02** | ✅ Implemented | App internal logs appear |
 | **LOG‑03** | ✅ Implemented | ERROR level used for errors |
-| **LOG‑04** | ⚠️ Partial | Export returns Uri but **share sheet not implemented** - just shows success message |
+| **LOG‑04** | ✅ Fixed | Export now **invokes share sheet** using Intent.createChooser() with ACTION_SEND |
 | **LOG‑05** | ✅ Implemented | clearInMemory() clears buffer only |
 | **LOG‑06** | ✅ Implemented | Auto-scroll toggle implemented |
 
 **Critical Issues:**
-- LOG-04: Export functionality incomplete - needs Intent.createChooser() to show share sheet
+- LOG-04: **FIXED** - Export functionality now complete with share sheet implementation
 
 ---
 

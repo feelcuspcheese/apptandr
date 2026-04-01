@@ -43,8 +43,9 @@ class ConfigManager private constructor(private val context: Context) {
      * Following section 4.2, this enables reactive updates across all screens.
      */
     val configFlow: Flow<AppConfig> = context.dataStore.data
-        .catch { 
-            // If there's an error reading from DataStore, emit empty Preferences
+        .catch { e ->
+            // Log corruption for CONF-05
+            LogManager.addLog("ERROR", "DataStore corruption detected: ${e.message}")
             emit(emptyPreferences()) 
         }
         .map { prefs ->
@@ -52,6 +53,8 @@ class ConfigManager private constructor(private val context: Context) {
                 try {
                     Json.decodeFromString<AppConfig>(json)
                 } catch (e: Exception) {
+                    // Log JSON parse errors for CONF-05
+                    LogManager.addLog("ERROR", "JSON parse error in config: ${e.message}")
                     AppConfig() // Return defaults on parse error
                 }
             } ?: AppConfig()
@@ -123,10 +126,11 @@ class ConfigManager private constructor(private val context: Context) {
      * Build JSON config for Go agent.
      * Following section 4.3, this creates the exact JSON expected by mobile/agent.go.
      * Field names are case-sensitive and must match the Go struct exactly.
+     * Returns null if required site/museum/credential is not found.
      */
-    fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String {
-        val site = config.admin.sites[run.siteKey] ?: error("Site not found: ${run.siteKey}")
-        val museum = site.museums[run.museumSlug] ?: error("Museum not found: ${run.museumSlug}")
+    fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
+        val site = config.admin.sites[run.siteKey] ?: return null
+        val museum = site.museums[run.museumSlug] ?: return null
         
         // Determine credential to use
         val credential = run.credentialId?.let { id ->

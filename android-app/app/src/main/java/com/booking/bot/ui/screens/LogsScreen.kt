@@ -87,7 +87,13 @@ fun LogsScreen(
                         scope.launch {
                             try {
                                 val uri = LogManager.exportLogs(context)
-                                // Share intent would go here
+                                // Share intent with chooser
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share logs via"))
                                 feedbackMessage = "Logs exported successfully"
                             } catch (e: Exception) {
                                 feedbackMessage = "Export failed: ${e.message}"

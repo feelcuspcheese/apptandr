@@ -23,9 +23,12 @@ class BootReceiver : BroadcastReceiver() {
                 val config = configManager.configFlow.first()
                 val scheduler = AlarmScheduler(context)
                 
-                // Re-schedule all runs from config
+                // Re-schedule only future runs (filter out past runs)
+                val currentTime = System.currentTimeMillis()
                 config.scheduledRuns.forEach { run: ScheduledRun ->
-                    scheduler.scheduleRun(run)
+                    if (run.dropTimeMillis > currentTime) {
+                        scheduler.scheduleRun(run)
+                    }
                 }
             }
         }
