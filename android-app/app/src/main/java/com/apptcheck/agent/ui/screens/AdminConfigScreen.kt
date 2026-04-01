@@ -106,9 +106,16 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
     var importMessage by remember { mutableStateOf<String?>(null) }
     var importSuccess by remember { mutableStateOf(false) }
     
-    // Update local state when ViewModel state changes
+    // Track if this is the initial load to avoid overwriting user's site selection
+    var isInitialLoad by remember { mutableStateOf(true) }
+    
+    // Update local state when ViewModel state changes (initial load only)
     LaunchedEffect(adminConfig) {
-        activeSite = adminConfig.activeSite
+        // Only update activeSite on initial load to preserve user's site selection
+        if (isInitialLoad) {
+            activeSite = adminConfig.activeSite
+            isInitialLoad = false
+        }
         baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
         availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
         digital = adminConfig.sites[activeSite]?.digital ?: true
@@ -124,21 +131,23 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
         } ?: ""
     }
     
-    // Update site-specific fields when activeSite changes
+    // Update site-specific fields when activeSite changes (user selection)
     LaunchedEffect(activeSite) {
-        baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
-        availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
-        digital = adminConfig.sites[activeSite]?.digital ?: true
-        physical = adminConfig.sites[activeSite]?.physical ?: false
-        location = adminConfig.sites[activeSite]?.location ?: "0"
-        loginUsername = adminConfig.sites[activeSite]?.loginUsername ?: ""
-        loginPassword = adminConfig.sites[activeSite]?.loginPassword ?: ""
-        loginEmail = adminConfig.sites[activeSite]?.loginEmail ?: ""
-        sites = adminConfig.sites.toMutableMap()
-        // Load current museums into import text for editing
-        museumImportText = adminConfig.sites[activeSite]?.museums?.values?.joinToString("\n") { 
-            "${it.name}:${it.slug}:${it.museumId}" 
-        } ?: ""
+        if (!isInitialLoad) {
+            baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
+            availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
+            digital = adminConfig.sites[activeSite]?.digital ?: true
+            physical = adminConfig.sites[activeSite]?.physical ?: false
+            location = adminConfig.sites[activeSite]?.location ?: "0"
+            loginUsername = adminConfig.sites[activeSite]?.loginUsername ?: ""
+            loginPassword = adminConfig.sites[activeSite]?.loginPassword ?: ""
+            loginEmail = adminConfig.sites[activeSite]?.loginEmail ?: ""
+            sites = adminConfig.sites.toMutableMap()
+            // Load current museums into import text for editing
+            museumImportText = adminConfig.sites[activeSite]?.museums?.values?.joinToString("\n") { 
+                "${it.name}:${it.slug}:${it.museumId}" 
+            } ?: ""
+        }
     }
     
     Column(

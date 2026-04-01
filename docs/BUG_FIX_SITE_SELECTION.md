@@ -5,10 +5,10 @@ This document describes the fixes for multiple bugs related to site selection in
 
 ## Bugs Fixed
 
-### Bug 1: Active Site Defaults to SPL and Doesn't Allow Adding Another Site (KCLS)
+### Bug 1: Active Site Dropdown Not Allowing Site Switching Between SPL and KCLS
 
 **Problem:** 
-- In the Admin Config screen, the active site was defaulting to "spl" and did not properly switch between sites when selected from the dropdown.
+- In the Admin Config screen, the active site dropdown showed both SPL and KCLS options, but selecting a different site would immediately revert back to the saved active site.
 - Config items (base URL, endpoint, digital, physical, location, museums) were not loading correctly when switching between SPL and KCLS sites.
 - When saving, configs were not being saved per-site as designed in the centralized configuration manager.
 
@@ -16,29 +16,32 @@ This document describes the fixes for multiple bugs related to site selection in
 The `LaunchedEffect` in `AdminConfigScreen.kt` had `(adminConfig, activeSite)` as keys, which caused the effect to reset `activeSite` back to `adminConfig.activeSite` whenever the user tried to change it. This created a race condition where the UI would immediately revert to the saved active site instead of allowing the user to select a different site.
 
 **Solution:**
-Split the `LaunchedEffect` into two separate effects:
-1. One that loads config when `adminConfig` changes (preserving the current `activeSite` selection)
-2. One that updates site-specific fields when `activeSite` changes (without resetting the active site)
+Split the `LaunchedEffect` into two separate effects with an `isInitialLoad` flag:
+1. One that loads config when `adminConfig` changes - only updates `activeSite` on initial load
+2. One that updates site-specific fields when `activeSite` changes - only triggers after initial load
+
+This preserves the user's site selection while still loading the correct site-specific configuration.
 
 **Files Modified:**
 - `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/AdminConfigScreen.kt`
-  - Split single `LaunchedEffect(adminConfig, activeSite)` into two separate effects
-  - First effect: `LaunchedEffect(adminConfig)` - loads initial config and preserves activeSite
-  - Second effect: `LaunchedEffect(activeSite)` - updates site-specific fields when site selection changes
+  - Added `isInitialLoad` state variable to track initial load
+  - Modified first `LaunchedEffect(adminConfig)` to only set `activeSite` on initial load
+  - Modified second `LaunchedEffect(activeSite)` to only update site-specific fields after initial load
 
-### Bug 2: Active Site Dropdown Not Showing Both SPL and KCLS Options
+### Bug 2: Schedule Run Screen Site Dropdown Not Showing KCLS Option
 
 **Problem:**
-The active site dropdown was hardcoded to show options but the implementation wasn't properly integrated with the site selection logic.
+The Schedule Run screen's Site dropdown was hardcoded to show only "spl" and "kcls" regardless of what sites were actually configured in the admin config. If an admin added a new site or modified existing sites, the Schedule screen wouldn't reflect those changes.
+
+**Root Cause:**
+The `ScheduleViewModel.loadConfig()` function was using a hardcoded list `listOf("spl", "kcls")` instead of dynamically loading the available sites from the saved admin config.
 
 **Solution:**
-The dropdown already had the correct options (`listOf("spl", "kcls")`), but the fix for Bug 1 ensures that selecting an option now properly:
-1. Updates the `activeSite` state variable
-2. Triggers the second `LaunchedEffect` to load site-specific config
-3. Displays the correct base URL, endpoint, museums, etc. for the selected site
+Changed `ScheduleViewModel.loadConfig()` to dynamically load available sites from `config.admin.sites.keys.toList()` instead of using a hardcoded list. This ensures the Site dropdown always reflects the actual sites configured in the admin config.
 
 **Files Modified:**
-- `/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/AdminConfigScreen.kt` (Bug 1 fix addresses this)
+- `/workspace/android-app/app/src/main/java/com/apptcheck/agent/viewmodel/ScheduleViewModel.kt`
+  - Line 57: Changed from `val availableSites = listOf("spl", "kcls")` to `val availableSites = config.admin.sites.keys.toList()`
 
 ### Bug 3: Parsed Museums Not Listing Under Schedule Run Screen Museum Dropdown
 
@@ -94,6 +97,7 @@ All fixes ensure alignment with the central structure:
 2. Each `SiteConfig` contains its own `museums` map, `baseUrl`, `availabilityEndpoint`, etc.
 3. `ConfigManager` serializes/deserializes the complete structure preserving per-site configs
 4. ViewModels use `ConfigManager` as the single source of truth for loading and saving configs
+5. Schedule screen now dynamically loads sites from admin config instead of hardcoding
 
 **Design Alignment:**
 - TECHNICAL_SPEC.md Section 2.3: AdminConfig data model with sites map
@@ -112,6 +116,7 @@ All fixes ensure alignment with the central structure:
    - Select "SPL" - verify base URL shows `https://spl.libcal.com`
    - Select "KCLS" - verify base URL shows `https://rooms.kcls.org`
    - Verify museums list changes based on selected site
+   - Verify switching between sites doesn't revert to previous selection
 
 2. **Museum Import and Persistence:**
    - Select "SPL" site
@@ -130,10 +135,11 @@ All fixes ensure alignment with the central structure:
 
 #### Schedule Run Screen
 1. **Site and Museum Selection:**
-   - Verify Site dropdown shows both "SPL" and "KCLS"
+   - Verify Site dropdown shows both "SPL" and "KCLS" (or any configured sites)
    - Select "SPL" - verify Museum dropdown shows SPL museums
    - Select "KCLS" - verify Museum dropdown shows KCLS museums only
    - Verify museums match what was configured in Admin Config
+   - Verify museum selection validates against site's configured museums
 
 2. **Mode Selection:**
    - Click Mode dropdown
@@ -150,15 +156,18 @@ All fixes ensure alignment with the central structure:
 ## Files Modified Summary
 
 1. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/ui/screens/AdminConfigScreen.kt`**
-   - Split `LaunchedEffect` to fix site selection bug
-   - Added separate effect for loading config vs updating site-specific fields
+   - Added `isInitialLoad` state variable to prevent overwriting user's site selection
+   - Split `LaunchedEffect` logic to separate initial config load from site selection changes
+   - First effect now only sets `activeSite` on initial load
+   - Second effect now only updates site-specific fields after initial load
 
-2. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/data/ConfigManager.kt`**
-   - Fixed `parseScheduledRuns` to extract `dropTimeMillis` from correct JSON scope
-
-3. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/viewmodel/ScheduleViewModel.kt`**
-   - Enhanced `onMuseumSelected` with validation
+2. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/viewmodel/ScheduleViewModel.kt`**
+   - Changed `loadConfig()` to dynamically load available sites from `config.admin.sites.keys.toList()` instead of hardcoded list
+   - Enhanced `onMuseumSelected` with validation to ensure museum exists for selected site
    - Updated comments for clarity
+
+3. **`/workspace/android-app/app/src/main/java/com/apptcheck/agent/data/ConfigManager.kt`**
+   - Fixed `parseScheduledRuns` to extract `dropTimeMillis` from correct JSON scope (individual run object)
 
 4. **`/workspace/docs/TEST_PLAN.md`**
    - Added acceptance criteria AC-15 through AC-20 for new functionality
@@ -174,6 +183,7 @@ All fixes ensure alignment with the central structure:
 - **Per-Site Isolation**: Each site's config is stored independently in the `sites` map
 - **Reactive UI**: ViewModels expose `StateFlow` for automatic UI updates
 - **Separation of Concerns**: UI screens handle presentation, ViewModels handle business logic, ConfigManager handles persistence
+- **Dynamic Configuration**: Available sites are loaded from saved config, not hardcoded
 
 ## Next Steps
 
@@ -181,3 +191,4 @@ No further action required. All reported bugs have been fixed and documented. Fu
 - Unit tests for `ConfigManager.parseScheduledRuns`
 - UI automation tests for site selection workflow
 - Enhanced error handling for malformed museum import data
+- Support for adding/removing sites dynamically via admin UI
