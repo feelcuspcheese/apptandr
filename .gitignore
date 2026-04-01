@@ -1,44 +1,4 @@
 ```
-# Compiled and build artifacts
-*.class
-*.dex
-*.so
-*.aar
-*.apk
-*.jar
-
-# Dependencies
-node_modules/
-.libs/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
-.vscode/
-.idea/
-*.iml
-*.iws
-*.ipr
-
-# Build outputs
-build/
-dist/
-target/
-out/
-bin/
-
-# Android specific
-*.ap_
-*.ap_
-gen/
-res/
-R.java
+.gradle/
+*.gradle
 ```

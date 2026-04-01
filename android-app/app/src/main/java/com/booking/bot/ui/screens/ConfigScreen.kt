@@ -83,6 +83,231 @@ fun ConfigScreen(
     }
 }
 
+/**
+ * Dialog for editing a Museum
+ */
+@Composable
+private fun MuseumEditDialog(
+    museum: Museum?,
+    onSave: (Museum) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(museum?.name ?: "") }
+    var slug by remember { mutableStateOf(museum?.slug ?: "") }
+    var museumId by remember { mutableStateOf(museum?.museumId ?: "") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (museum == null) "Add Museum" else "Edit Museum") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = slug,
+                    onValueChange = { slug = it.lowercase().replace("\\s+".toRegex(), "-") },
+                    label = { Text("Slug") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = museumId,
+                    onValueChange = { museumId = it },
+                    label = { Text("Museum ID") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isNotBlank() && slug.isNotBlank() && museumId.isNotBlank()) {
+                        onSave(Museum(name = name, slug = slug, museumId = museumId))
+                    }
+                },
+                enabled = name.isNotBlank() && slug.isNotBlank() && museumId.isNotBlank()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog for editing a CredentialSet
+ */
+@Composable
+private fun CredentialEditDialog(
+    credential: CredentialSet?,
+    onSave: (CredentialSet) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var label by remember { mutableStateOf(credential?.label ?: "") }
+    var username by remember { mutableStateOf(credential?.username ?: "") }
+    var password by remember { mutableStateOf(credential?.password ?: "") }
+    var email by remember { mutableStateOf(credential?.email ?: "") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (credential == null) "Add Credential" else "Edit Credential") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Label") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Library Card Number") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("PIN") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (label.isNotBlank() && username.isNotBlank()) {
+                        onSave(
+                            credential?.copy(
+                                label = label,
+                                username = username,
+                                password = password,
+                                email = email
+                            ) ?: CredentialSet(
+                                id = UUID.randomUUID().toString(),
+                                label = label,
+                                username = username,
+                                password = password,
+                                email = email
+                            )
+                        )
+                    }
+                },
+                enabled = label.isNotBlank() && username.isNotBlank()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog for bulk importing museums
+ */
+@Composable
+private fun BulkImportDialog(
+    existingMuseums: Set<String>,
+    onImport: (List<Museum>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var inputText by remember { mutableStateOf("") }
+    var previewMuseums by remember { mutableStateOf<List<Museum>>(emptyList()) }
+    var hasParsed by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bulk Import Museums") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Paste museum data in format: name:slug:museumId (one per line)",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    label = { Text("Museum Data") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    maxLines = 10
+                )
+                Button(
+                    onClick = {
+                        val museums = inputText.lines()
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .mapNotNull { line ->
+                                val parts = line.split(":")
+                                if (parts.size >= 3) {
+                                    Museum(
+                                        name = parts[0].trim(),
+                                        slug = parts[1].trim().lowercase().replace("\\s+".toRegex(), "-"),
+                                        museumId = parts[2].trim()
+                                    )
+                                } else null
+                            }
+                        previewMuseums = museums
+                        hasParsed = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Preview")
+                }
+                if (hasParsed) {
+                    if (previewMuseums.isEmpty()) {
+                        Text("No valid entries found", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text("Preview (${previewMuseums.size} museums):", style = MaterialTheme.typography.titleSmall)
+                        LazyColumn(
+                            modifier = Modifier.height(150.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(previewMuseums) { museum ->
+                                Text(
+                                    "${museum.name} (${museum.slug})",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onImport(previewMuseums) },
+                enabled = hasParsed && previewMuseums.isNotEmpty()
+            ) {
+                Text("Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ConfigContent(
@@ -123,6 +348,7 @@ private fun GeneralTab(
     
     var mode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
     var strikeTime by remember { mutableStateOf(config?.general?.strikeTime ?: "09:00") }
+    var showTimePicker by remember { mutableStateOf(false) }
     var ntfyTopic by remember { mutableStateOf(config?.general?.ntfyTopic ?: "myappointments") }
     var preferredMuseumSlug by remember { mutableStateOf(config?.general?.preferredMuseumSlug ?: "") }
     
@@ -148,29 +374,33 @@ private fun GeneralTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Mode Selection
+        // Mode Selection - using SegmentedButton as per spec section 5.2.1
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Mode", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = mode == "alert",
+                    SingleChoiceSegmentedButtonRow {
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                             onClick = { mode = "alert" },
-                            label = { Text("Alert") }
-                        )
-                        FilterChip(
-                            selected = mode == "booking",
+                            selected = mode == "alert"
+                        ) {
+                            Text("Alert")
+                        }
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                             onClick = { mode = "booking" },
-                            label = { Text("Booking") }
-                        )
+                            selected = mode == "booking"
+                        ) {
+                            Text("Booking")
+                        }
                     }
                 }
             }
         }
         
-        // Strike Time
+        // Strike Time with TimePicker dialog
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -178,9 +408,15 @@ private fun GeneralTab(
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = strikeTime,
-                        onValueChange = { strikeTime = it },
+                        onValueChange = {},
+                        readOnly = true,
                         label = { Text("HH:MM") },
-                        placeholder = { Text("09:00") }
+                        placeholder = { Text("09:00") },
+                        trailingIcon = {
+                            IconButton(onClick = { showTimePicker = true }) {
+                                Icon(Icons.Default.AccessTime, contentDescription = "Pick time")
+                            }
+                        }
                     )
                 }
             }
@@ -381,6 +617,27 @@ private fun GeneralTab(
             }
         }
     }
+    
+    // TimePicker Dialog for Strike Time
+    if (showTimePicker) {
+        val currentTime = remember { 
+            Calendar.getInstance().apply {
+                val parts = strikeTime.split(":")
+                set(Calendar.HOUR_OF_DAY, parts.getOrNull(0)?.toIntOrNull() ?: 9)
+                set(Calendar.MINUTE, parts.getOrNull(1)?.toIntOrNull() ?: 0)
+            }
+        }
+        
+        android.app.TimePickerDialog(
+            context,
+            { _, hour, minute ->
+                strikeTime = String.format("%02d:%02d", hour, minute)
+            },
+            currentTime.get(Calendar.HOUR_OF_DAY),
+            currentTime.get(Calendar.MINUTE),
+            true // is24HourView
+        ).show()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -393,6 +650,13 @@ private fun SitesTab(
     
     var selectedSiteKey by remember { mutableStateOf(config?.admin?.activeSite ?: "spl") }
     var siteExpanded by remember { mutableStateOf(false) }
+    
+    // Dialog states for museums and credentials
+    var showMuseumDialog by remember { mutableStateOf(false) }
+    var showCredentialDialog by remember { mutableStateOf(false) }
+    var showBulkImportDialog by remember { mutableStateOf(false) }
+    var editingMuseum by remember { mutableStateOf<Museum?>(null) }
+    var editingCredential by remember { mutableStateOf<CredentialSet?>(null) }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
