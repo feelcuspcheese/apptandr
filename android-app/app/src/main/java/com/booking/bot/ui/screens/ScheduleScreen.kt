@@ -260,7 +260,7 @@ fun ScheduleScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     Text(dateTimeText)
                     Button(onClick = { showDatePicker = true }) {
@@ -433,7 +433,7 @@ private fun RunItem(
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
         ) {
             Column {
                 Text(

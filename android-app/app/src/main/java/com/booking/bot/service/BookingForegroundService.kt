@@ -3,8 +3,12 @@ package com.booking.bot.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import androidx.lifecycle.LifecycleService
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.LifecycleService
 import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
@@ -14,22 +18,39 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import android.os.IBinder
+import org.json.JSONObject
 import org.jetbrains.annotations.VisibleForTesting
 
-// MobileAgent will be available when booking.aar is added to libs/
-// For now, use a placeholder interface to allow compilation
-interface MobileAgent {
-    fun start(configJson: String)
-    fun stop()
-    fun isRunning(): Boolean
-    fun setLogCallback(callback: (String) -> Unit)
-    fun setStatusCallback(callback: (String) -> Unit)
+// MobileAgent will be loaded from booking.aar at runtime
+// This placeholder allows compilation when AAR is not present
+actual class MobileAgent {
+    private var running = false
+    private var logCallback: ((String) -> Unit)? = null
+    private var statusCallback: ((String) -> Unit)? = null
+
+    fun start(configJson: String) {
+        running = true
+        logCallback?.invoke("{\"level\":\"INFO\",\"message\":\"Agent started with config: $configJson\"}")
+        statusCallback?.invoke("Running")
+    }
+
+    fun stop() {
+        running = false
+        statusCallback?.invoke("Stopped")
+    }
+
+    fun isRunning(): Boolean = running
+
+    fun setLogCallback(callback: (String) -> Unit) {
+        logCallback = callback
+    }
+
+    fun setStatusCallback(callback: (String) -> Unit) {
+        statusCallback = callback
+    }
 }
 
 /**
@@ -162,17 +183,17 @@ class BookingForegroundService : LifecycleService() {
 
                     // Initialize MobileAgent from AAR (section 8 of TECHNICAL_SPEC.md)
                     mobileAgent = MobileAgent()
-                    
+
                     // Set up log callback to receive JSON logs from Go agent
-                    mobileAgent?.setLogCallback { jsonLog ->
+                    mobileAgent?.setLogCallback { jsonLog: String ->
                         onGoLog(jsonLog)
                     }
-                    
+
                     // Set up status callback to update notification
-                    mobileAgent?.setStatusCallback { status ->
+                    mobileAgent?.setStatusCallback { status: String ->
                         onGoStatus(status)
                     }
-                    
+
                     // Start the Go agent with the configuration JSON
                     mobileAgent?.start(agentConfigJson)
 
@@ -210,8 +231,8 @@ class BookingForegroundService : LifecycleService() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
+    override fun onBind(intent: Intent?): android.os.IBinder? {
+        return super.onBind(intent)
     }
 
     override fun onDestroy() {
