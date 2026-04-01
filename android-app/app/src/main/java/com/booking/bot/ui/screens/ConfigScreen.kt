@@ -940,4 +940,78 @@ private fun SitesTab(
             }
         }
     }
+
+    // Museum Edit Dialog - Render dialog when showMuseumDialog is true (section 5.2.2)
+    if (showMuseumDialog) {
+        MuseumEditDialog(
+            museum = editingMuseum,
+            onSave = { museum ->
+                scope.launch {
+                    val updatedSites = config.admin.sites.toMutableMap()
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val updatedMuseums = currentSite.museums.toMutableMap()
+                    updatedMuseums[museum.slug] = museum
+                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                }
+                showMuseumDialog = false
+                editingMuseum = null
+            },
+            onDismiss = {
+                showMuseumDialog = false
+                editingMuseum = null
+            }
+        )
+    }
+
+    // Credential Edit Dialog - Render dialog when showCredentialDialog is true (section 5.2.2)
+    if (showCredentialDialog) {
+        CredentialEditDialog(
+            credential = editingCredential,
+            onSave = { credential ->
+                scope.launch {
+                    val updatedSites = config.admin.sites.toMutableMap()
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val credentials = currentSite.credentials.toMutableList()
+                    if (editingCredential != null) {
+                        val index = credentials.indexOfFirst { it.id == credential.id }
+                        if (index >= 0) credentials[index] = credential
+                    } else {
+                        credentials.add(credential)
+                    }
+                    updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
+                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                }
+                showCredentialDialog = false
+                editingCredential = null
+            },
+            onDismiss = {
+                showCredentialDialog = false
+                editingCredential = null
+            }
+        )
+    }
+
+    // Bulk Import Dialog - Render dialog when showBulkImportDialog is true (section 5.2.2)
+    if (showBulkImportDialog) {
+        BulkImportDialog(
+            existingMuseums = config.admin.sites[selectedSiteKey]?.museums?.keys ?: emptySet(),
+            onImport = { museums ->
+                scope.launch {
+                    val updatedSites = config.admin.sites.toMutableMap()
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val updatedMuseums = currentSite.museums.toMutableMap()
+                    museums.forEach { museum ->
+                        updatedMuseums[museum.slug] = museum
+                    }
+                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                }
+                showBulkImportDialog = false
+            },
+            onDismiss = {
+                showBulkImportDialog = false
+            }
+        )
+    }
 }
