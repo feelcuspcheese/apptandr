@@ -17,12 +17,15 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.apptcheck.agent.viewmodel.UserConfigViewModel
+import com.apptcheck.agent.data.ConfigManager
 import kotlinx.coroutines.launch
 
 /**
  * User Config Screen following TECHNICAL_SPEC.md section 7.3.
  * All user-editable fields with Save button.
  * Integrated with UserConfigViewModel for persistent state across navigation.
+ * 
+ * Bug Fix #1: Preferred Museum Slug is now a dropdown populated from admin config museums
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -31,6 +34,21 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
     val userConfig by viewModel.userConfig.collectAsState()
     val saveSuccess by viewModel.saveSuccess.collectAsState()
     val saveError by viewModel.saveError.collectAsState()
+    
+    // Load admin config to get museums for dropdown
+    val configManager = remember { ConfigManager(viewModel.androidApplication.applicationContext) }
+    var availableMuseums by remember { mutableStateOf<List<String>>(emptyList()) }
+    
+    // Load museums when screen is composed
+    LaunchedEffect(Unit) {
+        try {
+            val config = configManager.loadConfig()
+            val siteKey = config.admin.activeSite
+            availableMuseums = config.admin.sites[siteKey]?.museums?.keys?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            // Keep empty list on error
+        }
+    }
     
     // Local state variables bound to ViewModel state
     var mode by remember { mutableStateOf(userConfig.mode) }
@@ -154,14 +172,53 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Preferred Museum Slug
-        OutlinedTextField(
-            value = preferredSlug,
-            onValueChange = { preferredSlug = it },
-            label = { Text("Preferred Museum Slug") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        // Preferred Museum Slug - NOW A DROPDOWN
+        var museumExpanded by remember { mutableStateOf(false) }
+        
+        ExposedDropdownMenuBox(
+            expanded = museumExpanded,
+            onExpandedChange = { museumExpanded = !museumExpanded }
+        ) {
+            OutlinedTextField(
+                value = preferredSlug,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Preferred Museum") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = museumExpanded) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = availableMuseums.isNotEmpty()
+            )
+            ExposedDropdownMenu(
+                expanded = museumExpanded,
+                onDismissRequest = { museumExpanded = false }
+            ) {
+                if (availableMuseums.isEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("No museums configured") },
+                        onClick = { }
+                    )
+                } else {
+                    availableMuseums.forEach { museum: String ->
+                        DropdownMenuItem(
+                            text = { Text(museum) },
+                            onClick = {
+                                preferredSlug = museum
+                                museumExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (availableMuseums.isEmpty()) {
+            Text(
+                text = "No museums configured. Please configure museums in Admin Config.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
         
         Spacer(modifier = Modifier.height(16.dp))
         

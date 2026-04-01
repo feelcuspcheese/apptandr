@@ -47,6 +47,11 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = viewModel()) {
         selectedDateTime = uiState.selectedDateTime
     }
     
+    // Reload config when screen becomes visible (e.g., after returning from Admin Config)
+    LaunchedEffect(Unit) {
+        viewModel.loadConfig()
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()

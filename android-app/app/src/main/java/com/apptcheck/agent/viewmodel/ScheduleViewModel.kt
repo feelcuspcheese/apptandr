@@ -46,6 +46,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     
     /**
      * Load config from ConfigManager and update UI state
+     * Called on init and when returning from other screens
      */
     fun loadConfig() {
         viewModelScope.launch {
@@ -65,8 +66,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 // Get scheduled runs
                 val scheduledRuns = config.scheduledRuns.toList()
                 
+                // Update mode from user config - this ensures mode reflects saved config
+                val savedMode = config.user.mode
+                
                 _uiState.value = _uiState.value.copy(
                     selectedSite = validCurrentSite,
+                    selectedMode = savedMode,  // Load saved mode
                     availableSites = availableSites,
                     availableMuseums = museums,
                     scheduledRuns = scheduledRuns
