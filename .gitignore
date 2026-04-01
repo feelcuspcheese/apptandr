@@ -1,1 +1,169 @@
-Nothing needs to be added to .gitignore since the only change is adding a markdown documentation file (`docs/SCHEDULER_AUDIT_REPORT.md`), which is source content that should be tracked in version control.
+```
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+
+# Dependencies
+node_modules/
+.libs/
+
+# Build outputs
+build/
+dist/
+target/
+out/
+
+# Gradle
+.gradle/
+.gradle/
+!gradle.properties
+
+# Android specific
+*.ap_
+*.apks
+*.aab
+intermediates/
+app/build/
+.externalNativeBuild/
+local.properties
+
+# IDE
+.idea/
+*.iml
+*.iws
+.vscode/
+
+# Temp files
+*.tmp
+*.temp
+*~
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Coverage
+coverage/
+*.gcda
+*.gcno
+
+# Python (if present)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.pot
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Rust (if present)
+Cargo.lock
+target/
+
+# Node (if present)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go (if present)
+*.out
+*.exe
+
+# C/C++ (if present)
+*.o
+*.a
+*.obj
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+*.ilk
+*.pdb
+*.sdf
+*.opendb
+*.aps
+*.ncb
+*.opensdf
+*.suo
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+*.rsp
+*.sln.docstates
+*.vcxproj.filters
+[ip].*.filter.src
+[*].*.dir.src
+*.tlog
+*.lastbuildstate
+*.log
+*.manifest
+*.pch
+*.res
+*.iobj
+*.ipdb
+*.dat
+*.gch
+*.lock
+*.stackdump
+*.su
+*.suo
+*.VC.VC.opendb
+*.VC.db
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.VC.opendb
+*.VC.db
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.VC.opendb
+*.VC.db
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+```

@@ -76,22 +76,22 @@ data class SiteConfig(
 data class AdminConfig(
     var activeSite: String = "spl",
     val sites: MutableMap<String, SiteConfig> = mutableMapOf(
-        "spl" -> SiteConfig(
+        Pair("spl", SiteConfig(
             name = "SPL",
             baseUrl = "https://spl.libcal.com",
             availabilityEndpoint = "/pass/availability/institution",
             digital = true,
             physical = false,
             location = "0"
-        ),
-        "kcls" -> SiteConfig(
+        )),
+        Pair("kcls", SiteConfig(
             name = "KCLS",
             baseUrl = "https://rooms.kcls.org",
             availabilityEndpoint = "/pass/availability/institution",
             digital = true,
             physical = false,
             location = "0"
-        )
+        ))
     )
 )
 
