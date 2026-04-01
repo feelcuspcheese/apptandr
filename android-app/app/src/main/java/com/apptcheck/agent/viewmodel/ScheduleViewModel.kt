@@ -56,13 +56,17 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 // Get available sites from admin config - dynamically load from saved config
                 val availableSites = config.admin.sites.keys.toList()
                 
+                // Ensure current site is valid, otherwise use first available site
+                val validCurrentSite = if (currentSite in availableSites) currentSite else availableSites.firstOrNull() ?: "spl"
+                
                 // Get museums for currently selected site from the loaded config
-                val museums = config.admin.sites[currentSite]?.museums?.keys?.toList() ?: emptyList()
+                val museums = config.admin.sites[validCurrentSite]?.museums?.keys?.toList() ?: emptyList()
                 
                 // Get scheduled runs
                 val scheduledRuns = config.scheduledRuns.toList()
                 
                 _uiState.value = _uiState.value.copy(
+                    selectedSite = validCurrentSite,
                     availableSites = availableSites,
                     availableMuseums = museums,
                     scheduledRuns = scheduledRuns
@@ -101,10 +105,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             try {
                 val config = configManager.loadConfig()
                 val currentSite = _uiState.value.selectedSite
-                // Validate that the museum exists for the selected site
+                // Validate that the museum exists for the selected site by checking the saved config
                 val museumsForSite = config.admin.sites[currentSite]?.museums?.keys?.toList() ?: emptyList()
+                
+                // Only accept the museum if it exists in the saved config for this site
                 if (museum in museumsForSite) {
                     _uiState.value = _uiState.value.copy(selectedMuseum = museum)
+                } else {
+                    // Museum doesn't exist for this site - reload museums from config
+                    _uiState.value = _uiState.value.copy(
+                        selectedMuseum = "",
+                        availableMuseums = museumsForSite
+                    )
                 }
             } catch (e: Exception) {
                 // Keep current state on error

@@ -261,15 +261,25 @@ class ConfigManager(private val context: Context) {
     
     private fun parseSiteConfig(json: String): SiteConfig {
         val museums = mutableMapOf<String, Museum>()
+        
+        // Parse museums more robustly - handle both empty and populated museums
         extractJsonObject(json, "museums")?.let { museumsJson ->
-            // Parse each museum - simplified approach
-            val museumEntries = museumsJson.trim('{', '}').split("},\"").map { it.trim('}', '{') }
-            museumEntries.forEach { entry ->
-                val name = extractString(entry, "name") ?: ""
-                val slug = extractString(entry, "slug") ?: ""
-                val museumId = extractString(entry, "museumId") ?: ""
-                if (slug.isNotEmpty()) {
-                    museums[slug] = Museum(name, slug, museumId)
+            if (museumsJson.isNotBlank() && museumsJson != "{}") {
+                // Try to parse each museum entry
+                // Format: "slug":{"name":"...", "slug":"...", "museumId":"..."}
+                val museumPattern = "\"([^\"]+)\"\\s*:\\s*\\{([^}]+)\\}".toRegex()
+                museumPattern.findAll(museumsJson).forEach { match ->
+                    try {
+                        val slug = match.groupValues[1]
+                        val museumData = match.groupValues[2]
+                        val name = extractString("{$museumData}", "name") ?: ""
+                        val museumId = extractString("{$museumData}", "museumId") ?: ""
+                        if (slug.isNotEmpty()) {
+                            museums[slug] = Museum(name, slug, museumId)
+                        }
+                    } catch (e: Exception) {
+                        // Skip invalid museum entries
+                    }
                 }
             }
         }

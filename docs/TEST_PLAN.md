@@ -60,6 +60,9 @@ Purpose: Test scenarios and acceptance tests.
 | AC-26 | Museum Persistence: Museums configured in Admin Config appear in Schedule screen for selected site | Manual | |
 | AC-27 | Mode Options: Schedule screen Mode dropdown offers both "alert" and "booking" values | Manual | |
 | AC-28 | Config Structure: Android AppConfig JSON structure aligns with default_config.yaml schema | Manual | |
+| AC-29 | Dashboard Stats: Quick Stats card loads active site, mode, and museum from saved config (not hardcoded) | Manual | |
+| AC-30 | Museum Dropdown Refresh: Museum dropdown updates when site changes in Schedule screen | Manual | |
+| AC-31 | Config Keys: DataStore JSON keys correctly map to/from default_config.yaml fields | Manual | |
 
 ## 5. Go Agent Integration Tests
 
@@ -210,4 +213,65 @@ Purpose: Test scenarios and acceptance tests.
 - All YAML fields present in Android config
 
 **Pass Criteria**: ConfigManager serialization matches design spec
+
+### TC-29: Dashboard Stats Reflect Saved Config
+**Preconditions**: 
+- Admin has configured a custom museum for SPL site in Admin Config
+- User has set preferredSlug or museum is configured
+
+**Steps**:
+1. Navigate to Admin Config, select SPL site
+2. Add a new museum (e.g., "Test Museum:test-museum:test123")
+3. Save Admin Config
+4. Navigate to Dashboard screen
+5. Observe Quick Stats card
+
+**Expected Results**:
+- Active Site shows "SPL" (not hardcoded)
+- Mode shows current user mode (e.g., "Alert" or "Booking")
+- Preferred Museum shows the name of the first configured museum or preferredSlug museum
+- Stats update when config changes
+
+**Pass Criteria**: Dashboard loads stats from DataStore via ConfigManager, not hardcoded values
+
+### TC-30: Schedule Screen Museum Dropdown Updates on Site Change
+**Preconditions**: 
+- SPL has museums: "seattle-art-museum", "zoo"
+- KCLS has museum: "kidsquest"
+
+**Steps**:
+1. Navigate to Schedule screen
+2. Select "SPL" from Site dropdown
+3. Open Museum dropdown - verify SPL museums appear
+4. Select "KCLS" from Site dropdown
+5. Open Museum dropdown again
+
+**Expected Results**:
+- After selecting SPL: Museum dropdown shows "seattle-art-museum", "zoo"
+- After selecting KCLS: Museum dropdown shows only "kidsquest"
+- Museum selection resets when site changes
+- No stale museums from previous site selection
+
+**Pass Criteria**: Museum dropdown dynamically reloads from saved config per selected site
+
+### TC-31: Config Keys Alignment with default_config.yaml
+**Preconditions**: App installed with fresh DataStore
+
+**Steps**:
+1. Configure sites and museums in Admin Config
+2. Save configuration
+3. Extract DataStore JSON (via adb backup or debug logging)
+4. Compare field names with default_config.yaml
+
+**Expected Results**:
+- Android uses correct keys matching YAML structure:
+  - `activeSite` ↔ `active_site`
+  - `sites.spl.baseUrl` ↔ `sites.spl.baseurl`
+  - `sites.spl.museums` ↔ `sites.spl.museums`
+  - `user.mode` ↔ `mode`
+  - `scheduledRuns[].siteKey` ↔ used in run context
+- Serialization/deserialization preserves all fields
+- No data loss during save/load cycles
+
+**Pass Criteria**: ConfigManager correctly maps between Kotlin camelCase and JSON/YAML snake_case where applicable
 
