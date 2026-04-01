@@ -65,6 +65,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
+    
+    // Android 16 compatibility: legacy packaging for native libraries
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
