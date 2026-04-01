@@ -3,12 +3,11 @@ package com.booking.bot.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.LifecycleService
 import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
@@ -24,9 +23,10 @@ import kotlinx.coroutines.launch
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
+ * Extends LifecycleService to provide lifecycle-aware coroutine scopes.
  * Provides StateFlow<Boolean> for isRunning state that UI can observe.
  */
-class BookingForegroundService : Service() {
+class BookingForegroundService : LifecycleService() {
     
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "booking_service"
@@ -138,6 +138,10 @@ class BookingForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopAgent()
+    }
+    
+    override fun onBind(intent: Intent?): android.os.IBinder? {
+        return super.onBind(intent)
     }
     
     /**
