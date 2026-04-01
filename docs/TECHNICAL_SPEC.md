@@ -638,8 +638,8 @@ object LogManager {
 
 ## 8. Go Agent Integration
 
-* **AAR location:** `app/libs/booking.aar` (built via `gomobile` from the `go-agent` directory).
-* **Build script:** `scripts/build-go.sh` (see below).
+* **AAR location:** `android-app/libs/booking.aar` (built via `gomobile` from the `mobile` directory).
+* **Build script:** `scripts/build-go.sh` (see section 12).
 * **Dependency in `app/build.gradle.kts`:** `implementation(files("$rootDir/libs/booking.aar"))`.
 
 The Go agent exposes `MobileAgent` class with methods: 
@@ -790,12 +790,34 @@ dependencies {
 `scripts/build-go.sh`:
 ```bash
 #!/bin/bash
+# Build Go AAR for Android wrapper
+# Following TECHNICAL_SPEC.md section 12
+
 set -e
-cd go-agent
+
+echo "Building Go AAR for Android..."
+
+# Check if mobile directory exists (Go agent code is in workspace root 'mobile' package)
+if [ ! -d "mobile" ]; then
+    echo "Error: mobile directory not found"
+    exit 1
+fi
+
+# Download dependencies from workspace root
 go mod download
-gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
+
+# Initialize gomobile
+gomobile init
+
+# Create libs directory in android-app
+mkdir -p android-app/libs
+
+# Build the AAR - output to android-app/libs as per TECHNICAL_SPEC.md section 8
+gomobile bind -target=android -o android-app/libs/booking.aar -androidapi 23 ./mobile
+
+echo "Build complete! AAR file created at android-app/libs/booking.aar"
 ```
-> **Note:** Make it executable via `chmod +x scripts/build-go.sh`. Run before building the Android app.
+> **Note:** Make it executable via `chmod +x scripts/build-go.sh`. Run before building the Android app. The script builds the AAR from the `mobile` package at the workspace root and outputs it to `android-app/libs/booking.aar` where Gradle expects it (`$rootDir/libs/booking.aar`).
 
 ---
 

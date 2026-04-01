@@ -1,22 +1,20 @@
 #!/bin/bash
 # Build Go AAR for Android wrapper
 # This script builds the Go mobile library for the booking agent
+# Following TECHNICAL_SPEC.md section 12
 
 set -e
 
 echo "Building Go AAR for Android..."
 
-# Check if go-agent directory exists
-if [ ! -d "go-agent" ]; then
-    echo "Error: go-agent directory not found"
-    echo "The Go agent code should be in a 'go-agent' subdirectory with a 'mobile' package"
+# Check if mobile directory exists (Go agent code is in workspace root 'mobile' package)
+if [ ! -d "mobile" ]; then
+    echo "Error: mobile directory not found"
+    echo "The Go agent code should be in a 'mobile' subdirectory at the workspace root"
     exit 1
 fi
 
-# Navigate to go-agent directory
-cd go-agent
-
-# Download dependencies
+# Download dependencies from workspace root
 echo "Downloading Go modules..."
 go mod download
 
@@ -24,8 +22,11 @@ go mod download
 echo "Initializing gomobile..."
 gomobile init
 
-# Build the AAR
-echo "Building booking.aar..."
-gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
+# Create libs directory in android-app
+mkdir -p android-app/libs
 
-echo "Build complete! AAR file created at libs/booking.aar"
+# Build the AAR - output to android-app/libs as per TECHNICAL_SPEC.md section 8
+echo "Building booking.aar..."
+gomobile bind -target=android -o android-app/libs/booking.aar -androidapi 23 ./mobile
+
+echo "Build complete! AAR file created at android-app/libs/booking.aar"

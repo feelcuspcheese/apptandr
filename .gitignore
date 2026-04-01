@@ -1,18 +1,14 @@
 ```
+# Dependencies
+libs/
+
 # Build artifacts
-build/
-dist/
-*.apk
-*.aab
 *.aar
 
-# Dependencies
-.gradle/
-node_modules/
-vendor/
-
-# Logs
+# Logs and temp files
 *.log
+*.tmp
+*.swp
 
 # Environment
 .env
@@ -22,147 +18,69 @@ vendor/
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git.attributes
 
 # Java
 *.class
 *.jar
 *.war
 *.ear
-hs_err_pid*
-.recommenders
+target/
+build/
 
-# Android
-*.keystore
-local.properties
-.settings/
-loadavg
-.profile
-.idea/
-*.iml
-*.iws
-out/
-gen/
-bin/
-obj/
-intermediates/
-.externalNativeBuild
-.cxx
-captures/
+# Node
+node_modules/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Compression
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Gradle
 .gradle/
 build/
-*.ap_
-*.ap_
-*.flat
-*.pd
-*.td
-debug.keystore
-release.keystore
-signingConfigs/
-test-results/
-custom_rules.xml
-lint-results.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext_traffic_permitted.xml
-security_config_network_security_config.xml
-security_config_user_info.xml
-security_config.xml
-security_config_cleartext......
+
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
 ```

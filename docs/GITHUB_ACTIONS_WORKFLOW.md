@@ -44,9 +44,9 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p android-app/app/libs
+          mkdir -p android-app/libs
           go mod download
-          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
+          gomobile bind -target=android -androidapi 23 -o android-app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
@@ -61,13 +61,13 @@ jobs:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
             android-app/app/build/outputs/apk/release/*.apk
-            android-app/app/libs/booking.aar
+            android-app/libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-No secrets required - the workflow builds an unsigned APK. The gradlew script must be present in the `android-app/` directory and executable. The Go AAR is built first and placed in `android-app/app/libs/` where the Android build expects it.
+No secrets required - the workflow builds an unsigned APK. The gradlew script must be present in the `android-app/` directory and executable. The Go AAR is built first and placed in `android-app/libs/` where the Android build expects it (as per TECHNICAL_SPEC.md section 8, the dependency is `$rootDir/libs/booking.aar`).
 
 
 ## Supported Android Versions and Architectures
