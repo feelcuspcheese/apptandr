@@ -21,7 +21,16 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import org.jetbrains.annotations.VisibleForTesting
-import booking.MobileAgent
+
+// MobileAgent will be available when booking.aar is added to libs/
+// For now, use a placeholder interface to allow compilation
+interface MobileAgent {
+    fun start(configJson: String)
+    fun stop()
+    fun isRunning(): Boolean
+    fun setLogCallback(callback: (String) -> Unit)
+    fun setStatusCallback(callback: (String) -> Unit)
+}
 
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.

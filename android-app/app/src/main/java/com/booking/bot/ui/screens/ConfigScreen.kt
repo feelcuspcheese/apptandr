@@ -10,7 +10,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -18,6 +17,9 @@ import com.booking.bot.data.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+// KeyboardOptions compatibility alias for older Compose versions
+private typealias KeyboardOptions = androidx.compose.ui.text.input.KeyboardOptions
 
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
@@ -334,7 +336,7 @@ private fun ConfigContent(
         }
         
         when (selectedTab) {
-            0 -> GeneralTab(configManager, config, context)
+            0 -> GeneralTab(configManager, config, LocalContext.current)
             1 -> SitesTab(configManager, config)
         }
     }
@@ -344,9 +346,9 @@ private fun ConfigContent(
 @Composable
 private fun GeneralTab(
     configManager: ConfigManager,
-    config: AppConfig?,
-    context: android.content.Context
+    config: AppConfig?
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
     var mode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
@@ -383,21 +385,20 @@ private fun GeneralTab(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Mode", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(
-                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    // Using Row with ToggleButtons as fallback for older Compose versions
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(
+                            selected = mode == "alert",
                             onClick = { mode = "alert" },
-                            selected = mode == "alert"
-                        ) {
-                            Text("Alert")
-                        }
-                        SegmentedButton(
-                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            label = { Text("Alert") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = mode == "booking",
                             onClick = { mode = "booking" },
-                            selected = mode == "booking"
-                        ) {
-                            Text("Booking")
-                        }
+                            label = { Text("Booking") },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
@@ -766,7 +767,7 @@ private fun SitesTab(
                         Button(
                             onClick = {
                                 scope.launch {
-                                    val updatedSites = config.admin.sites.toMutableMap()
+                                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                                     updatedSites[selectedSiteKey] = site.copy(
                                         baseUrl = baseUrl,
                                         availabilityEndpoint = availabilityEndpoint,
@@ -837,7 +838,7 @@ private fun SitesTab(
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
-                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                                             val updatedSite = updatedSites[selectedSiteKey]?.copy(
                                                 museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
                                                     remove(museum.slug)
@@ -901,7 +902,7 @@ private fun SitesTab(
                                 Row {
                                     IconButton(onClick = {
                                         scope.launch {
-                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                                             val updatedSite = updatedSites[selectedSiteKey]?.copy(
                                                 defaultCredentialId = cred.id
                                             )
@@ -913,7 +914,7 @@ private fun SitesTab(
                                         }
                                     }) {
                                         Icon(
-                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Default.StarBorder,
                                             contentDescription = "Set Default"
                                         )
                                     }
@@ -922,7 +923,7 @@ private fun SitesTab(
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
-                                            val updatedSites = config.admin.sites.toMutableMap()
+                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                                             val updatedSite = updatedSites[selectedSiteKey]?.copy(
                                                 credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
                                                     removeAll { it.id == cred.id }
@@ -952,12 +953,12 @@ private fun SitesTab(
             museum = editingMuseum,
             onSave = { museum ->
                 scope.launch {
-                    val updatedSites = config.admin.sites.toMutableMap()
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                     val currentSite = updatedSites[selectedSiteKey] ?: return@launch
                     val updatedMuseums = currentSite.museums.toMutableMap()
                     updatedMuseums[museum.slug] = museum
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
                 }
                 showMuseumDialog = false
                 editingMuseum = null
@@ -975,7 +976,7 @@ private fun SitesTab(
             credential = editingCredential,
             onSave = { credential ->
                 scope.launch {
-                    val updatedSites = config.admin.sites.toMutableMap()
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                     val currentSite = updatedSites[selectedSiteKey] ?: return@launch
                     val credentials = currentSite.credentials.toMutableList()
                     if (editingCredential != null) {
@@ -985,7 +986,7 @@ private fun SitesTab(
                         credentials.add(credential)
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
                 }
                 showCredentialDialog = false
                 editingCredential = null
@@ -1003,14 +1004,14 @@ private fun SitesTab(
             existingMuseums = config.admin.sites[selectedSiteKey]?.museums?.keys ?: emptySet(),
             onImport = { museums ->
                 scope.launch {
-                    val updatedSites = config.admin.sites.toMutableMap()
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                     val currentSite = updatedSites[selectedSiteKey] ?: return@launch
                     val updatedMuseums = currentSite.museums.toMutableMap()
                     museums.forEach { museum ->
                         updatedMuseums[museum.slug] = museum
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    configManager.updateAdmin(config.admin.copy(sites = updatedSites))
+                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
                 }
                 showBulkImportDialog = false
             },
