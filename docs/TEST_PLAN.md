@@ -55,6 +55,11 @@ Purpose: Test scenarios and acceptance tests.
 | AC-21 | Go Agent Integration: Clicking "Start Now" triggers actual Go agent (not simulation); logs show real execution without [SIMULATED] prefix | Manual | |
 | AC-22 | Go Agent Logs: Logs screen displays actual Go agent output with proper log levels ([INFO], [ERROR], etc.) forwarded from MobileAgent | Manual | |
 | AC-23 | Go Agent Config: Agent starts with correct site-specific configuration loaded from DataStore via ConfigManager.buildAgentConfig() | Manual | |
+| AC-24 | Build Verification: App compiles successfully without Go AAR using stub MobileAgent implementation | Manual/CI | |
+| AC-25 | Site Selector: Admin Config "Site" dropdown correctly labeled and shows SPL/KCLS options | Manual | |
+| AC-26 | Museum Persistence: Museums configured in Admin Config appear in Schedule screen for selected site | Manual | |
+| AC-27 | Mode Options: Schedule screen Mode dropdown offers both "alert" and "booking" values | Manual | |
+| AC-28 | Config Structure: Android AppConfig JSON structure aligns with default_config.yaml schema | Manual | |
 
 ## 5. Go Agent Integration Tests
 
@@ -111,4 +116,98 @@ Purpose: Test scenarios and acceptance tests.
 - Base URL and endpoint reflect chosen site
 
 **Pass Criteria**: ConfigManager correctly builds per-site config JSON
+
+## 6. Build and Configuration Tests
+
+### TC-24: MobileAgent Stub Compilation
+**Preconditions**: Go AAR not available (development/CI environment)
+
+**Steps**:
+1. Run `./gradlew assembleDebug` or `./gradlew assembleRelease`
+2. Check build output for compilation errors
+
+**Expected Results**:
+- No "Unresolved reference: mobile.MobileAgent" errors
+- No "Cannot infer a type" errors for callback parameters
+- Build completes successfully
+- APK generated without crashes
+
+**Pass Criteria**: Build succeeds with stub MobileAgent implementation
+
+### TC-25: Site Selector Label Verification
+**Preconditions**: App installed and running
+
+**Steps**:
+1. Navigate to Admin Config screen (PIN: 1234)
+2. Observe the site selection dropdown label
+
+**Expected Results**:
+- Label reads "Site" (not "Active Site")
+- Dropdown shows both SPL and KCLS options
+- Selecting an option changes the displayed value
+
+**Pass Criteria**: UI label matches user expectations
+
+### TC-26: Cross-Screen Museum Visibility
+**Preconditions**: Admin has configured museums for at least one site
+
+**Steps**:
+1. In Admin Config, select site SPL
+2. Add museum in format: `Test Museum:test-museum:test123`
+3. Click "Parse Museums", verify success
+4. Click "Save Admin Configuration"
+5. Navigate to Schedule screen
+6. Select SPL in Site dropdown
+7. Open Museum dropdown
+
+**Expected Results**:
+- Museum parsed successfully in Admin Config
+- Save operation completes without error
+- Museum appears in Schedule screen dropdown for SPL
+- Museum does NOT appear when KCLS is selected (if not configured for KCLS)
+
+**Pass Criteria**: Museums persist across screens via ConfigManager
+
+### TC-27: Mode Dropdown Options
+**Preconditions**: App installed and running
+
+**Steps**:
+1. Navigate to Schedule screen
+2. Open Mode dropdown
+
+**Expected Results**:
+- Dropdown shows "alert" option
+- Dropdown shows "booking" option
+- Both options are selectable
+- Selected mode persists when scheduling run
+
+**Pass Criteria**: Mode dropdown implements both values per default_config.yaml
+
+### TC-28: Configuration Structure Alignment
+**Preconditions**: Both SPL and KCLS sites configured
+
+**Steps**:
+1. Configure SPL with custom Base URL and museums
+2. Configure KCLS with different Base URL and museums
+3. Save Admin Config
+4. Inspect DataStore contents (via adb or debug tool)
+
+**Expected Results**:
+- JSON structure matches:
+  ```json
+  {
+    "admin": {
+      "activeSite": "spl",
+      "sites": {
+        "spl": { "baseUrl": "...", "museums": {...} },
+        "kcls": { "baseUrl": "...", "museums": {...} }
+      }
+    }
+  }
+  ```
+- Structure aligns with default_config.yaml schema
+- Field names use camelCase (Kotlin convention)
+- All YAML fields present in Android config
+
+**Pass Criteria**: ConfigManager serialization matches design spec
 

@@ -174,7 +174,7 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
                 value = activeSite,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Active Site") },
+                label = { Text("Site") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = siteExpanded) },
                 modifier = Modifier.fillMaxWidth()
             )
