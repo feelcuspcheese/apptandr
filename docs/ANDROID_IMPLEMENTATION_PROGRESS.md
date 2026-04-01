@@ -50,31 +50,40 @@ This document tracks progress against the TECHNICAL_SPEC.md checklist items.
 ## Section 4: Central Configuration Manager
 
 ### 4.1 Storage
-- [ ] Use `androidx.datastore.preferences.core.Preferences` with single key `"app_config"`
-- [ ] Dependencies: `datastore-preferences:1.0.0`, `kotlinx-serialization-json:1.6.0`
+- [x] Use `androidx.datastore.preferences.core.Preferences` with single key `"app_config"`
+- [x] Dependencies: `datastore-preferences:1.0.0`, `kotlinx-serialization-json:1.6.0`
 
 ### 4.2 ConfigManager Implementation
-- [ ] Singleton pattern with Context
-- [ ] `configFlow: Flow<AppConfig>` that emits on changes
-- [ ] `suspend fun updateGeneral(general: GeneralSettings)`
-- [ ] `suspend fun updateAdmin(admin: AdminConfig)` with museum slug validation
-- [ ] `suspend fun addScheduledRun(run: ScheduledRun)`
-- [ ] `suspend fun removeScheduledRun(runId: String)`
-- [ ] Extension functions `toAppConfig()` and `withConfig()`
+- [x] Singleton pattern with Context
+- [x] `configFlow: Flow<AppConfig>` that emits on changes
+- [x] `suspend fun updateGeneral(general: GeneralSettings)`
+- [x] `suspend fun updateAdmin(admin: AdminConfig)` with museum slug validation
+- [x] `suspend fun addScheduledRun(run: ScheduledRun)`
+- [x] `suspend fun removeScheduledRun(runId: String)`
+- [x] Extension functions `toAppConfig()` and `withConfig()`
+
+### 4.2 ConfigManager Implementation
+- [x] Singleton pattern with Context
+- [x] `configFlow: Flow<AppConfig>` that emits on changes
+- [x] `suspend fun updateGeneral(general: GeneralSettings)`
+- [x] `suspend fun updateAdmin(admin: AdminConfig)` with museum slug validation
+- [x] `suspend fun addScheduledRun(run: ScheduledRun)`
+- [x] `suspend fun removeScheduledRun(runId: String)`
+- [x] Extension functions `toAppConfig()` and `withConfig()`
 
 ### 4.3 JSON Builder for Go Agent
-- [ ] `buildAgentConfig(run: ScheduledRun, config: AppConfig): String`
-- [ ] Exact field names matching Go struct (case-sensitive)
-- [ ] Includes credential resolution logic
-- [ ] Uses `preferredslug` (slug, not name)
+- [x] `buildAgentConfig(run: ScheduledRun, config: AppConfig): String`
+ - [x] Exact field names matching Go struct (case-sensitive)
+- [x] Includes credential resolution logic
+- [x] Uses `preferredslug` (slug, not name)
 
 ---
 
 ## Section 5: UI Screens (Jetpack Compose)
 
 ### Navigation Structure
-- [ ] BottomNavigation with four items: Dashboard, Config, Schedule, Logs
-- [ ] Using `androidx.compose.material3` stable components
+- [x] BottomNavigation with four items: Dashboard, Config, Schedule, Logs
+- [x] Using `androidx.compose.material3` stable components
 
 ### 5.1 DashboardScreen
 - [ ] State: `config by configManager.configFlow.collectAsState()`
