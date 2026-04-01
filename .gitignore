@@ -1,39 +1,63 @@
-```
-# Compiled and build artifacts
+```kotlin
+# Compiled Kotlin classes
 *.class
 *.dex
-*.so
-*.aar
+
+# Android build outputs
 *.apk
-*.jar
+*.aar
+*.so
 
-# Dependencies
-node_modules/
+# Android build directories
+build/
+.externalNativeBuild/
+.intermediates/
+.packaged-classes/
+
+# Gradle
 .gradle/
-.build/
+.gradle-wrapper/
 
-# Logs and temp files
-*.log
+# Local configuration file (sdk path, etc)
+local.properties
+gradle.properties
+
+# Android Studio navigation editor temp files
+.navigation/
+
+# Android Studio profiler and trace outputs
+*.trace
+*.key
+*.keystore
+
+# Project backup folder for Eclipse
+.metadata/
+
+# Unit test results
+test-results/
+
+# Android Coverage
+*.ec
+*.lcov
+
+# APK Analyzer
+.apk-analysis/
+
+# Android device logs
+*.logcat
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Temp files
 *.tmp
+*.temp
 *.swp
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-
-# OS generated files
+# OS
 .DS_Store
 Thumbs.db
-
-# Android specific
-*.iml
-local.properties
-captures/
-.externalNativeBuild
-.gradle-wrapper/
 ```

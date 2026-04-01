@@ -18,9 +18,6 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-// KeyboardOptions compatibility alias for older Compose versions
-private typealias KeyboardOptionsCompat = androidx.compose.ui.text.input.KeyboardOptions
-
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
  * PIN-protected admin configuration screen with General and Sites tabs.
@@ -55,7 +52,7 @@ fun ConfigScreen(
                         label = { Text("PIN") },
                         singleLine = true,
                         isError = pinError,
-                        keyboardOptions = KeyboardOptionsCompat(
+                        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(
                             keyboardType = KeyboardType.NumberPassword
                         )
                     )
@@ -954,7 +951,6 @@ private fun SitesTab(
                                                 val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
                                                 
                                                 // Referential integrity: clear defaultCredentialId if deleted credential was default
-                                                val currentConfig = configManager.configFlow.first()
                                                 val siteConfig = updatedAdmin.sites[selectedSiteKey]
                                                 val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == cred.id) {
                                                     null
@@ -995,7 +991,9 @@ private fun SitesTab(
                     val updatedMuseums = currentSite.museums.toMutableMap()
                     updatedMuseums[museum.slug] = museum
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
+                    config?.admin?.let { admin ->
+                        configManager.updateAdmin(admin.copy(sites = updatedSites))
+                    }
                 }
                 showMuseumDialog = false
                 editingMuseum = null
@@ -1023,7 +1021,9 @@ private fun SitesTab(
                         credentials.add(credential)
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
+                    config?.admin?.let { admin ->
+                        configManager.updateAdmin(admin.copy(sites = updatedSites))
+                    }
                 }
                 showCredentialDialog = false
                 editingCredential = null
