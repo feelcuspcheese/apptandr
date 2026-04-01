@@ -26,7 +26,7 @@ import org.jetbrains.annotations.VisibleForTesting
 
 // MobileAgent will be loaded from booking.aar at runtime
 // This placeholder allows compilation when AAR is not present
-actual class MobileAgent {
+class MobileAgent {
     private var running = false
     private var logCallback: ((String) -> Unit)? = null
     private var statusCallback: ((String) -> Unit)? = null
@@ -238,7 +238,7 @@ class BookingForegroundService : LifecycleService() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): android.os.IBinder? {
+    override fun onBind(intent: Intent?): IBinder? {
         return super.onBind(intent)
     }
 
