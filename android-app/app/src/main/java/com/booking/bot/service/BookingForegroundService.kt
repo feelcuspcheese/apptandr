@@ -19,6 +19,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import org.jetbrains.annotations.VisibleForTesting
+import booking.MobileAgent
 
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
@@ -68,7 +70,34 @@ class BookingForegroundService : LifecycleService() {
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var mobileAgent: Any? = null // Will hold MobileAgent instance from AAR
+    private var mobileAgent: MobileAgent? = null // Holds MobileAgent instance from AAR
+
+    /**
+     * Callback for receiving log messages from the Go agent.
+     * Following TECHNICAL_SPEC.md section 8: Log callback format expects JSON like
+     * {"timestamp":123456,"level":"INFO","message":"Pre-warming..."}
+     */
+    private fun onGoLog(jsonLog: String) {
+        // Parse JSON log from Go agent and add to LogManager
+        try {
+            val json = org.json.JSONObject(jsonLog)
+            val level = json.optString("level", "INFO")
+            val message = json.optString("message", "")
+            if (message.isNotEmpty()) {
+                LogManager.addLog(level, message)
+            }
+        } catch (e: Exception) {
+            // If parsing fails, log the raw message as INFO
+            LogManager.addLog("INFO", jsonLog)
+        }
+    }
+
+    /**
+     * Callback for receiving status updates from the Go agent.
+     */
+    private fun onGoStatus(status: String) {
+        updateNotification(status)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -103,19 +132,21 @@ class BookingForegroundService : LifecycleService() {
                     // Build JSON for Go agent
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
 
-                    // TODO: Initialize MobileAgent from AAR when available
-                    // For now, log that we would start the agent
-                    LogManager.addLog("INFO", "Would start Go agent with config: $agentConfigJson")
-
-                    // When AAR is available:
-                    // mobileAgent = MobileAgent()
-                    // mobileAgent?.setLogCallback { json ->
-                    //     // Parse JSON log and add to LogManager
-                    // }
-                    // mobileAgent?.setStatusCallback { status ->
-                    //     updateNotification(status)
-                    // }
-                    // mobileAgent?.start(agentConfigJson)
+                    // Initialize MobileAgent from AAR (section 8 of TECHNICAL_SPEC.md)
+                    mobileAgent = MobileAgent()
+                    
+                    // Set up log callback to receive JSON logs from Go agent
+                    mobileAgent?.setLogCallback { jsonLog ->
+                        onGoLog(jsonLog)
+                    }
+                    
+                    // Set up status callback to update notification
+                    mobileAgent?.setStatusCallback { status ->
+                        onGoStatus(status)
+                    }
+                    
+                    // Start the Go agent with the configuration JSON
+                    mobileAgent?.start(agentConfigJson)
 
                     LogManager.addLog("INFO", "Go agent started successfully")
                     updateNotification("Running...")
@@ -146,9 +177,9 @@ class BookingForegroundService : LifecycleService() {
     private fun stopAgent() {
         serviceScope.launch {
             try {
-                // TODO: When AAR is available:
-                // mobileAgent?.stop()
-                // mobileAgent = null
+                // Stop the Go agent (section 8 of TECHNICAL_SPEC.md)
+                mobileAgent?.stop()
+                mobileAgent = null
 
                 LogManager.addLog("INFO", "Agent stopped")
             } catch (e: Exception) {
