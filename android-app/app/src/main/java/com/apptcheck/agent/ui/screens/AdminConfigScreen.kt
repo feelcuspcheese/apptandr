@@ -107,8 +107,25 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
     var importSuccess by remember { mutableStateOf(false) }
     
     // Update local state when ViewModel state changes
-    LaunchedEffect(adminConfig, activeSite) {
+    LaunchedEffect(adminConfig) {
         activeSite = adminConfig.activeSite
+        baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
+        availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
+        digital = adminConfig.sites[activeSite]?.digital ?: true
+        physical = adminConfig.sites[activeSite]?.physical ?: false
+        location = adminConfig.sites[activeSite]?.location ?: "0"
+        loginUsername = adminConfig.sites[activeSite]?.loginUsername ?: ""
+        loginPassword = adminConfig.sites[activeSite]?.loginPassword ?: ""
+        loginEmail = adminConfig.sites[activeSite]?.loginEmail ?: ""
+        sites = adminConfig.sites.toMutableMap()
+        // Load current museums into import text for editing
+        museumImportText = adminConfig.sites[activeSite]?.museums?.values?.joinToString("\n") { 
+            "${it.name}:${it.slug}:${it.museumId}" 
+        } ?: ""
+    }
+    
+    // Update site-specific fields when activeSite changes
+    LaunchedEffect(activeSite) {
         baseUrl = adminConfig.sites[activeSite]?.baseUrl ?: ""
         availabilityEndpoint = adminConfig.sites[activeSite]?.availabilityEndpoint ?: ""
         digital = adminConfig.sites[activeSite]?.digital ?: true

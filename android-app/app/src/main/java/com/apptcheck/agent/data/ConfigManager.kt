@@ -301,7 +301,7 @@ class ConfigManager(private val context: Context) {
                         id = extractString(runStr, "id") ?: UUID.randomUUID().toString(),
                         siteKey = extractString(runStr, "siteKey") ?: "",
                         museumSlug = extractString(runStr, "museumSlug") ?: "",
-                        dropTimeMillis = extractLong(json, "dropTimeMillis") ?: 0L,
+                        dropTimeMillis = extractLong(runStr, "dropTimeMillis") ?: 0L,
                         mode = extractString(runStr, "mode") ?: "alert"
                     )
                 )
