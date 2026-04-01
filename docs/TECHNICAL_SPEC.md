@@ -11,7 +11,7 @@
 
 ## 1. Overview & Goals
 
-**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/kiskey/apptcheck`). The app replaces the web dashboard, centralises configuration, and uses Android’s native scheduling to trigger the agent at exact times.
+**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/feelcuspcheese/apptcheck`). The app replaces the web dashboard, centralises configuration, and uses Android’s native scheduling to trigger the agent at exact times.
 
 **Key Features:**
 * **Unified configuration** (General + Site‑specific) stored in a single DataStore.
