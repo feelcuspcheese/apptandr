@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -27,6 +28,12 @@ import booking.MobileAgent
  * Runs the Go agent as a foreground service with persistent notification.
  *
  * Provides StateFlow<Boolean> for isRunning state that UI can observe.
+ * 
+ * CRITICAL FEATURES (per audit report):
+ * - CG-04: Concurrency check - prevents multiple runs from starting simultaneously
+ * - CG-01/CG-02: Polling loop - waits for agent completion before stopping
+ * - CG-03: cleanupAndStop() - removes completed run from scheduledRuns
+ * - CG-05: Timeout handling - forces cleanup after 10 minutes max
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -34,6 +41,9 @@ class BookingForegroundService : LifecycleService() {
         private const val NOTIFICATION_CHANNEL_ID = "booking_service"
         private const val NOTIFICATION_ID = 1001
         private const val STOP_ACTION = "com.booking.bot.STOP_AGENT"
+        
+        // CG-05: Timeout constant - 10 minutes max run time
+        private const val RUN_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
 
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -71,6 +81,7 @@ class BookingForegroundService : LifecycleService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var mobileAgent: MobileAgent? = null // Holds MobileAgent instance from AAR
+    private var currentRun: ScheduledRun? = null // Track current run for cleanup
 
     /**
      * Callback for receiving log messages from the Go agent.
@@ -120,8 +131,16 @@ class BookingForegroundService : LifecycleService() {
                 mode = it.getStringExtra("mode") ?: "alert"
             )
 
+            // CG-04: Concurrency check - prevent multiple runs from starting simultaneously
+            if (mobileAgent?.isRunning() == true) {
+                LogManager.addLog("WARN", "Run ${run.id} ignored – another run is already active")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
+            currentRun = run // Track the current run for cleanup
 
             serviceScope.launch {
                 try {
@@ -148,13 +167,33 @@ class BookingForegroundService : LifecycleService() {
                     // Start the Go agent with the configuration JSON
                     mobileAgent?.start(agentConfigJson)
 
-                    LogManager.addLog("INFO", "Go agent started successfully")
+                    LogManager.addLog("INFO", "Go agent started successfully for run ${run.id}")
                     updateNotification("Running...")
 
+                    // CG-01/CG-02: Polling loop - wait for agent to complete
+                    // CG-05: Timeout handling - max 10 minutes
+                    val startTime = System.currentTimeMillis()
+                    while (mobileAgent?.isRunning() == true) {
+                        delay(1000)
+                        
+                        // Check for timeout
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed > RUN_TIMEOUT_MS) {
+                            LogManager.addLog("WARN", "Run ${run.id} timed out after ${RUN_TIMEOUT_MS / 1000}s - forcing cleanup")
+                            mobileAgent?.stop()
+                            break
+                        }
+                    }
+
+                    LogManager.addLog("INFO", "Run ${run.id} completed")
+                    
+                    // CG-03: Cleanup and stop - remove run from scheduledRuns
+                    cleanupAndStop(run.id)
+
                 } catch (e: Exception) {
-                    LogManager.addLog("ERROR", "Failed to start agent: ${e.message}")
+                    LogManager.addLog("ERROR", "Failed to run agent: ${e.message}")
                     updateNotification("Error: ${e.message}")
-                    stopAgent()
+                    cleanupAndStop(run.id)
                 }
             }
         }
@@ -173,6 +212,8 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Stop the Go agent and clean up.
+     * Note: This is for manual stop via notification action.
+     * For automatic cleanup after run completion, use cleanupAndStop().
      */
     private fun stopAgent() {
         serviceScope.launch {
@@ -181,13 +222,40 @@ class BookingForegroundService : LifecycleService() {
                 mobileAgent?.stop()
                 mobileAgent = null
 
-                LogManager.addLog("INFO", "Agent stopped")
+                LogManager.addLog("INFO", "Agent stopped manually")
             } catch (e: Exception) {
                 LogManager.addLog("ERROR", "Error stopping agent: ${e.message}")
             } finally {
                 _isRunning.value = false
+                currentRun?.let { run ->
+                    // Also cleanup if user manually stops
+                    ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
+                    LogManager.addLog("INFO", "Run ${run.id} removed from schedule (manual stop)")
+                }
+                currentRun = null
                 stopSelf()
             }
+        }
+    }
+
+    /**
+     * CG-03: Cleanup and stop after run completion.
+     * Removes the completed run from scheduledRuns and stops the service.
+     * Called automatically when the agent finishes (success, error, or timeout).
+     */
+    private suspend fun cleanupAndStop(runId: String) {
+        _isRunning.value = false
+        mobileAgent = null
+        
+        try {
+            val configManager = ConfigManager.getInstance(this@BookingForegroundService)
+            configManager.removeScheduledRun(runId)
+            LogManager.addLog("INFO", "Run $runId removed from schedule (completed)")
+        } catch (e: Exception) {
+            LogManager.addLog("ERROR", "Failed to remove run $runId from schedule: ${e.message}")
+        } finally {
+            currentRun = null
+            stopSelf()
         }
     }
 
