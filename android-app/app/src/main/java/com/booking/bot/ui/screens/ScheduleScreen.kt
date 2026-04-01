@@ -373,27 +373,44 @@ fun ScheduleScreen(
         } ?: Text("Loading...")
     }
 
-    // Date Picker Dialog
+    // Date Picker Dialog - Native Android DatePickerDialog (section 5.3)
     if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                Button(onClick = { showDatePicker = false }) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
-                }
-            }
-        ) {
-            // Simplified date picker - in production use proper DatePicker
-            CalendarView(
-                date = selectedDateTime ?: System.currentTimeMillis(),
-                onDateChange = { selectedDateTime = it }
-            )
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = selectedDateTime ?: System.currentTimeMillis()
         }
+        AndroidDatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                tempSelectedDate = Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth)
+                }
+                showDatePicker = false
+                showTimePicker = true
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    // Time Picker Dialog - Native Android TimePickerDialog (section 5.3)
+    if (showTimePicker) {
+        val calendar = tempSelectedDate ?: Calendar.getInstance()
+        AndroidTimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                selectedDateTime = calendar.timeInMillis
+                showTimePicker = false
+                tempSelectedDate = null
+            },
+            calendar.get(Calendar.HOUR_OF_DAY),
+            calendar.get(Calendar.MINUTE),
+            true // 24-hour format
+        ).show()
     }
 }
 
@@ -442,25 +459,5 @@ private fun RunItem(
                 Icon(Icons.Default.Delete, contentDescription = "Delete")
             }
         }
-    }
-}
-
-// Simple calendar view placeholder - replace with proper implementation
-@Composable
-private fun CalendarView(
-    date: Long,
-    onDateChange: (Long) -> Unit
-) {
-    val calendar = Calendar.getInstance().apply { timeInMillis = date }
-    val year = calendar.get(Calendar.YEAR)
-    val month = calendar.get(Calendar.MONTH)
-    val day = calendar.get(Calendar.DAY_OF_MONTH)
-    val hour = calendar.get(Calendar.HOUR_OF_DAY)
-    val minute = calendar.get(Calendar.MINUTE)
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Selected: $year-${month + 1}-$day $hour:$minute")
-        // In production, implement full calendar UI
-        Text("Use Android DatePicker for full functionality")
     }
 }
