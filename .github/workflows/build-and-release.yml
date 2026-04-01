@@ -37,11 +37,11 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p android-app/app/libs
+          mkdir -p android-app/libs
           go mod download
           # Build for all supported architectures per TECHNICAL_SPEC.md section 1
           # minSdk = 23 for broad compatibility
-          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
+          gomobile bind -target=android -androidapi 23 -o android-app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
@@ -56,7 +56,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
             android-app/app/build/outputs/apk/release/*.apk
-            android-app/app/libs/booking.aar
+            android-app/libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
