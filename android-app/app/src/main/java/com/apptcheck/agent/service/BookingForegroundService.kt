@@ -12,14 +12,17 @@ import androidx.core.app.NotificationCompat
 import com.apptcheck.agent.MainActivity
 import com.apptcheck.agent.data.ConfigManager
 import com.apptcheck.agent.data.LogManager
+import com.apptcheck.agent.gomobile.GoAgentWrapper
 import com.apptcheck.agent.model.ScheduledRun
 
 /**
  * Foreground service that runs the Go booking agent.
  * Following TECHNICAL_SPEC.md section 8 and OVERVIEW.md architecture.
  * 
- * Note: This is a placeholder implementation. Once the Go AAR (booking.aar) is built,
- * the MobileAgent wrapper will be integrated here to actually start/stop the agent.
+ * Integrates with the Go AAR (booking.aar) via GoAgentWrapper to:
+ * - Start the Go agent with configuration from ConfigManager
+ * - Forward Go agent logs to LogManager
+ * - Update UI with real-time status
  */
 class BookingForegroundService : Service() {
     
@@ -82,7 +85,7 @@ class BookingForegroundService : Service() {
     
     /**
      * Launch the Go agent with the configured parameters.
-     * TODO: Integrate with MobileAgent AAR when available.
+     * Integrates with MobileAgent AAR via GoAgentWrapper.
      */
     private fun launchGoAgent() {
         val run = currentRun ?: return
@@ -93,33 +96,50 @@ class BookingForegroundService : Service() {
             
             LogManager.addLog("INFO", "Built agent config for site ${run.siteKey}, museum ${run.museumSlug}")
             
-            // TODO: Once AAR is available, call:
-            // MobileAgent.start(configJson)
-            // For now, simulate a run
-            simulateGoAgentRun()
+            // Initialize GoAgentWrapper and set up callbacks
+            GoAgentWrapper.initialize()
+            
+            // Set up log callback to forward Go logs to LogManager
+            GoAgentWrapper.setLogCallback { logMessage ->
+                LogManager.addLog("GO_AGENT", logMessage)
+                updateNotification(logMessage)
+            }
+            
+            // Set up status callback to track running state
+            GoAgentWrapper.setStatusCallback { status ->
+                LogManager.addLog("INFO", "Go agent status: $status")
+                if (status == "running") {
+                    isRunning = true
+                    updateNotification("Running booking agent...")
+                } else if (status == "stopped" || status == "finished") {
+                    updateNotification("Completed")
+                    stopAgent()
+                }
+            }
+            
+            // Start the Go agent with the configuration
+            val started = GoAgentWrapper.start(configJson)
+            
+            if (started) {
+                LogManager.addLog("INFO", "[REAL] Go agent started in ${run.mode} mode")
+                updateNotification("Running booking agent...")
+            } else {
+                LogManager.addLog("ERROR", "[REAL] Failed to start Go agent")
+                updateNotification("Error: Failed to start agent")
+                stopAgent()
+            }
             
         } catch (e: Exception) {
-            LogManager.addLog("ERROR", "Failed to build agent config: ${e.message}")
+            LogManager.addLog("ERROR", "Failed to build/start agent config: ${e.message}")
             updateNotification("Error: ${e.message}")
             stopAgent()
         }
     }
     
     /**
-     * Simulate Go agent run for testing until AAR is available.
-     * TODO: Remove this and integrate with actual MobileAgent.
+     * Note: simulateGoAgentRun() has been removed.
+     * The service now uses the real Go agent via GoAgentWrapper.
      */
-    private fun simulateGoAgentRun() {
-        updateNotification("Running booking agent...")
-        LogManager.addLog("INFO", "[SIMULATED] Go agent started in alert mode")
-        
-        // Simulate some work - in real implementation, this would be handled by Go callbacks
-        android.os.Handler(mainLooper).postDelayed({
-            LogManager.addLog("INFO", "[SIMULATED] Run completed")
-            updateNotification("Completed")
-            stopAgent()
-        }, 5000) // 5 second simulated run
-    }
     
     /**
      * Stop the Go agent and the service.
@@ -127,8 +147,10 @@ class BookingForegroundService : Service() {
     fun stopAgent() {
         LogManager.addLog("INFO", "Stopping booking service")
         
-        // TODO: Once AAR is available, call:
-        // MobileAgent.stop()
+        // Stop the Go agent via GoAgentWrapper
+        if (GoAgentWrapper.isRunning()) {
+            GoAgentWrapper.stop()
+        }
         
         isRunning = false
         currentRun = null
