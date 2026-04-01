@@ -29,21 +29,21 @@ class UserConfigViewModel(application: Application) : AndroidViewModel(applicati
     val saveError: StateFlow<Boolean> = _saveError.asStateFlow()
     
     init {
-        loadConfig()
+        // Collect config flow reactively - ensures updates from other screens are received
+        viewModelScope.launch {
+            configManager.configFlow.collect { config ->
+                _userConfig.value = config.user
+            }
+        }
     }
     
     /**
      * Load user config from ConfigManager (DataStore)
+     * Note: No longer needed as config is loaded reactively via Flow in init block.
+     * Kept for backward compatibility but does nothing.
      */
     fun loadConfig() {
-        viewModelScope.launch {
-            try {
-                val config = configManager.loadConfig()
-                _userConfig.value = config.user
-            } catch (e: Exception) {
-                _userConfig.value = UserConfig()
-            }
-        }
+        // Config is now loaded reactively via Flow collection in init block
     }
     
     /**

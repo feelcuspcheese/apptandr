@@ -31,21 +31,21 @@ class AdminConfigViewModel(application: Application) : AndroidViewModel(applicat
     val saveError: StateFlow<Boolean> = _saveError.asStateFlow()
     
     init {
-        loadConfig()
+        // Collect config flow reactively - ensures updates from other screens are received
+        viewModelScope.launch {
+            configManager.configFlow.collect { config ->
+                _adminConfig.value = config.admin
+            }
+        }
     }
     
     /**
      * Load admin config from ConfigManager (DataStore)
+     * Note: No longer needed as config is loaded reactively via Flow in init block.
+     * Kept for backward compatibility but does nothing.
      */
     fun loadConfig() {
-        viewModelScope.launch {
-            try {
-                val config = configManager.loadConfig()
-                _adminConfig.value = config.admin
-            } catch (e: Exception) {
-                _adminConfig.value = AdminConfig()
-            }
-        }
+        // Config is now loaded reactively via Flow collection in init block
     }
     
     /**

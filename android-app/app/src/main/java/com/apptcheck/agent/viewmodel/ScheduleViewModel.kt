@@ -29,7 +29,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val selectedMuseum: String = "",
         val selectedMode: String = "alert",
         val selectedDateTime: String = "",
-        val availableSites: List<String> = listOf("spl", "kcls"),
+        val availableSites: List<String> = emptyList(),
         val availableMuseums: List<String> = emptyList(),
         val scheduledRuns: List<ScheduledRun> = emptyList()
     )
@@ -41,45 +41,34 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val saveResult: StateFlow<ScheduleResult?> = _saveResult.asStateFlow()
     
     init {
-        loadConfig()
-    }
-    
-    /**
-     * Load config from ConfigManager and update UI state
-     * Called on init and when returning from other screens
-     */
-    fun loadConfig() {
+        // Collect config flow reactively - ensures updates from other screens are received
         viewModelScope.launch {
-            try {
-                val config = configManager.loadConfig()
+            configManager.configFlow.collect { config ->
                 val currentSite = _uiState.value.selectedSite
-                
-                // Get available sites from admin config - dynamically load from saved config
                 val availableSites = config.admin.sites.keys.toList()
-                
-                // Ensure current site is valid, otherwise use first available site
                 val validCurrentSite = if (currentSite in availableSites) currentSite else availableSites.firstOrNull() ?: "spl"
-                
-                // Get museums for currently selected site from the loaded config
                 val museums = config.admin.sites[validCurrentSite]?.museums?.keys?.toList() ?: emptyList()
-                
-                // Get scheduled runs
                 val scheduledRuns = config.scheduledRuns.toList()
-                
-                // Update mode from user config - this ensures mode reflects saved config
                 val savedMode = config.user.mode
                 
                 _uiState.value = _uiState.value.copy(
                     selectedSite = validCurrentSite,
-                    selectedMode = savedMode,  // Load saved mode
+                    selectedMode = savedMode,
                     availableSites = availableSites,
                     availableMuseums = museums,
                     scheduledRuns = scheduledRuns
                 )
-            } catch (e: Exception) {
-                // On error, keep defaults
             }
         }
+    }
+    
+    /**
+     * Load config from ConfigManager and update UI state
+     * Note: No longer needed as config is loaded reactively via Flow in init block.
+     * Kept for backward compatibility but does nothing.
+     */
+    fun loadConfig() {
+        // Config is now loaded reactively via Flow collection in init block
     }
     
     /**

@@ -162,9 +162,9 @@ private fun AdminConfigContent(viewModel: AdminConfigViewModel) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
-        // Site Selector Dropdown
+        // Site Selector Dropdown - dynamically load from admin config
         var siteExpanded by remember { mutableStateOf(false) }
-        val availableSites = listOf("spl", "kcls")
+        val availableSites = adminConfig.sites.keys.toList()
         
         ExposedDropdownMenuBox(
             expanded = siteExpanded,

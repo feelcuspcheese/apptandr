@@ -35,16 +35,22 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
     val saveSuccess by viewModel.saveSuccess.collectAsState()
     val saveError by viewModel.saveError.collectAsState()
     
-    // Load admin config to get museums for dropdown
+    // Load admin config to get museums for dropdown (with names)
     val configManager = remember { ConfigManager(viewModel.androidApplication.applicationContext) }
-    var availableMuseums by remember { mutableStateOf<List<String>>(emptyList()) }
+    var availableMuseumNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    var museumSlugMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // name -> slug mapping
     
-    // Load museums when screen is composed
+    // Load museums when screen is composed - reactive to config changes
     LaunchedEffect(Unit) {
         try {
-            val config = configManager.loadConfig()
-            val siteKey = config.admin.activeSite
-            availableMuseums = config.admin.sites[siteKey]?.museums?.keys?.toList() ?: emptyList()
+            configManager.configFlow.collect { config ->
+                val siteKey = config.admin.activeSite
+                val museums = config.admin.sites[siteKey]?.museums ?: emptyMap()
+                // Create list of museum names for display
+                availableMuseumNames = museums.values.map { it.name }.sorted()
+                // Create reverse mapping from name to slug for storage
+                museumSlugMap = museums.values.associateBy({ it.name }, { it.slug })
+            }
         } catch (e: Exception) {
             // Keep empty list on error
         }
@@ -172,37 +178,43 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        // Preferred Museum Slug - NOW A DROPDOWN
+        // Preferred Museum - DROPDOWN WITH FRIENDLY NAMES
         var museumExpanded by remember { mutableStateOf(false) }
+        
+        // Display name for the selected museum (show friendly name, store slug)
+        val displayMuseumName = remember(preferredSlug, museumSlugMap) {
+            museumSlugMap.entries.find { it.value == preferredSlug }?.key 
+                ?: preferredSlug.ifEmpty { "" }
+        }
         
         ExposedDropdownMenuBox(
             expanded = museumExpanded,
             onExpandedChange = { museumExpanded = !museumExpanded }
         ) {
             OutlinedTextField(
-                value = preferredSlug,
+                value = displayMuseumName,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Preferred Museum") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = museumExpanded) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = availableMuseums.isNotEmpty()
+                enabled = availableMuseumNames.isNotEmpty()
             )
             ExposedDropdownMenu(
                 expanded = museumExpanded,
                 onDismissRequest = { museumExpanded = false }
             ) {
-                if (availableMuseums.isEmpty()) {
+                if (availableMuseumNames.isEmpty()) {
                     DropdownMenuItem(
                         text = { Text("No museums configured") },
                         onClick = { }
                     )
                 } else {
-                    availableMuseums.forEach { museum: String ->
+                    availableMuseumNames.forEach { museumName: String ->
                         DropdownMenuItem(
-                            text = { Text(museum) },
+                            text = { Text(museumName) },  // Display friendly name
                             onClick = {
-                                preferredSlug = museum
+                                preferredSlug = museumSlugMap[museumName] ?: ""  // Store slug
                                 museumExpanded = false
                             }
                         )
@@ -211,7 +223,7 @@ fun UserConfigScreen(viewModel: UserConfigViewModel = viewModel()) {
             }
         }
         
-        if (availableMuseums.isEmpty()) {
+        if (availableMuseumNames.isEmpty()) {
             Text(
                 text = "No museums configured. Please configure museums in Admin Config.",
                 style = MaterialTheme.typography.bodySmall,

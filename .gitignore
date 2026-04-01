@@ -3,40 +3,33 @@
 *.class
 *.o
 *.obj
-*.exe
-*.dll
 *.so
 *.a
+*.dll
+*.exe
 *.out
-*.pyc
-__pycache__/
 
 # Dependencies
 node_modules/
 venv/
 .venv/
+__pycache__/
 .mypy_cache/
 .pytest_cache/
 target/
 .gradle/
-build/
-dist/
 
 # Android specific
 *.apk
 *.aar
 *.dex
-local.properties
-.gradle/
-.idea/
-*.iml
-*.iws
-captures/
-.externalNativeBuild/
-.cxx/
-.intermediates/
-.kotlin/
+*.so
+*.jar
 build/
+.gradle/
+local.properties
+.pro
+cxx/
 
 # Logs and temp files
 *.log
@@ -55,7 +48,7 @@ build/
 *.swp
 *.swo
 
-# System files
+# System
 .DS_Store
 Thumbs.db
 
@@ -83,8 +76,4 @@ htmlcov/
 *.Z
 *.lz
 *.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```
