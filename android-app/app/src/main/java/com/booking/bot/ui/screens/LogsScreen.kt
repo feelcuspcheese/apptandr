@@ -3,6 +3,7 @@ package com.booking.bot.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -10,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.booking.bot.data.LogEntry
 import com.booking.bot.data.LogManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -26,16 +28,34 @@ fun LogsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    
-    // Observe logs from LogManager
-    val logs by remember { mutableStateOf(LogManager.getBufferCopy()) }
-    
-    // Auto-scroll state
+
+    // Observe logs reactively from LogManager.logFlow (section 5.4)
+    val logs = remember { mutableStateListOf<LogEntry>() }
+
+    LaunchedEffect(Unit) {
+        LogManager.logFlow.collect { entry ->
+            logs.add(entry)
+            // Keep buffer size manageable
+            if (logs.size > 500) {
+                logs.removeAt(0)
+            }
+        }
+    }
+
+    // Auto-scroll state using LazyListState
+    val listState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
-    
+
+    // Scroll to bottom when new logs arrive and auto-scroll is enabled
+    LaunchedEffect(logs.size, autoScrollEnabled) {
+        if (autoScrollEnabled && logs.isNotEmpty()) {
+            listState.animateScrollToItem(logs.lastIndex)
+        }
+    }
+
     // Feedback state
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -49,7 +69,7 @@ fun LogsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Live Logs", style = MaterialTheme.typography.titleLarge)
-            
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Auto-scroll toggle
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -59,7 +79,7 @@ fun LogsScreen(
                     )
                     Text("Auto-scroll", style = MaterialTheme.typography.bodySmall)
                 }
-                
+
                 // Export button
                 IconButton(
                     onClick = {
@@ -76,7 +96,7 @@ fun LogsScreen(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = "Export")
                 }
-                
+
                 // Clear button
                 IconButton(
                     onClick = {
@@ -88,7 +108,7 @@ fun LogsScreen(
                 }
             }
         }
-        
+
         // Feedback message
         if (feedbackMessage != null) {
             Card(
@@ -104,7 +124,7 @@ fun LogsScreen(
                 )
             }
         }
-        
+
         // Logs list
         Card(
             modifier = Modifier
@@ -124,17 +144,11 @@ fun LogsScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    state = listState
                 ) {
                     items(logs) { log ->
                         LogItem(log = log)
-                    }
-                    
-                    // Auto-scroll to bottom
-                    if (autoScrollEnabled && logs.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(100.dp))
-                        }
                     }
                 }
             }
@@ -145,14 +159,14 @@ fun LogsScreen(
 @Composable
 private fun LogItem(log: com.booking.bot.data.LogEntry) {
     val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(log.timestamp))
-    
+
     val levelColor = when (log.level) {
         "ERROR" -> MaterialTheme.colorScheme.error
         "WARN" -> MaterialTheme.colorScheme.tertiary
         "INFO" -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurface
     }
-    
+
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {
