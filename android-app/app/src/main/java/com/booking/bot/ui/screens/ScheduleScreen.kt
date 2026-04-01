@@ -65,6 +65,11 @@ fun ScheduleScreen(
             selectedMode = cfg.general.mode
         }
     }
+    
+    // Proactive cleanup: validate scheduled runs on screen load (PROP-02, EDGE-09, EDGE-10)
+    LaunchedEffect(Unit) {
+        configManager.cleanupInvalidRuns()
+    }
 
     Column(
         modifier = modifier

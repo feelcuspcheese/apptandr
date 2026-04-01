@@ -123,6 +123,42 @@ class ConfigManager private constructor(private val context: Context) {
     }
     
     /**
+     * Validate and clean up invalid scheduled runs.
+     * Removes runs where museum or credential no longer exists (PROP-02, EDGE-09, EDGE-10).
+     * Should be called periodically or when museums/credentials are deleted.
+     */
+    suspend fun cleanupInvalidRuns(): List<String> {
+        val removedRunIds = mutableListOf<String>()
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val validRunIds = mutableSetOf<String>()
+            
+            current.scheduledRuns.forEach { run ->
+                val site = current.admin.sites[run.siteKey]
+                val museumExists = site?.museums?.containsKey(run.museumSlug) == true
+                
+                val credentialExists = run.credentialId?.let { id ->
+                    site?.credentials?.any { it.id == id }
+                } ?: site?.defaultCredentialId?.let { defaultId ->
+                    site.credentials.any { it.id == defaultId }
+                } ?: true // If no credential specified and no default, still valid
+                
+                if (museumExists && credentialExists) {
+                    validRunIds.add(run.id)
+                } else {
+                    removedRunIds.add(run.id)
+                    LogManager.addLog("WARN", "Removed invalid scheduled run ${run.id}: museum=${!museumExists}, credential=${!credentialExists}")
+                }
+            }
+            
+            val updatedRuns = current.scheduledRuns.filter { it.id in validRunIds }.toMutableList()
+            val updated = current.copy(scheduledRuns = updatedRuns)
+            prefs.withConfig(updated)
+        }
+        return removedRunIds
+    }
+    
+    /**
      * Build JSON config for Go agent.
      * Following section 4.3, this creates the exact JSON expected by mobile/agent.go.
      * Field names are case-sensitive and must match the Go struct exactly.

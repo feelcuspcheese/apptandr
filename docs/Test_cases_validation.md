@@ -270,47 +270,51 @@ This report validates the Android wrapper app implementation against the 214 tes
 
 ### HIGH PRIORITY (Must Fix Before Release)
 
-1. **GEN-08: Input Validation Missing**
+1. **GEN-08: Input Validation Missing** ✅ **FIXED**
    - **File:** `ConfigScreen.kt`
    - **Issue:** Numeric fields accept negative/zero values
-   - **Fix:** Add validation logic before saving GeneralSettings
+   - **Fix:** Added validation logic using `toDoubleOrNull()?.takeIf { it > 0 }` for all numeric fields (checkWindow, checkInterval, requestJitter, preWarmOffset, restCycleDuration) and `toIntOrNull()?.takeIf { it > 0 }` for integer fields (monthsToCheck, maxWorkers, restCycleChecks). Invalid values fall back to defaults.
 
-2. **SITE-05/SITE-11: Referential Integrity**
+2. **SITE-05/SITE-11: Referential Integrity** ✅ **FIXED**
    - **File:** `ConfigScreen.kt`
    - **Issue:** Deleting museum/credential doesn't clear references
-   - **Fix:** Validate and clear preferredMuseumSlug/defaultCredentialId on delete
+   - **Fix:** Already implemented - code clears `preferredMuseumSlug` when deleting preferred museum and `defaultCredentialId` when deleting default credential.
 
-3. **ALARM-06: Past Runs After Reboot**
+3. **ALARM-06: Past Runs After Reboot** ✅ **FIXED**
    - **File:** `BootReceiver.kt`
    - **Issue:** Re-schedules all runs including past ones
-   - **Fix:** Filter runs where dropTimeMillis > System.currentTimeMillis()
+   - **Fix:** Already implemented - BootReceiver filters runs where `dropTimeMillis > System.currentTimeMillis()` before re-scheduling.
 
-4. **LOG-04: Export Incomplete**
+4. **LOG-04: Export Incomplete** ✅ **FIXED**
    - **File:** `LogsScreen.kt`
    - **Issue:** Share sheet not invoked
-   - **Fix:** Implement Intent.createChooser() with ACTION_SEND
+   - **Fix:** Already implemented - uses `Intent.createChooser()` with `ACTION_SEND` for proper share sheet.
 
-5. **SRV-09: Error Handling Mismatch**
+5. **SRV-09: Error Handling Mismatch** ✅ **FIXED**
    - **File:** `ConfigManager.kt`
    - **Issue:** buildAgentConfig throws instead of returning null
-   - **Fix:** Change to return null? and handle in service
+   - **Fix:** Already implemented - `buildAgentConfig()` returns `String?` (nullable), and `BookingForegroundService` handles null gracefully with error logging and cleanup.
 
 ### MEDIUM PRIORITY (Should Fix)
 
-6. **CONF-05: Corruption Logging**
+6. **CONF-05: Corruption Logging** ✅ **FIXED**
    - **File:** `ConfigManager.kt`
    - **Issue:** No logging when corrupt JSON detected
-   - **Fix:** Add LogManager.addLog() in catch block
+   - **Fix:** Already implemented - `LogManager.addLog()` is called in catch blocks for both DataStore corruption and JSON parse errors.
 
-7. **PROP-02/EDGE-09/EDGE-10: Proactive Cleanup**
-   - **File:** Multiple
+7. **PROP-02/EDGE-09/EDGE-10: Proactive Cleanup** ✅ **FIXED**
+   - **Files:** `ConfigManager.kt`, `ConfigScreen.kt`, `ScheduleScreen.kt`
    - **Issue:** No warning/cleanup for invalid pending runs
-   - **Fix:** Add validation method to check run validity periodically
+   - **Fix:** 
+     - Added `cleanupInvalidRuns()` method to `ConfigManager` that validates and removes runs with missing museums/credentials
+     - Called automatically when deleting museums or credentials in `ConfigScreen`
+     - Called on `ScheduleScreen` load via `LaunchedEffect`
+     - Logs warnings for each removed invalid run
 
-8. **CONF-06: Rapid Update Handling**
+8. **CONF-06: Rapid Update Handling** ⚠️ **PARTIALLY ADDRESSED**
    - **File:** ViewModels/Composables
    - **Issue:** No debouncing for rapid saves
-   - **Fix:** Add debounce mechanism or loading indicator
+   - **Status:** DataStore's `updateData` is atomic and handles concurrency safely. While explicit debouncing isn't implemented, the atomic nature of DataStore updates prevents data corruption. This is acceptable for MVP as rapid saves will be queued and processed sequentially.
 
 ---
 

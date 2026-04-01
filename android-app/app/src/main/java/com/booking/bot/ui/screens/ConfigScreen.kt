@@ -520,7 +520,7 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = checkWindow,
-                        onValueChange = { checkWindow = it },
+                        onValueChange = { checkWindow = it.filter { char -> char.isDigit() || char == '.' } },
                         label = { Text("Check Window") },
                         placeholder = { Text("60s") },
                         modifier = Modifier.fillMaxWidth()
@@ -529,7 +529,7 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = checkInterval,
-                        onValueChange = { checkInterval = it },
+                        onValueChange = { checkInterval = it.filter { char -> char.isDigit() || char == '.' } },
                         label = { Text("Check Interval") },
                         placeholder = { Text("0.81s") },
                         modifier = Modifier.fillMaxWidth()
@@ -538,7 +538,7 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = requestJitter,
-                        onValueChange = { requestJitter = it },
+                        onValueChange = { requestJitter = it.filter { char -> char.isDigit() || char == '.' } },
                         label = { Text("Request Jitter") },
                         placeholder = { Text("0.18s") },
                         modifier = Modifier.fillMaxWidth()
@@ -556,7 +556,7 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = preWarmOffset,
-                        onValueChange = { preWarmOffset = it },
+                        onValueChange = { preWarmOffset = it.filter { char -> char.isDigit() || char == '.' } },
                         label = { Text("Pre-Warm Offset") },
                         placeholder = { Text("30s") },
                         modifier = Modifier.fillMaxWidth()
@@ -583,7 +583,7 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = restCycleDuration,
-                        onValueChange = { restCycleDuration = it },
+                        onValueChange = { restCycleDuration = it.filter { char -> char.isDigit() || char == '.' } },
                         label = { Text("Rest Cycle Duration") },
                         placeholder = { Text("3s") },
                         modifier = Modifier.fillMaxWidth()
@@ -597,20 +597,27 @@ private fun GeneralTab(
             Button(
                 onClick = {
                     scope.launch {
+                        // Validate numeric fields - ensure positive values only (GEN-08)
+                        val checkWindowVal = checkWindow.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.CHECK_WINDOW
+                        val checkIntervalVal = checkInterval.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.CHECK_INTERVAL
+                        val requestJitterVal = requestJitter.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.REQUEST_JITTER
+                        val preWarmOffsetVal = preWarmOffset.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.PRE_WARM_OFFSET
+                        val restCycleDurationVal = restCycleDuration.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.REST_CYCLE_DURATION
+                        
                         val newGeneral = GeneralSettings(
                             mode = mode,
                             strikeTime = strikeTime,
                             preferredDays = selectedDays.toList(),
                             ntfyTopic = ntfyTopic,
                             preferredMuseumSlug = preferredMuseumSlug,
-                            checkWindow = checkWindow,
-                            checkInterval = checkInterval,
-                            requestJitter = requestJitter,
+                            checkWindow = checkWindowVal,
+                            checkInterval = checkIntervalVal,
+                            requestJitter = requestJitterVal,
                             monthsToCheck = monthsToCheck.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MONTHS_TO_CHECK,
-                            preWarmOffset = preWarmOffset,
+                            preWarmOffset = preWarmOffsetVal,
                             maxWorkers = maxWorkers.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MAX_WORKERS,
                             restCycleChecks = restCycleChecks.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.REST_CYCLE_CHECKS,
-                            restCycleDuration = restCycleDuration
+                            restCycleDuration = restCycleDurationVal
                         )
                         configManager.updateGeneral(newGeneral)
                     }
@@ -859,6 +866,8 @@ private fun SitesTab(
                                                 if (newGeneral != currentConfig.general) {
                                                     configManager.updateGeneral(newGeneral)
                                                 }
+                                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                                                configManager.cleanupInvalidRuns()
                                             }
                                         }
                                     }) {
@@ -959,6 +968,8 @@ private fun SitesTab(
                                                     updatedAdmin
                                                 }
                                                 configManager.updateAdmin(finalAdmin)
+                                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                                                configManager.cleanupInvalidRuns()
                                             }
                                         }
                                     }) {
