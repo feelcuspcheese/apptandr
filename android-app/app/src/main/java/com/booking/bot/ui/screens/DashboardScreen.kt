@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
@@ -17,7 +18,7 @@ import java.util.*
 
 /**
  * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
- * 
+ *
  * Features:
  * - Status Card showing "Running" or "Idle"
  * - Next Run Countdown from sorted scheduledRuns
@@ -30,19 +31,20 @@ fun DashboardScreen(
     configManager: ConfigManager,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val config by configManager.configFlow.collectAsState(initial = null)
     val isRunning by BookingForegroundService.isRunning.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
     // Action feedback state
     var actionFeedback by remember { mutableStateOf<String?>(null) }
     var actionSuccess by remember { mutableStateOf(false) }
-    
+
     // Clear feedback when running state changes
     LaunchedEffect(isRunning) {
         actionFeedback = null
     }
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -68,9 +70,9 @@ fun DashboardScreen(
                     style = MaterialTheme.typography.headlineLarge,
                     color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 // Start/Stop Buttons
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -84,16 +86,16 @@ fun DashboardScreen(
                                     val museumSlug = currentConfig.general.preferredMuseumSlug.ifEmpty {
                                         currentConfig.admin.sites[siteKey]?.museums?.keys?.firstOrNull() ?: ""
                                     }
-                                    
+
                                     if (museumSlug.isEmpty()) {
                                         actionFeedback = "No museum configured. Please configure in Admin Config."
                                         actionSuccess = false
                                         return@launch
                                     }
-                                    
+
                                     val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
                                     val dropTimeMillis = System.currentTimeMillis() + 30_000 // 30 seconds
-                                    
+
                                     val run = ScheduledRun(
                                         id = UUID.randomUUID().toString(),
                                         siteKey = siteKey,
@@ -102,10 +104,10 @@ fun DashboardScreen(
                                         dropTimeMillis = dropTimeMillis,
                                         mode = currentConfig.general.mode
                                     )
-                                    
+
                                     configManager.addScheduledRun(run)
-                                    AlarmScheduler(configManager as android.content.Context).scheduleRun(run)
-                                    
+                                    AlarmScheduler(context).scheduleRun(run)
+
                                     actionFeedback = "Starting agent in 30 seconds..."
                                     actionSuccess = true
                                 } catch (e: Exception) {
@@ -118,12 +120,12 @@ fun DashboardScreen(
                     ) {
                         Text("Start Now")
                     }
-                    
+
                     Button(
                         onClick = {
                             scope.launch {
                                 try {
-                                    BookingForegroundService.stop(configManager as android.content.Context)
+                                    BookingForegroundService.stop(context)
                                     actionFeedback = "Stopping agent..."
                                     actionSuccess = true
                                 } catch (e: Exception) {
@@ -140,7 +142,7 @@ fun DashboardScreen(
                         Text("Stop")
                     }
                 }
-                
+
                 // Action feedback
                 if (actionFeedback != null) {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -170,9 +172,9 @@ fun DashboardScreen(
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // Next Run Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -186,18 +188,18 @@ fun DashboardScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 config?.let { cfg ->
                     val nextRun = cfg.scheduledRuns
                         .filter { it.dropTimeMillis > System.currentTimeMillis() }
                         .minByOrNull { it.dropTimeMillis }
-                    
+
                     if (nextRun != null) {
                         val timeUntil = nextRun.dropTimeMillis - System.currentTimeMillis()
                         val minutes = timeUntil / 60000
                         val seconds = (timeUntil % 60000) / 1000
                         Text("In ${minutes}m ${seconds}s")
-                        
+
                         val site = cfg.admin.sites[nextRun.siteKey]
                         val museum = site?.museums?.get(nextRun.museumSlug)
                         Text(
@@ -211,9 +213,9 @@ fun DashboardScreen(
                 } ?: Text("Loading...")
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // Quick Stats Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -227,11 +229,11 @@ fun DashboardScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 config?.let { cfg ->
                     val activeSite = cfg.admin.sites[cfg.admin.activeSite]
                     val preferredMuseum = activeSite?.museums?.get(cfg.general.preferredMuseumSlug)
-                    
+
                     Text("Active Site: ${cfg.admin.activeSite.uppercase()}")
                     Text("Mode: ${cfg.general.mode.replaceFirstChar { it.uppercase() }}")
                     Text("Preferred Museum: ${preferredMuseum?.name ?: "None"}")
