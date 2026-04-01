@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.booking.bot.data.*
@@ -51,8 +53,8 @@ fun ConfigScreen(
                         label = { Text("PIN") },
                         singleLine = true,
                         isError = pinError,
-                        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword
                         )
                     )
                     if (pinError) {
@@ -332,7 +334,7 @@ private fun ConfigContent(
         }
         
         when (selectedTab) {
-            0 -> GeneralTab(configManager, config)
+            0 -> GeneralTab(configManager, config, context)
             1 -> SitesTab(configManager, config)
         }
     }
@@ -342,7 +344,8 @@ private fun ConfigContent(
 @Composable
 private fun GeneralTab(
     configManager: ConfigManager,
-    config: AppConfig?
+    config: AppConfig?,
+    context: android.content.Context
 ) {
     val scope = rememberCoroutineScope()
     
@@ -648,7 +651,9 @@ private fun SitesTab(
 ) {
     val scope = rememberCoroutineScope()
     
-    var selectedSiteKey by remember { mutableStateOf(config?.admin?.activeSite ?: "spl") }
+    // Handle nullable config with safe calls
+    val activeSite = config?.admin?.activeSite ?: "spl"
+    var selectedSiteKey by remember { mutableStateOf(activeSite) }
     var siteExpanded by remember { mutableStateOf(false) }
     
     // Dialog states for museums and credentials

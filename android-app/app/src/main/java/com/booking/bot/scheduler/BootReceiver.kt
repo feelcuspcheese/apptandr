@@ -7,6 +7,7 @@ import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.ScheduledRun
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -23,7 +24,7 @@ class BootReceiver : BroadcastReceiver() {
                 val scheduler = AlarmScheduler(context)
                 
                 // Re-schedule all runs from config
-                config.scheduledRuns.forEach { run ->
+                config.scheduledRuns.forEach { run: ScheduledRun ->
                     scheduler.scheduleRun(run)
                 }
             }

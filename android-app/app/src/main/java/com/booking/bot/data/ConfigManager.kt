@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -42,7 +43,10 @@ class ConfigManager private constructor(private val context: Context) {
      * Following section 4.2, this enables reactive updates across all screens.
      */
     val configFlow: Flow<AppConfig> = context.dataStore.data
-        .catch { emit(AppConfig()) }
+        .catch { 
+            // If there's an error reading from DataStore, emit empty Preferences
+            emit(emptyPreferences()) 
+        }
         .map { prefs ->
             prefs[CONFIG_KEY]?.let { json ->
                 try {
