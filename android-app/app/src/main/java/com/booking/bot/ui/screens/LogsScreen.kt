@@ -67,13 +67,13 @@ fun LogsScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
         ) {
             Text("Live Logs", style = MaterialTheme.typography.titleLarge)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Auto-scroll toggle
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Switch(
                         checked = autoScrollEnabled,
                         onCheckedChange = { autoScrollEnabled = it }

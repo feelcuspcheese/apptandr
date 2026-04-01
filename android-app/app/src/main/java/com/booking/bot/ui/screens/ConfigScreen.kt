@@ -19,7 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 // KeyboardOptions compatibility alias for older Compose versions
-private typealias KeyboardOptions = androidx.compose.ui.text.input.KeyboardOptions
+private typealias KeyboardOptionsCompat = androidx.compose.ui.text.input.KeyboardOptions
 
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
@@ -55,7 +55,7 @@ fun ConfigScreen(
                         label = { Text("PIN") },
                         singleLine = true,
                         isError = pinError,
-                        keyboardOptions = KeyboardOptions(
+                        keyboardOptions = KeyboardOptionsCompat(
                             keyboardType = KeyboardType.NumberPassword
                         )
                     )
@@ -336,7 +336,7 @@ private fun ConfigContent(
         }
         
         when (selectedTab) {
-            0 -> GeneralTab(configManager, config, LocalContext.current)
+            0 -> GeneralTab(configManager, config)
             1 -> SitesTab(configManager, config)
         }
     }
@@ -775,7 +775,7 @@ private fun SitesTab(
                                         physical = physical,
                                         location = location
                                     )
-                                    val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                    val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
                                     configManager.updateAdmin(updatedAdmin)
                                 }
                             },
@@ -846,7 +846,7 @@ private fun SitesTab(
                                             )
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
                                                 configManager.updateAdmin(updatedAdmin)
                                             }
                                         }
@@ -908,13 +908,13 @@ private fun SitesTab(
                                             )
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
                                                 configManager.updateAdmin(updatedAdmin)
                                             }
                                         }
                                     }) {
                                         Icon(
-                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Default.StarBorder,
+                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Filled.StarBorder,
                                             contentDescription = "Set Default"
                                         )
                                     }
@@ -931,7 +931,7 @@ private fun SitesTab(
                                             )
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
                                                 configManager.updateAdmin(updatedAdmin)
                                             }
                                         }
@@ -1001,7 +1001,7 @@ private fun SitesTab(
     // Bulk Import Dialog - Render dialog when showBulkImportDialog is true (section 5.2.2)
     if (showBulkImportDialog) {
         BulkImportDialog(
-            existingMuseums = config.admin.sites[selectedSiteKey]?.museums?.keys ?: emptySet(),
+            existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(),
             onImport = { museums ->
                 scope.launch {
                     val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
@@ -1011,7 +1011,9 @@ private fun SitesTab(
                         updatedMuseums[museum.slug] = museum
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    configManager.updateAdmin(config!!.admin.copy(sites = updatedSites))
+                    config?.admin?.let { admin ->
+                        configManager.updateAdmin(admin.copy(sites = updatedSites))
+                    }
                 }
                 showBulkImportDialog = false
             },
