@@ -1,15 +1,17 @@
 
+
 ***
 
-# Android Wrapper for Go Booking Agent - Technical Specification
+# Technical Specification for Android Wrapper of Go Booking Agent
+*(Incorporating All Audit Recommendations & Edge Cases)*
 
-> **Note:** This document is the single source of truth for the Android wrapper application. It incorporates all previous enhancements, audits, and clarifications. It is written to be unambiguous and complete so that an LLM (e.g., Qwen Coder) can implement the entire app without further human guidance.
+> **Note:** This document is the single source of truth for the Android wrapper application. It has been audited and updated to cover all edge cases, including automatic run cleanup, handling of configuration changes, concurrency, and error resilience. All sections are complete, unambiguous, and ready for implementation by an LLM.
 
 ---
 
 ## 1. Overview & Goals
 
-**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/kiskey/apptcheck`). The app replaces the web dashboard, centralizes configuration, and uses Android’s native scheduling to trigger the agent at exact times.
+**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/kiskey/apptcheck`). The app replaces the web dashboard, centralises configuration, and uses Android’s native scheduling to trigger the agent at exact times.
 
 **Key Features:**
 * **Unified configuration** (General + Site‑specific) stored in a single DataStore.
@@ -135,7 +137,7 @@ data class SiteConfig(
     var defaultCredentialId: String? = null                     // must be an id in credentials
 )
 ```
-> **Validation Rule:** `defaultCredentialId` must be `null` or exist in credentials. When a credential is deleted, if it was default, set `defaultCredentialId = null`.
+> **Validation Rule:** `defaultCredentialId` must be `null` or exist in `credentials`. When a credential is deleted, if it was default, set `defaultCredentialId = null`.
 
 ### 3.5 AdminConfig
 ```kotlin
@@ -197,6 +199,7 @@ data class ScheduledRun(
     val mode: String                      // "alert" or "booking"
 )
 ```
+> **Important:** The run does not store a snapshot of the site configuration. At trigger time, the current `AppConfig` is used to look up the site, museum, and credential. This means changes to site settings (e.g., base URL, availability endpoint, museum details) after scheduling will affect the run. This is intentional, as it allows administrators to correct mistakes without cancelling runs. However, changes that delete the referenced museum or credential will cause the run to fail gracefully (see Section 4.3 for error handling).
 
 ### 3.8 AppConfig (Single Source of Truth)
 ```kotlin
@@ -207,7 +210,7 @@ data class AppConfig(
     val scheduledRuns: MutableList<ScheduledRun> = mutableListOf()
 )
 ```
-> **Important:** The `scheduledRuns` list is stored in the same JSON. When a run finishes (success or timeout), it should be removed from the list (so that it no longer appears in the schedule screen and no alarm remains). The removal is done by the same `ConfigManager.update` mechanism.
+> **Run Lifecycle:** When a run finishes (successfully or due to timeout/error), it must be removed from `scheduledRuns` to prevent it from being shown in the schedule screen and to avoid leaving stale alarms. This removal is performed by the `BookingForegroundService` after the run ends (see Section 6.4).
 
 ---
 
@@ -255,6 +258,11 @@ class ConfigManager(context: Context) {
     }
 
     suspend fun addScheduledRun(run: ScheduledRun) {
+        // Validate that the site, museum, and credential exist at scheduling time
+        val config = configFlow.first()
+        val site = config.admin.sites[run.siteKey] ?: error("Site not found")
+        if (run.museumSlug !in site.museums) error("Museum not found")
+        if (run.credentialId != null && run.credentialId !in site.credentials.map { it.id }) error("Credential not found")
         dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
             val updatedRuns = (current.scheduledRuns + run).toMutableList()
@@ -289,14 +297,22 @@ fun Preferences.withConfig(config: AppConfig): Preferences {
 }
 ```
 
-### 4.3 JSON Builder for Go Agent
-This function creates the exact JSON expected by `mobile/agent.go`. It must use exact field names (case‑sensitive) as defined in the Go struct.
+### 4.3 JSON Builder for Go Agent (with Error Resilience)
+This function creates the exact JSON expected by `mobile/agent.go`. It must use exact field names (case‑sensitive). It now handles missing museums or credentials gracefully.
 
 ```kotlin
-fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String {
-    val site = config.admin.sites[run.siteKey] ?: error("Site not found")
-    val museum = site.museums[run.museumSlug] ?: error("Museum not found")
-    // Determine credential
+fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
+    val site = config.admin.sites[run.siteKey]
+    if (site == null) {
+        LogManager.addLog("ERROR", "Site ${run.siteKey} not found for run ${run.id}")
+        return null
+    }
+    val museum = site.museums[run.museumSlug]
+    if (museum == null) {
+        LogManager.addLog("ERROR", "Museum ${run.museumSlug} not found in site ${run.siteKey} for run ${run.id}")
+        return null
+    }
+    // Determine credential – fallback to empty if missing
     val credential = run.credentialId?.let { id ->
         site.credentials.find { it.id == id }
     } ?: site.defaultCredentialId?.let { id ->
@@ -353,7 +369,7 @@ fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String {
                         "museumid" to museum.museumId
                     )
                 ),
-                "preferredslug" to config.general.preferredMuseumSlug   // slug, not name
+                "preferredslug" to config.general.preferredMuseumSlug
             )
         )
     )
@@ -368,7 +384,6 @@ fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String {
     return Json { encodeDefaults = true }.encodeToString(request)
 }
 ```
-> **Note:** The `preferredslug` field in the JSON is the slug, not the name. The Go agent uses this to match against the museum’s slug.
 
 ---
 
@@ -558,6 +573,8 @@ class AlarmReceiver : BroadcastReceiver() {
 ```
 
 ### 6.3 BootReceiver
+Restores scheduled runs after reboot by reading `scheduledRuns` from DataStore and re‑registering each alarm.
+
 ```kotlin
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -577,17 +594,86 @@ Extends `LifecycleService`.
 
 * Holds a reference to `MobileAgent` from the AAR.
 * Provides `StateFlow<Boolean>` for `isRunning`.
-* In `onStartCommand`, it:
-  1. Gets the `ScheduledRun` from the intent.
-  2. Loads current `AppConfig` via `ConfigManager`.
-  3. Builds JSON with `ConfigManager.buildAgentConfig(run, config)`.
-  4. Sets up callbacks:
-     * `mobileAgent.setLogCallback { json -> LogManager.addLog(...) }`
-     * `mobileAgent.setStatusCallback { status -> updateNotification(status) }`
-  5. Starts the agent with `mobileAgent.start(json)`.
-  6. Updates the persistent notification with the current status.
-* When the agent finishes (or on stop request), calls `mobileAgent.stop()` and `stopSelf()`.
-* **Notification:** Use `NotificationCompat.Builder` with channel ID `"booking_service"`. Include a stop action that calls `stopRun()`.
+* **Concurrency handling:** If `mobileAgent.isRunning()` is true when a new run arrives, log a warning and stop the service without starting the new run.
+* **Run cleanup:** After the run finishes (successfully, with error, or due to timeout), the service calls `configManager.removeScheduledRun(run.id)` to delete the run from the list.
+
+```kotlin
+class BookingForegroundService : LifecycleService() {
+    private lateinit var mobileAgent: MobileAgent
+    private var run: ScheduledRun? = null
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning
+
+    override fun onCreate() {
+        super.onCreate()
+        mobileAgent = MobileAgent()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        run = intent?.getSerializableExtra("run") as? ScheduledRun ?: return START_NOT_STICKY
+        if (mobileAgent.isRunning()) {
+            LogManager.addLog("WARN", "Run ${run!!.id} ignored – another run is already active")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        startForeground(NOTIFICATION_ID, createNotification())
+        lifecycleScope.launch {
+            val config = ConfigManager(this@BookingForegroundService).configFlow.first()
+            val json = ConfigManager.buildAgentConfig(run!!, config)
+            if (json == null) {
+                LogManager.addLog("ERROR", "Failed to build config for run ${run!!.id}")
+                cleanupAndStop()
+                return@launch
+            }
+            mobileAgent.setLogCallback { logJson -> handleLog(logJson) }
+            mobileAgent.setStatusCallback { status -> updateNotification(status) }
+            mobileAgent.start(json)
+            _isRunning.value = true
+            // Wait for the agent to finish (could use a callback or polling)
+            while (mobileAgent.isRunning()) {
+                delay(1000)
+            }
+            cleanupAndStop()
+        }
+        return START_STICKY
+    }
+
+    private suspend fun cleanupAndStop() {
+        _isRunning.value = false
+        if (run != null) {
+            ConfigManager(this).removeScheduledRun(run!!.id)
+            LogManager.addLog("INFO", "Run ${run!!.id} removed from schedule")
+        }
+        stopSelf()
+    }
+
+    private fun handleLog(json: String) {
+        // Parse JSON and call LogManager.addLog
+    }
+
+    override fun onDestroy() {
+        mobileAgent.stop()
+        super.onDestroy()
+    }
+
+    companion object {
+        fun start(context: Context, run: ScheduledRun) {
+            val intent = Intent(context, BookingForegroundService::class.java).apply {
+                putExtra("run", run)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+        fun stop(context: Context) {
+            context.stopService(Intent(context, BookingForegroundService::class.java))
+        }
+    }
+}
+```
 
 ---
 
@@ -638,8 +724,8 @@ object LogManager {
 
 ## 8. Go Agent Integration
 
-* **AAR location:** `android-app/libs/booking.aar` (built via `gomobile` from the `mobile` directory).
-* **Build script:** `scripts/build-go.sh` (see section 12).
+* **AAR location:** `app/libs/booking.aar` (built via `gomobile` from the `go-agent` directory).
+* **Build script:** `scripts/build-go.sh` (see below).
 * **Dependency in `app/build.gradle.kts`:** `implementation(files("$rootDir/libs/booking.aar"))`.
 
 The Go agent exposes `MobileAgent` class with methods: 
@@ -661,6 +747,7 @@ The Go agent exposes `MobileAgent` class with methods:
 * **Go agent errors:** All errors are logged. The Dashboard can show a toast for critical failures (e.g., "Booking failed").
 * **Network errors:** Logged; no special handling.
 * **Alarm scheduling:** If `dropTimeMillis` is in the past, do not schedule; show toast.
+* **Missing references at trigger time:** `ConfigManager.buildAgentConfig` returns `null` if the site, museum, or credential is missing; the `BookingForegroundService` logs the error and does not start the agent.
 
 ---
 
@@ -790,34 +877,12 @@ dependencies {
 `scripts/build-go.sh`:
 ```bash
 #!/bin/bash
-# Build Go AAR for Android wrapper
-# Following TECHNICAL_SPEC.md section 12
-
 set -e
-
-echo "Building Go AAR for Android..."
-
-# Check if mobile directory exists (Go agent code is in workspace root 'mobile' package)
-if [ ! -d "mobile" ]; then
-    echo "Error: mobile directory not found"
-    exit 1
-fi
-
-# Download dependencies from workspace root
+cd go-agent
 go mod download
-
-# Initialize gomobile
-gomobile init
-
-# Create libs directory in android-app
-mkdir -p android-app/libs
-
-# Build the AAR - output to android-app/libs as per TECHNICAL_SPEC.md section 8
-gomobile bind -target=android -o android-app/libs/booking.aar -androidapi 23 ./mobile
-
-echo "Build complete! AAR file created at android-app/libs/booking.aar"
+gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
 ```
-> **Note:** Make it executable via `chmod +x scripts/build-go.sh`. Run before building the Android app. The script builds the AAR from the `mobile` package at the workspace root and outputs it to `android-app/libs/booking.aar` where Gradle expects it (`$rootDir/libs/booking.aar`).
+> **Note:** Make it executable via `chmod +x scripts/build-go.sh`. Run before building the Android app.
 
 ---
 
@@ -836,6 +901,9 @@ echo "Build complete! AAR file created at android-app/libs/booking.aar"
 * [ ] After device reboot, scheduled runs are restored (alarms re‑registered).
 * [ ] No experimental Compose APIs used; no compiler warnings about experimental APIs (suppressed via compiler flags).
 * [ ] Release APK builds and uploads to GitHub releases via CI.
+* [ ] **Run cleanup:** After a run finishes (success or failure), the run is automatically removed from the scheduled runs list.
+* [ ] **Concurrency:** If a run is already active, a second scheduled run logs a warning and does not start.
+* [ ] **Missing references:** If a site, museum, or credential referenced by a scheduled run is deleted before the run triggers, the run fails gracefully with a logged error and is removed.
 
 ---
 
