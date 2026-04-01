@@ -476,3 +476,95 @@ Logs can be exported and shared.
 App survives device reboot (scheduled runs restored).
 
 GitHub release contains signed APK and AAR.
+
+
+
+
+What the Kotlin app passes to MobileAgent.start(configJSON)
+In the Android app, the ConfigManager.buildAgentConfig(run: ScheduledRun) method constructs a JSON string that looks like this:
+
+json
+{
+  "siteKey": "spl",
+  "museumSlug": "seattle-art-museum",
+  "dropTime": "2025-04-01T09:00:00-07:00",
+  "mode": "booking",
+  "timezone": "America/Los_Angeles",
+  "fullConfig": {
+    // This is the entire AppConfig serialised to JSON
+    // It includes:
+    // - user settings (mode, strike_time, preferred_days, ntfy_topic, performance tuning)
+    // - admin settings (active_site, sites map with baseurl, endpoints, museums, credentials)
+    // - plus the hardcoded protected defaults (selectors, field names) embedded where needed
+  }
+}
+So fullConfig is not the same as the 5‑element run object; it's a massive nested object that contains all the site‑specific details (base URL, availability endpoint, museums, login credentials, performance tuning, etc.) plus user preferences. It mirrors exactly the structure of the original config.yaml that the Go agent expects.
+
+2. How the Go agent receives and uses it
+Inside the Go binding (mobile/agent.go), the Start method unmarshals the entire JSON into a struct that contains both the run‑specific fields and the full config:
+
+go
+type StartRequest struct {
+    SiteKey    string          `json:"siteKey"`
+    MuseumSlug string          `json:"museumSlug"`
+    DropTime   string          `json:"dropTime"`
+    Mode       string          `json:"mode"`
+    Timezone   string          `json:"timezone"`
+    FullConfig config.AppConfig `json:"fullConfig"`   // <- this is the whole config
+}
+Then, inside the method, it:
+
+Parses the drop time using the provided timezone.
+
+Uses FullConfig to set up the agent’s configuration. It does not read any environment variables or files.
+
+Creates an agent instance with agent.NewAgent(&req.FullConfig, nil).
+
+Builds a ScheduledRun object from the run‑specific fields and passes it to agent.Run(run).
+
+The agent.Run method then runs with the full configuration loaded from FullConfig, exactly as if it had read config.yaml from disk.
+
+3. Where site‑specific details and performance parameters come from
+Base URL, endpoint, museums, credentials: These are inside FullConfig.Sites[siteKey].
+
+Performance tuning (check_window, check_interval, request_jitter, etc.): These are top‑level fields inside FullConfig (e.g., FullConfig.CheckWindow, FullConfig.CheckInterval).
+
+User preferences (preferred days, strike time, etc.): Also top‑level fields in FullConfig.
+
+The Android app builds FullConfig from its own central AppConfig (which it stores in DataStore). This AppConfig contains:
+
+The user‑editable fields (from the User Config screen).
+
+The admin‑editable fields (from the Admin Config screen, protected by PIN).
+
+The hardcoded protected defaults (e.g., bookinglinkselector, form field names) – these are added automatically when building the JSON.
+
+Thus, everything the Go agent needs is in that single fullConfig object. There’s no need for environment variables or separate config files.
+
+4. Why this is centralised
+Single source of truth: The Android app’s DataStore holds the only copy of the configuration.
+
+No duplication: The same config object is used for UI display, for building the JSON, and (via the JSON) for the Go agent.
+
+No extra serialisation/deserialisation layers: The Kotlin AppConfig data class is serialised directly to JSON (using a library like kotlinx.serialization or a manual builder) in the same structure the Go agent expects. The Go agent unmarshals it into its own config.AppConfig struct.
+
+This approach keeps everything consistent and avoids the need for multiple formats or mapping layers.
+
+5. Summary of the flow
+User configures everything in the Android UI → saved to DataStore as AppConfig.
+
+When a run is triggered (manual or scheduled), the app creates a ScheduledRun object with the chosen site, museum, drop time, and mode.
+
+ConfigManager.buildAgentConfig(run) builds a JSON string containing:
+
+Run details (siteKey, museumSlug, dropTime, mode, timezone)
+
+The entire AppConfig (user + admin + protected defaults) as fullConfig.
+
+The app calls MobileAgent.start(configJSON).
+
+The Go agent unmarshals the JSON, extracts FullConfig, and runs with that configuration.
+
+The Go agent sends logs back via the callback, which are displayed in the Android UI.
+
+All configuration flows through the Android app; the Go agent never reads any external file or environment variable. This is exactly what the design documents specify.
