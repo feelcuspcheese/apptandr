@@ -1,52 +1,80 @@
 ```
 # Compiled and build artifacts
 *.class
-*.dex
+*.o
+*.obj
+*.exe
+*.dll
 *.so
-*.aar
-*.apk
-*.jar
+*.a
+*.out
+build/
+dist/
 
 # Dependencies
 node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
 .gradle/
-build/
-.externalNativeBuild/
 
-# Local configuration file (sdk path, etc)
+# Android specific
+*.apk
+*.aar
+*.dex
 local.properties
-
-# Android Studio Navigation editor temp files
-.navigation/
-
-# Android Studio captures folder
+.gradle/
+/build/
 captures/
+.externalNativeBuild/
+.cxx/
 
-# IntelliJ IDEA artifacts
-*.iml
-*.iws
+# IDE
+.vscode/
 .idea/
-
-# Environment
-.env
-.env.local
-*.env.*
+*.swp
+*.swo
+*.tmp
 
 # Logs
 *.log
 
-# Coverage reports
-coverage/
-*.gcov
-*.lcov
-*.profdata
-
-# Temporary files
-*.tmp
-*.temp
-*.swp
-
-# System files
+# System
 .DS_Store
 Thumbs.db
+.env
+.env.local
+*.env.*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
