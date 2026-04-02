@@ -621,7 +621,9 @@ fun WizardScreen(
                     val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
                     updatedSites[selectedSiteKey] = updatedSite
                     val updatedAdmin = config?.admin?.copy(sites = updatedSites)
-                    configManager.updateAdmin(updatedAdmin)
+                    if (updatedAdmin != null) {
+                        configManager.updateAdmin(updatedAdmin)
+                    }
                 }
                 showSiteEditDialog = false
             },

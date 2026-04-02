@@ -375,11 +375,11 @@ private fun GeneralTab(
                 onClick = {
                     scope.launch {
                         // Validate numeric fields - ensure positive values only (GEN-08)
-                        val checkWindowVal = checkWindow.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.CHECK_WINDOW
-                        val checkIntervalVal = checkInterval.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.CHECK_INTERVAL
-                        val requestJitterVal = requestJitter.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.REQUEST_JITTER
-                        val preWarmOffsetVal = preWarmOffset.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.PRE_WARM_OFFSET
-                        val restCycleDurationVal = restCycleDuration.toDoubleOrNull()?.takeIf { it > 0 } ?: Defaults.REST_CYCLE_DURATION
+                        val checkWindowVal = checkWindow.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.CHECK_WINDOW
+                        val checkIntervalVal = checkInterval.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.CHECK_INTERVAL
+                        val requestJitterVal = requestJitter.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.REQUEST_JITTER
+                        val preWarmOffsetVal = preWarmOffset.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.PRE_WARM_OFFSET
+                        val restCycleDurationVal = restCycleDuration.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.REST_CYCLE_DURATION
                         
                         val newGeneral = GeneralSettings(
                             mode = mode,
