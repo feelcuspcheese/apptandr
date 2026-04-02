@@ -25,6 +25,7 @@ class AlarmScheduler(private val context: Context) {
             putExtra("credential_id", run.credentialId)
             putExtra("drop_time", run.dropTimeMillis)
             putExtra("mode", run.mode)
+            putExtra("timezone", run.timezone)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(

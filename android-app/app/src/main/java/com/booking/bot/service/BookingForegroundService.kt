@@ -89,6 +89,7 @@ class BookingForegroundService : LifecycleService() {
                 putExtra("credential_id", run.credentialId)
                 putExtra("drop_time", run.dropTimeMillis)
                 putExtra("mode", run.mode)
+                putExtra("timezone", run.timezone)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -158,7 +159,8 @@ class BookingForegroundService : LifecycleService() {
                 museumSlug = it.getStringExtra("museum_slug") ?: return START_NOT_STICKY,
                 credentialId = it.getStringExtra("credential_id"),
                 dropTimeMillis = it.getLongExtra("drop_time", 0),
-                mode = it.getStringExtra("mode") ?: "alert"
+                mode = it.getStringExtra("mode") ?: "alert",
+                timezone = it.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
             )
 
             // CG-04: Concurrency check - prevent multiple runs from starting simultaneously
