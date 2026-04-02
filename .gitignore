@@ -1,7 +1,22 @@
 ```
-# Gradle
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+
+# Dependencies
+node_modules/
 .gradle/
-!gradle/wrapper/gradle-wrapper.jar
+build/
+.externalNativeBuild/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
 # Android build outputs
 app/build/
@@ -14,18 +29,17 @@ app/build/
 *.iml
 *.ipr
 *.iws
+*.ipr
 
-# Environment
-.env
-.env.local
-.env.*
-
-# Logs
-*.log
-
-# Temp files
-*.tmp
-*~
+# OS generated files
 .DS_Store
 Thumbs.db
+
+# Android specific
+*.keystore
+local.properties
+captures/
+.externalNativeBuild/
+.intermediates/
+.profile/
 ```

@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -46,6 +47,14 @@ class MainActivity : ComponentActivity() {
         // Initialize LogManager
         LogManager.init(applicationContext)
         LogManager.addLog("INFO", "App started")
+
+        // Log configuration loaded (section 2 - Events Logged by the Android App)
+        val configManager = ConfigManager.getInstance(applicationContext)
+        lifecycleScope.launch {
+            val config = configManager.configFlow.first()
+            val activeSite = config.admin.activeSite
+            LogManager.addLog("INFO", "Config loaded: activeSite=$activeSite")
+        }
 
         // Request notification permission on Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
