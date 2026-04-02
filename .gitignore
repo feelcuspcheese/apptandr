@@ -1,96 +1,36 @@
-```kotlin
-# Compiled and build artifacts
-*.class
-*.dex
-*.so
-*.aar
+```
+# Build artifacts
 *.apk
+*.aar
 *.jar
-*.war
-*.ear
-*.pyc
-*.pyo
-*.o
-*.obj
-*.out
-*.dll
-*.exe
-*.so
-*.a
+*.class
+build/
+app/build/
 
 # Dependencies
+.gradle/
 node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
-build/
-dist/
-out/
-
-# Android specific
-*.ap_
-*.apks
-*.aab
-*.keystore
-local.properties
-captures/
-.externalNativeBuild/
-.gradle/
-*.iml
-.idea/
-
-# Go specific
-*.exe
-*.test
-*.prof
 vendor/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-*.bak
-*.~
-*~
+# IDE files
+.idea/
+*.iml
+*.iws
+.vscode/
 
 # Environment
 .env
 .env.local
-.env.*
-.envrc
+*.env.*
 
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
+# Logs
+*.log
 
-# System
+# OS generated files
 .DS_Store
 Thumbs.db
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Icon?
-Network Trash Folder
-Temporary Items
-```
 
-Wait, let me reconsider. The file changes only show source code modifications (.kt and .go files), not build artifacts or dependencies. Let me check again.
-
-The changes are only to source files:
-- android-app/app/src/main/java/com/booking/bot/service/BookingForegroundService.kt (Kotlin source)
-- mobile/mobile.go (Go source)
-
-No build artifacts, dependencies, or temporary files are shown in the changes. Following rule #6, since the change list contains only source files and no build artifacts, dependencies, or temp files, the output should be empty.
-
-```kotlin
-
+# Temporary files
+*.tmp
+*.temp
 ```

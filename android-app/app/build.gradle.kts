@@ -86,9 +86,7 @@ android {
 
 dependencies {
     // Go agent AAR (section 8)
-    // Note: booking.aar is built during CI/CD in GitHub Actions
-    // For local development, run: ./scripts/build-go.sh
-    implementation(files("$rootDir/libs/booking.aar"))
+    implementation(files("libs/booking.aar"))
 
     // Core dependencies
     implementation("androidx.core:core-ktx:1.12.0")
