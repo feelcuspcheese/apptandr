@@ -136,8 +136,9 @@ data class GeneralSettings(
  * @param siteKey Key of the site in admin.sites
  * @param museumSlug Slug of the museum in that site's museums
  * @param credentialId ID of the credential to use (null = use site's default)
- * @param dropTimeMillis Absolute time in milliseconds since epoch
+ * @param dropTimeMillis Absolute time in milliseconds since epoch (UTC)
  * @param mode "alert" or "booking"
+ * @param timezone IANA timezone ID (e.g., "America/Los_Angeles") - section 3.7, 5.3.5
  */
 @Serializable
 data class ScheduledRun(
@@ -146,7 +147,8 @@ data class ScheduledRun(
     val museumSlug: String,
     val credentialId: String?,
     val dropTimeMillis: Long,
-    val mode: String
+    val mode: String,
+    val timezone: String = java.util.TimeZone.getDefault().id
 )
 
 /**
