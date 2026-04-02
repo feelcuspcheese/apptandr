@@ -513,6 +513,15 @@ private fun SitesTab(
                         var physical by remember { mutableStateOf(site.physical) }
                         var location by remember { mutableStateOf(site.location) }
                         
+                        // [FIX (BUG-002)]: Reset form fields when selectedSiteKey changes using LaunchedEffect
+                        LaunchedEffect(selectedSiteKey) {
+                            baseUrl = site.baseUrl
+                            availabilityEndpoint = site.availabilityEndpoint
+                            digital = site.digital
+                            physical = site.physical
+                            location = site.location
+                        }
+                        
                         OutlinedTextField(
                             value = baseUrl,
                             onValueChange = { baseUrl = it },

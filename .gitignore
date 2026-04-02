@@ -1,37 +1,27 @@
-```yaml
-# GitHub workflow artifacts
-.github/workflows/_temp/
-.github/workflows/_actions/
+```
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
 
-# Logs and temporary files from CI/CD
-*.log
-*.tmp
-*.temp
-
-# Environment and cache files that might be generated during workflows
-.env
-.env.local
-.env.*
-.cache/
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-dist/
+# Dependencies
+.gradle/
 build/
-target/
-.coverage
-coverage/
-htmlcov/
-.mypy_cache/
-.pytest_cache/
-.vscode/
+app/build/
+
+# Environment specific
+.local.properties
 .idea/
-*.swp
-*.swo
+*.iml
+*.iws
+
+# Log files
+*.log
+
+# OS generated files
 .DS_Store
 Thumbs.db
 ```
