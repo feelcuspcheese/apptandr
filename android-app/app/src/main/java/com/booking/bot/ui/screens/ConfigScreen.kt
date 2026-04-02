@@ -566,7 +566,7 @@ private fun SitesTab(
                         Button(
                             onClick = {
                                 scope.launch {
-                                    val currentConfig = config ?: return@launch
+                                    val currentConfig = configManager.configFlow.first()
                                     val updatedSites = currentConfig.admin.sites.toMutableMap()
                                     updatedSites[selectedSiteKey] = site.copy(
                                         baseUrl = baseUrl,
