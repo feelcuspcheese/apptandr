@@ -1,10 +1,15 @@
-name: Build Android Debug APK
+name: Build and Release Android App
 
 on:
-#  push:
-#    branches:
-#      - main
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v1.0.0)'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -17,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: '1.21' # Fixed: Must match go.mod
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -25,100 +30,33 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile tool
+      - name: Install gomobile
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260312152759-81488f6aeb60
-          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20260312152759-81488f6aeb60
-          # Verify gobind was installed
-          ls -la $(go env GOPATH)/bin/gobind || echo "gobind not found"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Build Go AAR
+        run: |
+          mkdir -p android-app/libs
+          go mod download
+          # Fixed: Binding the mobile package correctly
+          gomobile bind -target=android -androidapi 23 -o android-app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
-      - name: Initialize gomobile (downloads NDK toolchain)
-        run: gomobile init
-        env:
-          GO111MODULE: on
-
-      - name: Build Android AAR
-        run: |
-          mkdir -p android-app/app/libs
-          
-          # Download golang.org/x/mobile to populate go.sum entries
-          go mod download golang.org/x/mobile@v0.0.0-20260312152759-81488f6aeb60
-          
-          # Also ensure it's in the mobile sub-module and fetch all dependencies
-          cd mobile
-          go mod edit -go 1.25
-          go get golang.org/x/mobile@v0.0.0-20260312152759-81488f6aeb60
-          go mod download golang.org/x/mobile@v0.0.0-20260312152759-81488f6aeb60
-          cd ..
-          
-          export PATH=$PATH:$(go env GOPATH)/bin
-          
-          # Verify the bind package source files exist in GOPATH/pkg/mod
-          echo "=== Checking golang.org/x/mobile bind package ==="
-          ls -la $(go env GOPATH)/pkg/mod/golang.org/x/mobile*/bind/ || true
-          
-          # Verify gobind is available
-          echo "=== Checking gobind binary ==="
-          which gobind || echo "gobind not in PATH"
-          
-          # Build for all supported architectures
-          gomobile bind \
-            -target=android/arm64,android/arm \
-            -androidapi 26 \
-            -o android-app/app/libs/booking.aar \
-            ./mobile
-        env:
-          GO111MODULE: on
-
-      - name: Verify AAR was built
-        run: |
-          ls -la android-app/app/libs/
-          file android-app/app/libs/booking.aar || true
-
-      - name: Build Android Debug APK
+      - name: Build Android APK
         run: |
           cd android-app
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-        
-      - name: Verify APK was built
-        run: |
-          echo "=== Checking APK output directory ==="
-          ls -la android-app/app/build/outputs/apk/debug/ || true
-          echo "=== Finding all APK files ==="
-          find android-app/app/build/outputs -name "*.apk" -type f
+          ./gradlew assembleRelease
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: debug-${{ github.run_number }}
-          name: Debug Build ${{ github.run_number }}
-          body: |
-            Debug APK build #${{ github.run_number }}
-            
-            **Build Details:**
-            - Commit: ${{ github.sha }}
-            - Triggered by: ${{ github.actor }}
-          draft: false
-          prerelease: true
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
-            android-app/app/build/outputs/apk/debug/*.apk
-            android-app/app/libs/booking.aar
+            android-app/app/build/outputs/apk/release/*.apk
+            android-app/libs/booking.aar
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Debug APK (Artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: android-app/app/build/outputs/apk/debug/*.apk
-          retention-days: 30
-
-      - name: Upload AAR (Artifact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: booking-aar
-          path: android-app/app/libs/booking.aar
-          retention-days: 30
