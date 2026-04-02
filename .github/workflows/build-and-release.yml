@@ -22,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21' # Fixed: Must match go.mod
+          go-version: '1.25' # UPDATED: Matches your root go.mod
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -37,10 +37,12 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p android-app/libs
+          # Ensure dependencies are clean and downloaded
+          go mod tidy
           go mod download
-          # Fixed: Binding the mobile package correctly
-          gomobile bind -target=android -androidapi 23 -o android-app/libs/booking.aar ./mobile
+          mkdir -p android-app/libs
+          # Bind the sub-package ./mobile. Dependencies are resolved via the root go.mod (module agent)
+          gomobile bind -target=android -androidapi 23 -v -o android-app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
