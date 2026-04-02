@@ -17,7 +17,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          # Tell GitHub Actions to use the latest stable Go version (which includes 1.25+)
+          go-version: 'stable' 
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -25,14 +26,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile (Go 1.23 compatible)
+      - name: Install gomobile
         run: |
-          # Clone the repo and checkout a commit from late 2024 to avoid Go 1.25 requirement
-          git clone https://go.googlesource.com/mobile /tmp/mobile
-          cd /tmp/mobile
-          git checkout $(git rev-list -n 1 --before="2024-12-01" HEAD)
-          go install ./cmd/gomobile
-          go install ./cmd/gobind
+          # Now we can safely use @latest again!
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
@@ -41,22 +39,16 @@ jobs:
           mkdir -p android-app/app/libs
           cd mobile
           
-          # Force golang.org/x/sys to a version compatible with Go 1.23
-          # (v0.42.0 requires Go 1.25, v0.26.0 works perfectly with Go 1.23)
-          go get golang.org/x/sys@v0.26.0
-          
-          # Ensure we use compatible dependency versions
+          # Clean, standard go commands without forced downgrades
           go mod tidy
           go mod download
           cd ..
           
           export PATH=$PATH:$(go env GOPATH)/bin
-          # Build for all supported architectures per TECHNICAL_SPEC.md section 1
-          # minSdk = 23 for broad compatibility
+          # Build for all supported architectures
           gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
-          GOTOOLCHAIN: local # Prevents Go from automatically upgrading to Go 1.25
 
       - name: Verify AAR was built
         run: |
