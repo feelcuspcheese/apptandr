@@ -43,7 +43,17 @@ jobs:
       - name: Build Android Debug APK
         run: |
           cd android-app
-          ./gradlew assembleDebug
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+        
+      - name: Verify APK was built
+        run: |
+          echo "=== Checking APK output directory ==="
+          ls -la android-app/app/build/outputs/apk/debug/ || true
+          echo "=== Finding all APK files ==="
+          find android-app/app/build/outputs -name "*.apk" -type f
+          echo "=== Listing all files in outputs directory ==="
+          find android-app/app/build/outputs -type f | head -20
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -64,6 +74,7 @@ jobs:
           prerelease: true
           files: |
             android-app/app/build/outputs/apk/debug/*.apk
+            android-app/app/build/outputs/apk/**/*.apk
             android-app/libs/booking.aar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,8 +83,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: android-app/app/build/outputs/apk/debug/*.apk
+          path: |
+            android-app/app/build/outputs/apk/debug/*.apk
+            android-app/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+          retention-days: 30
 
       - name: Upload AAR (Artifact)
         uses: actions/upload-artifact@v4
