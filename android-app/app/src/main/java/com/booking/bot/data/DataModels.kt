@@ -61,8 +61,8 @@ data class SiteConfig(
     var digital: Boolean = true,
     var physical: Boolean = false,
     var location: String = "0",
-    val museums: MutableMap<String, Museum> = mutableMapOf(),
-    val credentials: MutableList<CredentialSet> = mutableListOf(),
+    val museums: Map<String, Museum> = emptyMap(),
+    val credentials: List<CredentialSet> = emptyList(),
     var defaultCredentialId: String? = null
 )
 
@@ -75,7 +75,7 @@ data class SiteConfig(
 @Serializable
 data class AdminConfig(
     var activeSite: String = "spl",
-    val sites: MutableMap<String, SiteConfig> = mutableMapOf(
+    val sites: Map<String, SiteConfig> = mapOf(
         Pair("spl", SiteConfig(
             name = "SPL",
             baseUrl = "https://spl.libcal.com",
