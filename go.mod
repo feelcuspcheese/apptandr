@@ -48,7 +48,6 @@ require (
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
-	golang.org/x/mobile v0.0.0-20260312152759-81488f6aeb60 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
