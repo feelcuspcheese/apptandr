@@ -1,20 +1,10 @@
-name: Build and Release Android App
+name: Build Android Debug APK
 
 on:
   push:
-#    tags:
-#      - 'v*'
     branches:
       - main
-    tags:
-      - 'v*'
-      
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Tag name for the release (e.g., v1.0.0)'
-        required: true
-        type: string
 
 jobs:
   build:
@@ -50,37 +40,44 @@ jobs:
         env:
           GO111MODULE: on
 
-      - name: Create Keystore
+      - name: Build Android Debug APK
         run: |
           cd android-app
-          keytool -genkey -v -keystore release-keystore.jks \
-            -alias ${{ secrets.RELEASE_KEY_ALIAS }} \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass ${{ secrets.RELEASE_STORE_PASSWORD }} \
-            -keypass ${{ secrets.RELEASE_KEY_PASSWORD }} \
-            -dname "CN=Booking Bot, OU=Development, O=Booking, L=City, ST=State, C=US"
-        env:
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          ./gradlew assembleDebug
 
-      - name: Build Android APK
-        run: |
-          cd android-app
-          ./gradlew assembleRelease
-        env:
-          RELEASE_STORE_FILE: release-keystore.jks
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          tag_name: debug-${{ github.run_number }}
+          name: Debug Build ${{ github.run_number }}
+          body: |
+            Debug APK build #${{ github.run_number }}
+            
+            **Build Details:**
+            - Commit: ${{ github.sha }}
+            - Triggered by: ${{ github.actor }}
+            - Built at: ${{ github.event.head_commit.timestamp }}
+            
+            **Installation:**
+            Download `app-debug-universal.apk` and install on your Android device.
+          draft: false
+          prerelease: true
           files: |
-            android-app/app/build/outputs/apk/release/*.apk
+            android-app/app/build/outputs/apk/debug/app-debug-universal.apk
             android-app/libs/booking.aar
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Debug APK (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android-app/app/build/outputs/apk/debug/app-debug-universal.apk
+          if-no-files-found: error
+
+      - name: Upload AAR (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-aar
+          path: android-app/libs/booking.aar
+          if-no-files-found: error
