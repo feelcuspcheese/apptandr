@@ -12,17 +12,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// LogCallback matches the spec for setLogCallback((String) -> Unit)
+// LogCallback matches the requirement: setLogCallback((String) -> Unit)
 type LogCallback interface {
 	Log(message string)
 }
 
-// StatusCallback matches the spec for setStatusCallback((String) -> Unit)
+// StatusCallback matches the requirement: setStatusCallback((String) -> Unit)
 type StatusCallback interface {
 	OnStatus(status string)
 }
 
-// MobileAgent exports the class requested in TECHNICAL_SPEC.md Section 8
+// MobileAgent is the class defined in TECHNICAL_SPEC.md Section 8
 type MobileAgent struct {
 	agentInst      *agent.Agent
 	logCallback    LogCallback
@@ -30,18 +30,19 @@ type MobileAgent struct {
 	mu             sync.RWMutex
 }
 
-// Internal wrapper to handle the complex JSON coming from Android DataStore
-type mobileStartRequest struct {
+// NewMobileAgent provides the constructor for the Kotlin "MobileAgent()" call
+func NewMobileAgent() *MobileAgent {
+	return &MobileAgent{}
+}
+
+// agentRequest handles the JSON structure sent by ConfigManager.kt
+type agentRequest struct {
 	SiteKey    string           `json:"siteKey"`
 	MuseumSlug string           `json:"museumSlug"`
 	DropTime   string           `json:"dropTime"`
 	Mode       string           `json:"mode"`
 	Timezone   string           `json:"timezone"`
 	FullConfig config.AppConfig `json:"fullConfig"`
-}
-
-func NewMobileAgent() *MobileAgent {
-	return &MobileAgent{}
 }
 
 func (m *MobileAgent) SetLogCallback(cb LogCallback) {
@@ -63,18 +64,18 @@ func (m *MobileAgent) Start(configJSON string) {
 		return
 	}
 
-	var req mobileStartRequest
+	var req agentRequest
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
+		m.fireLog("ERROR", fmt.Sprintf("Unmarshal Error: %v", err))
 		return
 	}
 
-	// Reconstruct the internal config for the agent
 	cfg := req.FullConfig
 	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
-	runID := "run-" + time.Now().Format("150405")
+	runID := "mobile-run-" + time.Now().Format("150405")
 	
+	// Inject the specific run details into the config
 	cfg.ScheduledRuns = []config.ScheduledRun{
 		{
 			ID:         runID,
@@ -86,7 +87,7 @@ func (m *MobileAgent) Start(configJSON string) {
 	}
 
 	logger := logrus.New()
-	logger.AddHook(&androidHook{m: m}) // Pipe logrus logs to Android callback
+	logger.AddHook(&androidHook{m: m})
 
 	m.agentInst = agent.NewAgent(&cfg, logger)
 	m.mu.Unlock()
@@ -115,7 +116,6 @@ func (m *MobileAgent) IsRunning() bool {
 	return m.agentInst.IsRunning()
 }
 
-// fireLog formats Go logs as the JSON string Android expects: {"level":"...","message":"..."}
 func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
