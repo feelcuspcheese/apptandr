@@ -35,13 +35,16 @@ jobs:
       - name: Auto-Repair and Build Go AAR
         run: |
           mkdir -p android-app/app/libs
+          
           cd mobile
           
-          # 1. Force the go.mod to use Go 1.25 at runtime
+          # 1. Force the go.mod to use Go 1.25 at runtime (GitHub Actions has Go 1.25+)
           go mod edit -go 1.25
           
-          # 2. Remove any old "replace" or manual version hacks
-          # This cleans up the "downgrade" comments you had
+          # 2. Add golang.org/x/mobile dependency for gomobile bind
+          go get golang.org/x/mobile@latest
+          
+          # 3. Ensure all dependencies are up to date
           go mod tidy
           
           cd ..

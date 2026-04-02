@@ -1,22 +1,27 @@
 ```
-# Dependencies
-go/pkg/
-
 # Build artifacts
 *.o
+*.obj
 *.a
 *.so
-*.exe
 *.dll
-*.dylib
-*.jar
-*.war
-*.class
+*.exe
+*.out
 
-# Go-specific
-*.test
-*.prof
-cover.out
+# Go-specific ignores
+*.mod
+*.sum
+vendor/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
 
 # Logs and temp files
 *.log
@@ -26,40 +31,18 @@ cover.out
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Coverage
 coverage/
 htmlcov/
 .coverage
 
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
+# System
+.DS_Store
+Thumbs.db
 ```
