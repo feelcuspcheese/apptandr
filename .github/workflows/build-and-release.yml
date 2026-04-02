@@ -48,7 +48,7 @@ jobs:
 
       - name: Build Go AAR (Adhering to Tech Spec Section 8)
         run: |
-          # FIXED: Output path matches the app module's libs folder
+          # Output path matches the app module's libs folder
           mkdir -p android-app/app/libs
           
           # Using module path 'agent/mobile' as go.mod is in the root
@@ -62,19 +62,20 @@ jobs:
           GO111MODULE: on
           CGO_ENABLED: 1
 
-      - name: Build Android APK
+      - name: Build Android APK (Debuggable)
         run: |
           cd android-app
           chmod +x gradlew
-          # Pass flag to suppress SDK 35 warning if necessary, though path is the main fix
-          ./gradlew assembleRelease -Pandroid.suppressUnsupportedCompileSdk=35
+          # CHANGED: assembleDebug automatically signs the APK with a debug certificate
+          ./gradlew assembleDebug -Pandroid.suppressUnsupportedCompileSdk=35
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
-            android-app/app/build/outputs/apk/release/*.apk
+            # CHANGED: Path pointed to debug folder
+            android-app/app/build/outputs/apk/debug/*.apk
             android-app/app/libs/booking.aar
           generate_release_notes: true
         env:
