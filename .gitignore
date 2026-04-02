@@ -1,1 +1,44 @@
-Nothing should be ignored in this case, as the only change is a modification to a Kotlin source file (.kt) which is source code and not a build artifact, dependency, or temporary file.
+```
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+
+# Dependencies
+.gradle/
+node_modules/
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Android specific
+*.keystore
+local.properties
+captures/
+.externalNativeBuild
+.gradle
+build/
+app/build/
+
+# Kotlin specific
+kotlin/
+*.kotlin_metadata
+```

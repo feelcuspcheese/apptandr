@@ -16,6 +16,8 @@ import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.*
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.app.TimePickerDialog as AndroidTimePickerDialog
@@ -40,12 +42,14 @@ fun ScheduleScreen(
     var selectedCredentialId by remember { mutableStateOf<String?>(null) }
     var selectedMode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
     var selectedDateTime by remember { mutableStateOf<Long?>(null) }
-
+    var selectedTimezone by remember { mutableStateOf(java.util.TimeZone.getDefault().id) }
+    
     // Dropdown expansion states
     var siteExpanded by remember { mutableStateOf(false) }
     var museumExpanded by remember { mutableStateOf(false) }
     var credentialExpanded by remember { mutableStateOf(false) }
     var modeExpanded by remember { mutableStateOf(false) }
+    var timezoneExpanded by remember { mutableStateOf(false) }
 
     // Date/Time picker dialog state - using proper Android DatePickerDialog + TimePickerDialog (section 5.3)
     var showDatePicker by remember { mutableStateOf(false) }
@@ -252,6 +256,53 @@ fun ScheduleScreen(
             }
         }
 
+        // Timezone Dropdown (section 5.3.5)
+        Card {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Select Timezone", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val timezones = listOf(
+                    "America/Los_Angeles" to "PST/PDT (Los Angeles)",
+                    "America/Denver" to "MST/MDT (Denver)",
+                    "America/Chicago" to "CST/CDT (Chicago)",
+                    "America/New_York" to "EST/EDT (New York)",
+                    "UTC" to "UTC",
+                    "Asia/Kolkata" to "IST (Kolkata)"
+                )
+                
+                ExposedDropdownMenuBox(
+                    expanded = timezoneExpanded,
+                    onExpandedChange = { timezoneExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = timezones.find { it.first == selectedTimezone }?.second ?: "",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Timezone") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = timezoneExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = timezoneExpanded,
+                        onDismissRequest = { timezoneExpanded = false }
+                    ) {
+                        timezones.forEach { (tzId, display) ->
+                            DropdownMenuItem(
+                                text = { Text(display) },
+                                onClick = {
+                                    selectedTimezone = tzId
+                                    timezoneExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Date/Time Picker
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -283,6 +334,7 @@ fun ScheduleScreen(
                 val runSiteKey = selectedSiteKey
                 val runMuseumSlug = selectedMuseumSlug
                 val runDateTime = selectedDateTime
+                val runTimezone = selectedTimezone
 
                 when {
                     runMuseumSlug.isNullOrEmpty() -> {
@@ -300,13 +352,17 @@ fun ScheduleScreen(
                     else -> {
                         scope.launch {
                             try {
+                                // Convert local datetime to UTC millis based on selected timezone (section 5.3.5.2)
+                                val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
+                                
                                 val run = ScheduledRun(
                                     id = UUID.randomUUID().toString(),
                                     siteKey = runSiteKey,
                                     museumSlug = runMuseumSlug,
                                     credentialId = selectedCredentialId,
-                                    dropTimeMillis = runDateTime,
-                                    mode = selectedMode
+                                    dropTimeMillis = utcMillis,
+                                    mode = selectedMode,
+                                    timezone = runTimezone
                                 )
 
                                 configManager.addScheduledRun(run)
@@ -418,6 +474,20 @@ fun ScheduleScreen(
             true // 24-hour format
         ).show()
     }
+}
+
+/**
+ * Convert local date/time to UTC milliseconds based on timezone (section 5.3.5.2).
+ */
+private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): Long {
+    val zoneId = ZoneId.of(timezoneId)
+    val localDateTime = LocalDateTime.ofEpochSecond(
+        localDateTimeMillis / 1000,
+        (localDateTimeMillis % 1000 * 1_000_000).toInt(),
+        java.time.ZoneOffset.UTC
+    )
+    val zonedDateTime = localDateTime.atZone(zoneId)
+    return zonedDateTime.toInstant().toEpochMilli()
 }
 
 @Composable

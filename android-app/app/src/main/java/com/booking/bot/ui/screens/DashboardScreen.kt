@@ -95,6 +95,7 @@ fun DashboardScreen(
 
                                     val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
                                     val dropTimeMillis = System.currentTimeMillis() + 30_000 // 30 seconds
+                                    val timezone = java.util.TimeZone.getDefault().id
 
                                     val run = ScheduledRun(
                                         id = UUID.randomUUID().toString(),
@@ -102,7 +103,8 @@ fun DashboardScreen(
                                         museumSlug = museumSlug,
                                         credentialId = credentialId,
                                         dropTimeMillis = dropTimeMillis,
-                                        mode = currentConfig.general.mode
+                                        mode = currentConfig.general.mode,
+                                        timezone = timezone
                                     )
 
                                     configManager.addScheduledRun(run)

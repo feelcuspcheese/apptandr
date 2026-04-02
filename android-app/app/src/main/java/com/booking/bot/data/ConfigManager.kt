@@ -236,7 +236,7 @@ class ConfigManager private constructor(private val context: Context) {
             "museumSlug" to run.museumSlug,
             "dropTime" to java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString(),
             "mode" to run.mode,
-            "timezone" to java.util.TimeZone.getDefault().id,
+            "timezone" to run.timezone,
             "fullConfig" to fullConfig
         )
         

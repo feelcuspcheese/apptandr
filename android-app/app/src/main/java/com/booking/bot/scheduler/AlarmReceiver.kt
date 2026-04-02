@@ -20,7 +20,8 @@ class AlarmReceiver : BroadcastReceiver() {
             museumSlug = intent.getStringExtra("museum_slug") ?: return,
             credentialId = intent.getStringExtra("credential_id"),
             dropTimeMillis = intent.getLongExtra("drop_time", 0),
-            mode = intent.getStringExtra("mode") ?: "alert"
+            mode = intent.getStringExtra("mode") ?: "alert",
+            timezone = intent.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
         )
         
         BookingForegroundService.start(context, run)
