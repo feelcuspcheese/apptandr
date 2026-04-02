@@ -34,7 +34,6 @@ fun WizardScreen(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val config by configManager.configFlow.collectAsState(initial = null)
     
