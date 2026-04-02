@@ -12,79 +12,112 @@ go.sum
 *.exe
 *.out
 
-# Go-specific ignores
+# Go-specific
 *.test
 *.prof
 cover.out
-coverage.txt
+coverage.html
 
-# General ignores
+# General build/output directories
+bin/
+pkg/
+target/
+
+# Logs
 *.log
-*.tmp
-*.swp
-.DS_Store
-Thumbs.db
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
+# Editors/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Cache directories
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .Python
-pip-log.txt
-pip-delete-this-directory.txt
+*.so
 
-# Distribution / packaging
+# Virtual environments
+venv/
+.venv/
+env/
+.ENV
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 .Python
+env/
+venv/
+.venv/
+.ENV
+.python-version
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+target/
+.gradle/
 build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Coverage
-.coverage
-coverage/
-htmlcov/
-.coverage.*
-.nyc_output
-istanbul/
+# C/C++
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.out
+*.obj
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Compressed
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
