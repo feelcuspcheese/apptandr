@@ -1,16 +1,15 @@
 module agent
 
-go 1.24
+go 1.25
 
 require (
-    github.com/PuerkitoBio/goquery v1.8.1
-    github.com/gin-gonic/gin v1.9.1
-    github.com/google/uuid v1.6.0
-    github.com/gorilla/websocket v1.5.3
-    github.com/sirupsen/logrus v1.9.3
-    github.com/spf13/viper v1.18.2
-    golang.org/x/mobile v0.0.0-20260312152759-81488f6aeb60
-    golang.org/x/sys v0.15.0
+	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/gin-gonic/gin v1.9.1
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
+	github.com/sirupsen/logrus v1.9.3
+	github.com/spf13/viper v1.18.2
+	golang.org/x/mobile v0.0.0-20260312152759-81488f6aeb60
 )
 
 require (

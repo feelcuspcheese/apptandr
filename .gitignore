@@ -1,42 +1,17 @@
-# Logs and temp files
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-
+```
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-dist/
-build/
-target/
-.gradle/
+go.sum
+vendor/
 
-# Compiled files
-*.pyc
-*.class
+# Build artifacts
 *.o
+*.a
+*.so
 *.exe
 *.dll
-*.so
-*.a
-*.obj
+*.dylib
 *.out
 
-# System files
-.DS_Store
-Thumbs.db
-coverage/
-htmlcov/
-*.tmp
-*.swp
-*.swo
+# Go build cache
+.gocache/
+```
