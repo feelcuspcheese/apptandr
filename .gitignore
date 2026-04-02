@@ -12,10 +12,12 @@
 vendor/
 Godeps/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
 
 # Environment
 .env
