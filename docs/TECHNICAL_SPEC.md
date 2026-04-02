@@ -935,7 +935,139 @@ object LogManager {
 ```
 **[FIX (LOG-08)]:** The `init` function now adds an initial log entry, visible in LogsScreen.
 
----
+
+### 7.4 Required Log Events (Detailed Implementation)
+
+The following log entries must be added at the specified locations. Use `LogManager.addLog(level, message)` with the exact messages shown.
+
+#### 7.4.1 Configuration Loaded
+**Location:** In `ConfigManager`'s `configFlow` collection (or wherever the config is first loaded after DataStore read).  
+**Implementation:**
+
+```kotlin
+// Inside the code that reads config from DataStore (e.g., in the Flow's map)
+val config = Json.decodeFromString<AppConfig>(json)
+LogManager.addLog("INFO", "Configuration loaded: activeSite=${config.admin.activeSite}, runs=${config.scheduledRuns.size}")
+```
+
+#### 7.4.2 Scheduled Run Added
+**Location:** In `ConfigManager.addScheduledRun()` after successful validation and before saving.  
+**Implementation:**
+
+```kotlin
+suspend fun addScheduledRun(run: ScheduledRun) {
+    // ... validation ...
+    LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}, dropTime=${run.dropTimeMillis}, mode=${run.mode}, timezone=${run.timezone}")
+    dataStore.updateData { ... }
+}
+```
+
+#### 7.4.3 Scheduled Run Removed (User Delete)
+**Location:** In `ConfigManager.removeScheduledRun()`.  
+**Implementation:**
+
+```kotlin
+suspend fun removeScheduledRun(runId: String) {
+    LogManager.addLog("INFO", "Scheduled run removed (user delete): id=$runId")
+    dataStore.updateData { ... }
+}
+```
+
+#### 7.4.4 Start Now Run Created
+**Location:** In `DashboardScreen` Start Now button click handler, after creating the run object.  
+**Implementation:**
+
+```kotlin
+val run = ScheduledRun(...)
+LogManager.addLog("INFO", "Start Now run created: id=${run.id}, dropTime in 30 seconds")
+```
+
+#### 7.4.5 Foreground Service Started
+**Location:** In `BookingForegroundService.onStartCommand()`, after obtaining the run.  
+**Implementation:**
+
+```kotlin
+override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    run = intent?.getSerializableExtra("run") as? ScheduledRun ?: return START_NOT_STICKY
+    LogManager.addLog("INFO", "Foreground service started for run ${run!!.id}")
+    // ... rest
+}
+```
+
+#### 7.4.6 Foreground Service Stopped
+**Location:** In `BookingForegroundService.cleanupAndStop()` (or `onDestroy`).  
+**Implementation:**
+
+```kotlin
+private suspend fun cleanupAndStop() {
+    LogManager.addLog("INFO", "Foreground service stopped for run ${run?.id}")
+    // ... existing cleanup
+}
+```
+
+#### 7.4.7 Agent Start Attempt
+**Location:** In `BookingForegroundService`, right before calling `mobileAgent.start(json)`.  
+**Implementation:**
+
+```kotlin
+LogManager.addLog("INFO", "Attempting to start Go agent for run ${run!!.id}")
+mobileAgent.start(json)
+```
+
+#### 7.4.8 Alarm Scheduled
+**Location:** In `AlarmScheduler.scheduleRun()`, after creating the pending intent and before setting the alarm.  
+**Implementation:**
+
+```kotlin
+fun scheduleRun(run: ScheduledRun) {
+    // ... intent and pending intent ...
+    LogManager.addLog("INFO", "Alarm scheduled for run ${run.id} at UTC ${run.dropTimeMillis}")
+    alarmManager.setExactAndAllowWhileIdle(...)
+}
+```
+
+#### 7.4.9 Alarm Cancelled
+**Location:** In `AlarmScheduler.cancelRun()`.  
+**Implementation:**
+
+```kotlin
+fun cancelRun(runId: String) {
+    LogManager.addLog("INFO", "Alarm cancelled for run $runId")
+    alarmManager.cancel(pendingIntent)
+}
+```
+
+#### 7.4.10 Boot Receiver Restoring Runs
+**Location:** In `BootReceiver.onReceive()`, when restoring runs after reboot.  
+**Implementation:**
+
+```kotlin
+override fun onReceive(context: Context, intent: Intent) {
+    if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val config = ConfigManager(context).configFlow.first()
+            LogManager.addLog("INFO", "Boot receiver restoring ${config.scheduledRuns.size} scheduled runs")
+            config.scheduledRuns.forEach { AlarmScheduler(context).scheduleRun(it) }
+        }
+    }
+}
+```
+
+#### 7.4.11 Configuration Saved (General or Admin)
+**Location:** In `ConfigManager.updateGeneral()` and `updateAdmin()` after successful update.  
+**Implementation:**
+
+```kotlin
+suspend fun updateGeneral(general: GeneralSettings) {
+    dataStore.updateData { ... }
+    LogManager.addLog("INFO", "General configuration saved: mode=${general.mode}, strikeTime=${general.strikeTime}")
+}
+
+suspend fun updateAdmin(admin: AdminConfig) {
+    dataStore.updateData { ... }
+    LogManager.addLog("INFO", "Admin configuration saved: activeSite=${admin.activeSite}")
+}
+```
 
 ## 8. Go Agent Integration
 
