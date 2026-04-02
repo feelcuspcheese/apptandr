@@ -12,8 +12,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.ExperimentalLayoutApi
 import androidx.compose.foundation.FlowRow
 import com.booking.bot.data.*
+import com.booking.bot.ui.components.MuseumEditDialog
+import com.booking.bot.ui.components.CredentialEditDialog
+import com.booking.bot.ui.components.BulkImportDialog
+import com.booking.bot.ui.components.SiteEditDialog
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -21,7 +26,7 @@ import java.util.UUID
  * First-Run Wizard following TECHNICAL_SPEC.md section 5.5 and test cases WIZ-01 through WIZ-08.
  * Guides user through initial setup: site selection, museum setup, credential setup, general settings.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun WizardScreen(
     configManager: ConfigManager,
