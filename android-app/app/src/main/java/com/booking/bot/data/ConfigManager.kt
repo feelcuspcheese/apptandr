@@ -72,7 +72,7 @@ class ConfigManager private constructor(private val context: Context) {
             emit(emptyPreferences()) 
         }
         .map { prefs ->
-            prefs[CONFIG_KEY]?.let { json ->
+            val config = prefs[CONFIG_KEY]?.let { json ->
                 try {
                     Json.decodeFromString<AppConfig>(json)
                 } catch (e: Exception) {
@@ -81,6 +81,11 @@ class ConfigManager private constructor(private val context: Context) {
                     AppConfig() // Return defaults on parse error
                 }
             } ?: AppConfig()
+            
+            // [7.4.1]: Log configuration loaded
+            LogManager.addLog("INFO", "Configuration loaded: activeSite=${config.admin.activeSite}, runs=${config.scheduledRuns.size}")
+            
+            config
         }
     
     /**
@@ -93,9 +98,8 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(general = general)
             prefs.withConfig(updated)
         }
-        LogManager.addLog("INFO", "General settings saved")
-        // GEN-10: Log success feedback for UI
-        LogManager.addLog("INFO", "Settings saved successfully")
+        // [7.4.11]: Log general configuration saved with key details
+        LogManager.addLog("INFO", "General configuration saved: mode=${general.mode}, strikeTime=${general.strikeTime}")
     }
     
     /**
@@ -120,7 +124,8 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(admin = admin, general = updatedGeneral)
             prefs.withConfig(updated)
         }
-        LogManager.addLog("INFO", "Admin configuration saved")
+        // [7.4.11]: Log admin configuration saved with key details
+        LogManager.addLog("INFO", "Admin configuration saved: activeSite=${admin.activeSite}")
     }
     
     /**
@@ -128,13 +133,15 @@ class ConfigManager private constructor(private val context: Context) {
      * Following section 4.2, this appends to the scheduledRuns list.
      */
     suspend fun addScheduledRun(run: ScheduledRun) {
+        // [7.4.2]: Log scheduled run added with full details per spec
+        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}, dropTime=${run.dropTimeMillis}, mode=${run.mode}, timezone=${run.timezone}")
+        
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
             val updatedRuns = (current.scheduledRuns + run).toMutableList()
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
-        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, dropTime=${run.dropTimeMillis}, mode=${run.mode}")
     }
     
     /**
@@ -142,13 +149,15 @@ class ConfigManager private constructor(private val context: Context) {
      * Following section 3.8, finished runs should be removed so they no longer appear.
      */
     suspend fun removeScheduledRun(runId: String) {
+        // [7.4.3]: Log scheduled run removed (user delete)
+        LogManager.addLog("INFO", "Scheduled run removed (user delete): id=$runId")
+        
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
             val updatedRuns = current.scheduledRuns.filter { it.id != runId }.toMutableList()
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
-        LogManager.addLog("INFO", "Scheduled run removed: id=$runId")
     }
     
     /**

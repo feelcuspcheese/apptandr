@@ -107,6 +107,9 @@ fun DashboardScreen(
                                         timezone = timezone
                                     )
 
+                                    // [7.4.4]: Log Start Now run created
+                                    LogManager.addLog("INFO", "Start Now run created: id=${run.id}, dropTime in 30 seconds")
+
                                     configManager.addScheduledRun(run)
                                     AlarmScheduler(context).scheduleRun(run)
 

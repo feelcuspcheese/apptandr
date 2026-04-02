@@ -152,6 +152,9 @@ class BookingForegroundService : LifecycleService() {
 
             serviceScope.launch {
                 try {
+                    // [7.4.5]: Log foreground service started
+                    LogManager.addLog("INFO", "Foreground service started for run ${run.id}")
+                    
                     // Load current config
                     val configManager = ConfigManager.getInstance(this@BookingForegroundService)
                     val config = configManager.configFlow.first()
@@ -180,6 +183,8 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     // Start the Go agent with the configuration JSON
+                    // [7.4.7]: Log agent start attempt
+                    LogManager.addLog("INFO", "Attempting to start Go agent for run ${run.id}")
                     mobileAgent?.start(agentConfigJson)
 
                     LogManager.addLog("INFO", "Go agent started successfully for run ${run.id}")
@@ -257,6 +262,9 @@ class BookingForegroundService : LifecycleService() {
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
         mobileAgent = null
+        
+        // [7.4.6]: Log foreground service stopped
+        LogManager.addLog("INFO", "Foreground service stopped for run $runId")
         
         try {
             val configManager = ConfigManager.getInstance(this@BookingForegroundService)
