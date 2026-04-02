@@ -33,33 +33,44 @@ jobs:
 
       - name: Install gomobile and gobind
         run: |
+          # Install both tools at once to ensure version parity
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          # Add the go bin to path so gomobile init can find gobind
+          
+          # Add GOPATH/bin to the PATH for the duration of this job
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          # Wait for path update then init
+          
+          # Initialize gomobile (must be able to find gobind in PATH)
           $(go env GOPATH)/bin/gomobile init
 
-      - name: Build Go AAR
+      - name: Priming Go Module and Bind dependencies
         run: |
-          # 1. Sync dependencies
+          # Critical Fix: Explicitly add the bind package to satisfying the toolchain check
+          go get golang.org/x/mobile/bind
           go mod tidy
           go mod download
-          # 2. Get the bind package explicitly to satisfy the build tool
-          go get golang.org/x/mobile/bind
-          
+
+      - name: Build Go AAR (Section 8 Tech Spec)
+        run: |
           mkdir -p android-app/libs
           
-          # 3. Bind the package using the module-aware path
-          # We use agent/mobile because go.mod defines 'module agent'
-          gomobile bind -target=android -androidapi 23 -v -o android-app/libs/booking.aar agent/mobile
+          # Use relative path ./mobile to ensure tool chain local resolution
+          # Target API 23 for wide compatibility per Tech Spec
+          gomobile bind \
+            -target=android \
+            -androidapi 23 \
+            -v \
+            -o android-app/libs/booking.aar \
+            ./mobile
         env:
           GO111MODULE: on
+          CGO_ENABLED: 1
 
       - name: Build Android APK
         run: |
           cd android-app
           chmod +x gradlew
+          # This builds the Universal APK as configured in your build.gradle.kts
           ./gradlew assembleRelease
 
       - name: Create Release
