@@ -22,6 +22,7 @@ import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.ui.navigation.BottomNavItem
 import com.booking.bot.ui.screens.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
