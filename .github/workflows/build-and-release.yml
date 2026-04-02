@@ -25,11 +25,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile
+      - name: Install gomobile (Go 1.23 compatible)
         run: |
-          # Use @latest to get the most recent, compatible version for Go 1.23
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          # Clone the repo and checkout a commit from late 2024 to avoid Go 1.25 requirement
+          git clone https://go.googlesource.com/mobile /tmp/mobile
+          cd /tmp/mobile
+          git checkout $(git rev-list -n 1 --before="2024-12-01" HEAD)
+          go install ./cmd/gomobile
+          go install ./cmd/gobind
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
@@ -37,16 +40,23 @@ jobs:
         run: |
           mkdir -p android-app/app/libs
           cd mobile
+          
+          # Force golang.org/x/sys to a version compatible with Go 1.23
+          # (v0.42.0 requires Go 1.25, v0.26.0 works perfectly with Go 1.23)
+          go get golang.org/x/sys@v0.26.0
+          
           # Ensure we use compatible dependency versions
           go mod tidy
           go mod download
           cd ..
+          
           export PATH=$PATH:$(go env GOPATH)/bin
           # Build for all supported architectures per TECHNICAL_SPEC.md section 1
           # minSdk = 23 for broad compatibility
           gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
+          GOTOOLCHAIN: local # Prevents Go from automatically upgrading to Go 1.25
 
       - name: Verify AAR was built
         run: |
