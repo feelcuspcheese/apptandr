@@ -1,36 +1,90 @@
 ```
-# Build artifacts
-*.apk
-*.aar
-*.jar
-*.class
-build/
-app/build/
-
 # Dependencies
-.gradle/
-node_modules/
-vendor/
+go.mod
+go.sum
 
-# IDE files
-.idea/
-*.iml
-*.iws
-.vscode/
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Go-specific ignores
+*.test
+*.prof
+cover.out
+coverage.txt
+
+# General ignores
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Logs
-*.log
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# OS generated files
+# Cache directories
+__pycache__/
+*.pyc
+*.pyo
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+.coverage.*
+.nyc_output
+istanbul/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
-# Temporary files
-*.tmp
-*.temp
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 ```
