@@ -50,10 +50,29 @@ jobs:
         env:
           GO111MODULE: on
 
+      - name: Create Keystore
+        run: |
+          cd android-app
+          keytool -genkey -v -keystore release-keystore.jks \
+            -alias ${{ secrets.RELEASE_KEY_ALIAS }} \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass ${{ secrets.RELEASE_STORE_PASSWORD }} \
+            -keypass ${{ secrets.RELEASE_KEY_PASSWORD }} \
+            -dname "CN=Booking Bot, OU=Development, O=Booking, L=City, ST=State, C=US"
+        env:
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+
       - name: Build Android APK
         run: |
           cd android-app
           ./gradlew assembleRelease
+        env:
+          RELEASE_STORE_FILE: release-keystore.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
