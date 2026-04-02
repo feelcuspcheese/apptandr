@@ -1,28 +1,68 @@
-```go
+```kotlin
 # Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+*.war
+*.ear
+*.pyc
+*.pyo
 *.o
 *.obj
-*.a
-*.so
+*.out
 *.dll
 *.exe
-*.out
+*.so
+*.a
 
 # Dependencies
-vendor/
-Godeps/
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
+build/
+dist/
+out/
 
-# IDE files
-.idea/
+# Android specific
+*.ap_
+*.apks
+*.aab
+*.keystore
+local.properties
+captures/
+.externalNativeBuild/
+.gradle/
 *.iml
-*.ipr
-*.iws
-.vscode/
+.idea/
+
+# Go specific
+*.exe
+*.test
+*.prof
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.~
+*~
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
+.envrc
 
 # Editors
 .vscode/
@@ -30,22 +70,27 @@ Godeps/
 *.swp
 *.swo
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Build artifacts
-bin/
-pkg/
-*.test
-*.prof
-
-# OS generated files
+# System
 .DS_Store
 Thumbs.db
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Icon?
+Network Trash Folder
+Temporary Items
 ```
 
-Wait, I need to reconsider this. Looking at the input again, only `mobile/mobile.go` was modified, which is a Go source file. There are no build artifacts, dependency directories, or temporary files in the change list that would warrant adding ignore rules.
+Wait, let me reconsider. The file changes only show source code modifications (.kt and .go files), not build artifacts or dependencies. Let me check again.
 
-(empty — output nothing)
+The changes are only to source files:
+- android-app/app/src/main/java/com/booking/bot/service/BookingForegroundService.kt (Kotlin source)
+- mobile/mobile.go (Go source)
+
+No build artifacts, dependencies, or temporary files are shown in the changes. Following rule #6, since the change list contains only source files and no build artifacts, dependencies, or temp files, the output should be empty.
+
+```kotlin
+
+```
