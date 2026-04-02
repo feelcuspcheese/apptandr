@@ -231,3 +231,16 @@ This document provides exhaustive test cases for every component of the Android 
 | **RT‑03** | Delete credential | Credential removed from ScheduleScreen dropdown immediately. |
 | **RT‑04** | Change default credential | ScheduleScreen pre‑selection updates to the new default. |
 | **RT‑05** | Change preferred museum slug | Dashboard preferred museum name changes instantly. |
+
+---
+## New/Updated test cases from bug fixes:
+
+| ID | Test Case | Expected Result |
+| :--- | :--- | :--- |
+| **SCH‑14** |	ScheduleScreen scrolls on small screen |	All fields (Site, Museum, Credential, Mode, Timezone, Date picker, Schedule button) are reachable by scrolling. |
+| **GEN‑10**| 	Save General Settings – success feedback |	After tapping Save, a temporary message “Settings saved successfully” appears for ~2 seconds.|
+| **SITE‑17** | 	Save Admin Settings – success feedback |	After tapping Save, a temporary message “Site configuration saved successfully” appears. |
+| **DB‑09** |	Start Now – immediate logs |	Within 1 second of tapping Start Now, at least one log entry appears in LogsScreen (e.g., “App initialised” or “Service started”).| 
+| **LOG‑08** |	LogManager initialisation log | 	On app start, a log “App initialised – log system ready” is visible in LogsScreen.|
+| **LOG‑09** |	Go agent log callback works | 	During a run, logs from the Go agent appear in LogsScreen (e.g., “Pre‑warming...”, “Strike started”).|
+| **TZ‑01 to TZ‑07**|	Timezone conversion tests | 	As originally defined – verify correct UTC conversion, DST handling, JSON fields, etc.|
