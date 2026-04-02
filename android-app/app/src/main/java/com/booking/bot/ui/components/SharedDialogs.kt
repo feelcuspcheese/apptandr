@@ -266,7 +266,7 @@ fun BulkImportDialog(
                     onDismiss 
                 }
             }) {
-                Text(if (showOverwriteConfirmation) "Cancel" else "Cancel")
+                Text("Cancel")
             }
         }
     )
