@@ -1,29 +1,36 @@
 
+# Final Comprehensive Technical Specification for Android Wrapper of Go Booking Agent
 
-***
+*(Full 14‑Section Version with Enhanced UX Features)*
 
-# Technical Specification for Android Wrapper of Go Booking Agent
-*(Incorporating All Audit Recommendations & Edge Cases)*
-
-> **Note:** This document is the single source of truth for the Android wrapper application. It has been audited and updated to cover all edge cases, including automatic run cleanup, handling of configuration changes, concurrency, and error resilience. All sections are complete, unambiguous, and ready for implementation by an LLM.
+This document is the single source of truth for the Android wrapper application. It contains all content from the previous stable specification (14 sections) plus detailed enhancements for user experience. All sections are fully described; no omissions.
 
 ---
 
 ## 1. Overview & Goals
 
-**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/feelcuspcheese/apptcheck`). The app replaces the web dashboard, centralises configuration, and uses Android’s native scheduling to trigger the agent at exact times.
+**Purpose:** Build a native Android app that controls the existing Go‑based appointment booking agent (`github.com/kiskey/apptcheck`). The app replaces the web dashboard, centralises configuration, and uses Android’s native scheduling to trigger the agent at exact times.
 
-**Key Features:**
+### Key Features:
 * **Unified configuration** (General + Site‑specific) stored in a single DataStore.
 * **Real‑time UI updates:** any configuration change instantly reflects across all screens.
-* **PIN‑protected admin area** (hardcoded PIN `1234` for MVP).
+* **PIN‑protected admin area** (hardcoded PIN 1234 for MVP).
 * **Bulk import of museums** (text format `name:slug:museumid`).
-* **Multiple credential sets per site** (library card + PIN + email) with default selection.
+* **Multiple credential sets** per site (library card + PIN + email) with default selection.
 * **Scheduling of future runs** using `AlarmManager.setExactAndAllowWhileIdle`.
 * **Foreground service** to run the Go agent during the strike window.
 * **Live logs** with export functionality.
 * Works on **Android 8.0+ (API 26)** and supports `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`.
-* **UI dropdowns** display museum names; internal mappings use slugs and museumIds.
+* UI dropdowns display museum names; internal mappings use slugs and museumIds.
+
+### Enhanced UX Features (integrated throughout):
+* Site dropdowns show display names (e.g., "SPL", "KCLS") instead of internal keys.
+* Visual cue for the site being edited in the Sites tab (e.g., header "Editing SPL Settings").
+* Confirmation dialogs for destructive actions: delete museum, delete credential, bulk import overwrite, delete scheduled run.
+* Progress indicators for bulk import and saving admin config.
+* Timezone selection when scheduling a run, stored per run.
+* Debug viewer (optional, hidden) to show the final JSON sent to the Go agent.
+* First‑run wizard to guide initial setup.
 
 ---
 
@@ -48,7 +55,7 @@
 │  ├── suspend fun updateAdmin(admin)                         │
 │  ├── suspend fun addScheduledRun(run)                       │
 │  ├── suspend fun removeScheduledRun(runId)                  │
-│  └── fun buildAgentConfig(run, config): String              │
+│  └── fun buildAgentConfig(run, config): String?             │
 ├─────────────────────────────────────────────────────────────┤
 │  LogManager (singleton)                                     │
 │  ├── SharedFlow<LogEntry>                                   │
@@ -64,7 +71,7 @@
 
 **Data Flow:**
 1. User changes a setting → ViewModel calls `ConfigManager.updateXxx()`.
-2. `ConfigManager` updates DataStore → `configFlow` emits new `AppConfig`.
+2. ConfigManager updates DataStore → `configFlow` emits new `AppConfig`.
 3. All ViewModels receive the new config → UI recomposes with fresh data.
 4. *No manual refresh logic anywhere.*
 
@@ -108,7 +115,6 @@ data class Museum(
     val museumId: String   // Actual ID used in the library's API endpoint
 )
 ```
-> **Important:** For KCLS, the `museumId` is often the same as the `slug`. The admin must provide both fields; the UI will show the name to the user.
 
 ### 3.3 CredentialSet
 ```kotlin
@@ -116,8 +122,8 @@ data class Museum(
 data class CredentialSet(
     val id: String = UUID.randomUUID().toString(),
     var label: String,     // user‑friendly name, e.g., "Main Card"
-    var username: String,  // library card number
-    var password: String,  // PIN
+    var username: String,
+    var password: String,
     var email: String
 )
 ```
@@ -127,23 +133,22 @@ data class CredentialSet(
 @Serializable
 data class SiteConfig(
     val name: String,                     // display name, e.g., "SPL"
-    var baseUrl: String,                  // e.g., "https://spl.libcal.com"
-    var availabilityEndpoint: String,     // "/pass/availability/institution"
+    var baseUrl: String,
+    var availabilityEndpoint: String,
     var digital: Boolean = true,
     var physical: Boolean = false,
     var location: String = "0",
-    val museums: MutableMap<String, Museum> = mutableMapOf(),   // key = slug
+    val museums: MutableMap<String, Museum> = mutableMapOf(),
     val credentials: MutableList<CredentialSet> = mutableListOf(),
-    var defaultCredentialId: String? = null                     // must be an id in credentials
+    var defaultCredentialId: String? = null
 )
 ```
-> **Validation Rule:** `defaultCredentialId` must be `null` or exist in `credentials`. When a credential is deleted, if it was default, set `defaultCredentialId = null`.
 
 ### 3.5 AdminConfig
 ```kotlin
 @Serializable
 data class AdminConfig(
-    var activeSite: String = "spl",   // key in sites map
+    var activeSite: String = "spl",
     val sites: MutableMap<String, SiteConfig> = mutableMapOf(
         "spl" -> SiteConfig(
             name = "SPL",
@@ -169,11 +174,11 @@ data class AdminConfig(
 ```kotlin
 @Serializable
 data class GeneralSettings(
-    var mode: String = "alert",                         // "alert" or "booking"
-    var strikeTime: String = "09:00",                   // HH:MM
+    var mode: String = "alert",
+    var strikeTime: String = "09:00",
     var preferredDays: List<String> = listOf("Monday", "Wednesday", "Friday"),
     var ntfyTopic: String = "myappointments",
-    var preferredMuseumSlug: String = "",               // stores the slug of the chosen museum
+    var preferredMuseumSlug: String = "",
     // Performance tuning
     var checkWindow: String = Defaults.CHECK_WINDOW,
     var checkInterval: String = Defaults.CHECK_INTERVAL,
@@ -185,21 +190,20 @@ data class GeneralSettings(
     var restCycleDuration: String = Defaults.REST_CYCLE_DURATION
 )
 ```
-> **Explanation:** The user selects a museum by its name in the UI, but we store its slug in `preferredMuseumSlug`. This slug is used to look up the museum object when needed.
 
-### 3.7 ScheduledRun
+### 3.7 ScheduledRun (with timezone)
 ```kotlin
 @Serializable
 data class ScheduledRun(
     val id: String = UUID.randomUUID().toString(),
-    val siteKey: String,                  // key in admin.sites
-    val museumSlug: String,               // slug in that site's museums
-    val credentialId: String?,            // null = use site's default
+    val siteKey: String,
+    val museumSlug: String,
+    val credentialId: String?,
     val dropTimeMillis: Long,
-    val mode: String                      // "alert" or "booking"
+    val mode: String,
+    val timezone: String = TimeZone.getDefault().id   // IANA timezone ID
 )
 ```
-> **Important:** The run does not store a snapshot of the site configuration. At trigger time, the current `AppConfig` is used to look up the site, museum, and credential. This means changes to site settings (e.g., base URL, availability endpoint, museum details) after scheduling will affect the run. This is intentional, as it allows administrators to correct mistakes without cancelling runs. However, changes that delete the referenced museum or credential will cause the run to fail gracefully (see Section 4.3 for error handling).
 
 ### 3.8 AppConfig (Single Source of Truth)
 ```kotlin
@@ -210,14 +214,14 @@ data class AppConfig(
     val scheduledRuns: MutableList<ScheduledRun> = mutableListOf()
 )
 ```
-> **Run Lifecycle:** When a run finishes (successfully or due to timeout/error), it must be removed from `scheduledRuns` to prevent it from being shown in the schedule screen and to avoid leaving stale alarms. This removal is performed by the `BookingForegroundService` after the run ends (see Section 6.4).
+> **Run Lifecycle:** When a run finishes (successfully or due to timeout/error), it must be removed from `scheduledRuns` (handled by `BookingForegroundService`).
 
 ---
 
 ## 4. Central Configuration Manager
 
 ### 4.1 Storage
-Use `androidx.datastore.preferences.core.Preferences` with a single key `"app_config"` that holds the JSON string of `AppConfig`.
+Use `androidx.datastore.preferences.core.Preferences` with a single key `"app_config"` holding the JSON string of `AppConfig`.
 
 **Dependencies:**
 * `androidx.datastore:datastore-preferences:1.0.0`
@@ -258,7 +262,7 @@ class ConfigManager(context: Context) {
     }
 
     suspend fun addScheduledRun(run: ScheduledRun) {
-        // Validate that the site, museum, and credential exist at scheduling time
+        // Validate existence at scheduling time
         val config = configFlow.first()
         val site = config.admin.sites[run.siteKey] ?: error("Site not found")
         if (run.museumSlug !in site.museums) error("Museum not found")
@@ -280,12 +284,93 @@ class ConfigManager(context: Context) {
         }
     }
 
+    // Build JSON for Go agent
+    fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
+        val site = config.admin.sites[run.siteKey] ?: run {
+            LogManager.addLog("ERROR", "Site ${run.siteKey} not found for run ${run.id}")
+            return null
+        }
+        val museum = site.museums[run.museumSlug] ?: run {
+            LogManager.addLog("ERROR", "Museum ${run.museumSlug} not found in site ${run.siteKey}")
+            return null
+        }
+        val credential = run.credentialId?.let { id ->
+            site.credentials.find { it.id == id }
+        } ?: site.defaultCredentialId?.let { id ->
+            site.credentials.find { it.id == id }
+        }
+        val (username, password, email) = credential?.let {
+            Triple(it.username, it.password, it.email)
+        } ?: Triple("", "", "")
+
+        val fullConfig = mapOf(
+            "active_site" to config.admin.activeSite,
+            "mode" to config.general.mode,
+            "strike_time" to config.general.strikeTime,
+            "preferred_days" to config.general.preferredDays,
+            "ntfy_topic" to config.general.ntfyTopic,
+            "check_window" to config.general.checkWindow,
+            "check_interval" to config.general.checkInterval,
+            "request_jitter" to config.general.requestJitter,
+            "months_to_check" to config.general.monthsToCheck,
+            "pre_warm_offset" to config.general.preWarmOffset,
+            "max_workers" to config.general.maxWorkers,
+            "rest_cycle_checks" to config.general.restCycleChecks,
+            "rest_cycle_duration" to config.general.restCycleDuration,
+            "sites" to mapOf(
+                run.siteKey to mapOf(
+                    "name" to site.name,
+                    "baseurl" to site.baseUrl,
+                    "availabilityendpoint" to site.availabilityEndpoint,
+                    "digital" to site.digital,
+                    "physical" to site.physical,
+                    "location" to site.location,
+                    "bookinglinkselector" to Defaults.BOOKING_LINK_SELECTOR,
+                    "loginform" to mapOf(
+                        "usernamefield" to Defaults.USERNAME_FIELD,
+                        "passwordfield" to Defaults.PASSWORD_FIELD,
+                        "submitbutton" to Defaults.SUBMIT_BUTTON,
+                        "csrfselector" to "",
+                        "username" to username,
+                        "password" to password,
+                        "email" to email,
+                        "authidselector" to Defaults.AUTH_ID_SELECTOR,
+                        "loginurlselector" to Defaults.LOGIN_URL_SELECTOR
+                    ),
+                    "bookingform" to mapOf(
+                        "actionurl" to "",
+                        "fields" to emptyList<String>(),
+                        "emailfield" to Defaults.EMAIL_FIELD
+                    ),
+                    "successindicator" to Defaults.SUCCESS_INDICATOR,
+                    "museums" to mapOf(
+                        museum.slug to mapOf(
+                            "name" to museum.name,
+                            "slug" to museum.slug,
+                            "museumid" to museum.museumId
+                        )
+                    ),
+                    "preferredslug" to config.general.preferredMuseumSlug
+                )
+            )
+        )
+        val request = mapOf(
+            "siteKey" to run.siteKey,
+            "museumSlug" to run.museumSlug,
+            "dropTime" to java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString(),
+            "mode" to run.mode,
+            "timezone" to run.timezone,
+            "fullConfig" to fullConfig
+        )
+        return Json { encodeDefaults = true }.encodeToString(request)
+    }
+
     companion object {
         private val CONFIG_KEY = stringPreferencesKey("app_config")
     }
 }
 
-// Extension functions (in same file)
+// Extension functions (same file)
 fun Preferences.toAppConfig(): AppConfig {
     val json = this[CONFIG_KEY] ?: return AppConfig()
     return Json.decodeFromString(json)
@@ -297,141 +382,64 @@ fun Preferences.withConfig(config: AppConfig): Preferences {
 }
 ```
 
-### 4.3 JSON Builder for Go Agent (with Error Resilience)
-This function creates the exact JSON expected by `mobile/agent.go`. It must use exact field names (case‑sensitive). It now handles missing museums or credentials gracefully.
-
-```kotlin
-fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
-    val site = config.admin.sites[run.siteKey]
-    if (site == null) {
-        LogManager.addLog("ERROR", "Site ${run.siteKey} not found for run ${run.id}")
-        return null
-    }
-    val museum = site.museums[run.museumSlug]
-    if (museum == null) {
-        LogManager.addLog("ERROR", "Museum ${run.museumSlug} not found in site ${run.siteKey} for run ${run.id}")
-        return null
-    }
-    // Determine credential – fallback to empty if missing
-    val credential = run.credentialId?.let { id ->
-        site.credentials.find { it.id == id }
-    } ?: site.defaultCredentialId?.let { id ->
-        site.credentials.find { it.id == id }
-    }
-    val (username, password, email) = credential?.let {
-        Triple(it.username, it.password, it.email)
-    } ?: Triple("", "", "")
-
-    val fullConfig = mapOf(
-        "active_site" to config.admin.activeSite,
-        "mode" to config.general.mode,
-        "strike_time" to config.general.strikeTime,
-        "preferred_days" to config.general.preferredDays,
-        "ntfy_topic" to config.general.ntfyTopic,
-        "check_window" to config.general.checkWindow,
-        "check_interval" to config.general.checkInterval,
-        "request_jitter" to config.general.requestJitter,
-        "months_to_check" to config.general.monthsToCheck,
-        "pre_warm_offset" to config.general.preWarmOffset,
-        "max_workers" to config.general.maxWorkers,
-        "rest_cycle_checks" to config.general.restCycleChecks,
-        "rest_cycle_duration" to config.general.restCycleDuration,
-        "sites" to mapOf(
-            run.siteKey to mapOf(
-                "name" to site.name,
-                "baseurl" to site.baseUrl,
-                "availabilityendpoint" to site.availabilityEndpoint,
-                "digital" to site.digital,
-                "physical" to site.physical,
-                "location" to site.location,
-                "bookinglinkselector" to Defaults.BOOKING_LINK_SELECTOR,
-                "loginform" to mapOf(
-                    "usernamefield" to Defaults.USERNAME_FIELD,
-                    "passwordfield" to Defaults.PASSWORD_FIELD,
-                    "submitbutton" to Defaults.SUBMIT_BUTTON,
-                    "csrfselector" to "",
-                    "username" to username,
-                    "password" to password,
-                    "email" to email,
-                    "authidselector" to Defaults.AUTH_ID_SELECTOR,
-                    "loginurlselector" to Defaults.LOGIN_URL_SELECTOR
-                ),
-                "bookingform" to mapOf(
-                    "actionurl" to "",
-                    "fields" to emptyList<String>(),
-                    "emailfield" to Defaults.EMAIL_FIELD
-                ),
-                "successindicator" to Defaults.SUCCESS_INDICATOR,
-                "museums" to mapOf(
-                    museum.slug to mapOf(
-                        "name" to museum.name,
-                        "slug" to museum.slug,
-                        "museumid" to museum.museumId
-                    )
-                ),
-                "preferredslug" to config.general.preferredMuseumSlug
-            )
-        )
-    )
-    val request = mapOf(
-        "siteKey" to run.siteKey,
-        "museumSlug" to run.museumSlug,
-        "dropTime" to java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString(),
-        "mode" to run.mode,
-        "timezone" to java.util.TimeZone.getDefault().id,
-        "fullConfig" to fullConfig
-    )
-    return Json { encodeDefaults = true }.encodeToString(request)
-}
-```
-
 ---
 
 ## 5. UI Screens (Jetpack Compose)
 
-All screens use `androidx.compose.material3` stable components. The app uses a `BottomNavigation` with four items: **Dashboard**, **Config**, **Schedule**, **Logs**.
+All screens use `androidx.compose.material3` stable components. The app uses a BottomNavigation with four items: Dashboard, Config, Schedule, Logs.
 
 ### 5.1 DashboardScreen
+
 **State:**
 * `val config by configManager.configFlow.collectAsState()`
-* `val isRunning by bookingViewModel.isRunning.collectAsState()` (from `BookingForegroundService` via `StateFlow`)
+* `val isRunning by bookingViewModel.isRunning.collectAsState()` (from `BookingForegroundService` via StateFlow)
 
 **Content:**
 * **Status Card:** `Status: ${if (isRunning) "Running" else "Idle"}`
 * **Next Run Countdown:** Computed from `config.scheduledRuns` sorted by `dropTimeMillis`. Show time remaining until the nearest run (or "No scheduled runs").
 * **Start Now Button:** Creates a run with `dropTimeMillis = System.currentTimeMillis() + 30_000`, using:
-  * `siteKey` = `config.admin.activeSite`
-  * `museumSlug` = `config.general.preferredMuseumSlug` (if empty, use first museum in active site’s museums)
-  * `credentialId` = `config.admin.sites[activeSite].defaultCredentialId`
-  * `mode` = `config.general.mode`
-  * Adds run via `configManager.addScheduledRun` and calls `AlarmScheduler.scheduleRun`.
+    * `siteKey = config.admin.activeSite`
+    * `museumSlug = config.general.preferredMuseumSlug` (if empty, use first museum in active site’s museums)
+    * `credentialId = config.admin.sites[activeSite].defaultCredentialId`
+    * `mode = config.general.mode`
+    * `timezone = TimeZone.getDefault().id`
+    * Adds run via `configManager.addScheduledRun` and calls `AlarmScheduler.scheduleRun`.
 * **Stop Button:** Calls `BookingForegroundService.stop(context)`. If a run is active, also stops the service.
 * **Quick Stats:** Show:
-  * Active Site: `config.admin.activeSite`
-  * Mode: `config.general.mode`
-  * Preferred Museum: Look up the museum by `config.general.preferredMuseumSlug` from the active site’s museums, and display its name. If not found, show "None".
+    * Active Site: `config.admin.sites[config.admin.activeSite]?.name ?: config.admin.activeSite`
+    * Mode: `config.general.mode`
+    * Preferred Museum: Look up the museum by `config.general.preferredMuseumSlug` from the active site’s museums, and display its name. If not found, show "None".
+
+**Implementation notes:**
+* The countdown updates every second using a `LaunchedEffect` that delays and recomputes.
+* Start Now button uses `rememberCoroutineScope` to call suspend functions.
 
 ### 5.2 ConfigScreen (PIN‑protected)
-**PIN Dialog:**
-* `AlertDialog` with `TextField` for PIN, hardcoded `"1234"`. On success, show the main config UI.
 
-**Main UI:**
-* `TabRow` with tabs **General** and **Sites**.
+#### 5.2.1 PIN Dialog
+An AlertDialog with a TextField for the PIN. Hardcoded PIN "1234". On success, dismiss dialog and show the main config UI. On failure, show error toast and keep dialog.
 
-#### 5.2.1 General Tab
-* **Mode:** `SegmentedButton` with options "Alert", "Booking".
-* **Strike Time:** `OutlinedTextField` with click handler to open `TimePicker`. Store as `HH:MM` string.
-* **Preferred Days:** `FlowRow` of `FilterChip` for each day of week. `selectedDays` is a list of day names.
-* **ntfy Topic:** `OutlinedTextField`.
+#### 5.2.2 Main UI (after PIN)
+A `TabRow` with two tabs: **General** and **Sites**.
+
+##### 5.2.2.1 General Tab
+**Fields:**
+* **Mode:** SegmentedButton with options "Alert", "Booking". Stored in `general.mode`.
+* **Strike Time:** OutlinedTextField with click handler to open TimePicker. Store as `HH:MM` string.
+* **Preferred Days:** FlowRow of FilterChip for each day of week. `selectedDays` is a list of day names.
+* **ntfy Topic:** OutlinedTextField.
 * **Preferred Museum Dropdown:**
-  * Uses `ExposedDropdownMenuBox` with items built from `config.admin.sites[config.admin.activeSite].museums.values`.
-  * Each item displays the museum’s name.
-  * On selection, we store the corresponding slug into `general.preferredMuseumSlug`.
-  * The dropdown’s selected item is determined by finding the museum whose slug matches `preferredMuseumSlug`.
+    * Uses `ExposedDropdownMenuBox` with items built from `config.admin.sites[config.admin.activeSite].museums.values`.
+    * Each item displays the museum’s name.
+    * On selection, we store the corresponding slug into `general.preferredMuseumSlug`.
+    * The dropdown’s selected item is determined by finding the museum whose slug matches `preferredMuseumSlug`.
+* **Performance Tuning:** Expanded section containing OutlinedTextField for `checkWindow`, `checkInterval`, `requestJitter`, `monthsToCheck`, `preWarmOffset`, `maxWorkers`, `restCycleChecks`, `restCycleDuration`. Use appropriate KeyboardType.
+* **Save Button:** `onClick -> configManager.updateGeneral(newGeneral)`.
 
-**Implementation snippet:**
+*Implementation snippet for preferred museum dropdown:*
 ```kotlin
-val museums = config.admin.sites[activeSite].museums.values.toList()
+val activeSite = config.admin.activeSite
+val museums = config.admin.sites[activeSite]?.museums?.values?.toList() ?: emptyList()
 var expanded by remember { mutableStateOf(false) }
 var selectedMuseum by remember { mutableStateOf(
     museums.find { it.slug == config.general.preferredMuseumSlug }
@@ -445,6 +453,7 @@ ExposedDropdownMenuBox(
         value = selectedMuseum?.name ?: "",
         onValueChange = {},
         readOnly = true,
+        label = { Text("Preferred Museum") },
         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
     )
     ExposedDropdownMenu(
@@ -465,58 +474,177 @@ ExposedDropdownMenuBox(
     }
 }
 ```
-* **Performance Tuning:** Expanded section containing `OutlinedTextField` for `checkWindow`, `checkInterval`, `requestJitter`, `monthsToCheck`, `preWarmOffset`, `maxWorkers`, `restCycleChecks`, `restCycleDuration`. Use appropriate `KeyboardType`.
-* **Save Button:** `onClick -> configManager.updateGeneral(newGeneral)`.
 
-#### 5.2.2 Sites Tab
-* **Active Site Dropdown:** `ExposedDropdownMenuBox` from `config.admin.sites.keys`. Selecting updates `selectedSiteKey`.
-* **Site‑specific fields** (for selected site):
-  * Base URL, Availability Endpoint – `TextField`.
-  * Digital, Physical – `Checkbox`.
-  * Location – `TextField`.
+##### 5.2.2.2 Sites Tab
+This tab allows editing all site‑specific configuration, including museums and credentials.
+
+**State:**
+* `val siteEntries = config.admin.sites.map { (key, site) -> key to site.name }`
+* `var selectedSiteKey by remember { mutableStateOf(config.admin.activeSite) }`
+* The current site object is `config.admin.sites[selectedSiteKey]!!`.
+
+**UI Components:**
+* **Site Selection Dropdown:** Uses `ExposedDropdownMenuBox` showing `site.name`. When changed, updates `selectedSiteKey` and resets editing state.
+* **Visual Cue:** `Text("Editing ${siteEntries.find { it.first == selectedSiteKey }?.second} Settings", style = MaterialTheme.typography.titleMedium)`
+* **Site‑Specific Fields:**
+    * Base URL (OutlinedTextField)
+    * Availability Endpoint (OutlinedTextField)
+    * Digital (Checkbox)
+    * Physical (Checkbox)
+    * Location (OutlinedTextField)
 * **Museums Section:**
-  * `LazyColumn` of `Museum` items, each showing `name` (`slug`, `museumId`) with `IconButton` (edit, delete).
-  * `FloatingActionButton` (add) – opens dialog with `name`, `slug`, `museumId`. On confirm, adds to site’s museums map (key = slug). If slug already exists, ask to overwrite.
-  * `IconButton` (bulk import) – opens dialog with large `TextField` for pasting lines `name:slug:museumid`. Parse lines, show preview `LazyColumn`, and an `Import` button that adds all valid entries (replacing duplicates by slug).
+    * `LazyColumn` of museums. Each item shows name (`slug`, `museumId`) with IconButton (edit, delete).
+    * `FloatingActionButton` (add) – opens a dialog with name, slug, museumId. On confirm, adds to site’s museums map (key = slug). If slug already exists, show an overwrite confirmation dialog.
+    * `IconButton` (bulk import) – opens a dialog with a large TextField for pasting lines `name:slug:museumid`. Parse lines, show preview `LazyColumn`, and an Import button that adds all valid entries (replacing duplicates by slug). During import, show a `CircularProgressIndicator` and disable the import button.
 * **Credentials Section:**
-  * `LazyColumn` of `CredentialSet` cards. Each card shows `label`, `username`, `password` (obscured), `email`, and buttons: Edit, Delete, and Star to mark as default.
-  * `FloatingActionButton` (add credential) – opens dialog with label, username, password, email.
-* **Save Button:** Collects all changes and calls `configManager.updateAdmin(updatedAdmin)`.
+    * `LazyColumn` of `CredentialSet` cards. Each card shows label, username, password (obscured), email, and buttons: Edit, Delete, and Star to mark as default.
+    * `FloatingActionButton` (add credential) – opens a dialog with label, username, password, email.
+    * **Setting a default:** only one star per site; when star is clicked, update `defaultCredentialId` to that credential’s id (and clear any previous default).
+* **Save Button:**
+    * Collects all changes into a new `SiteConfig` and calls `configManager.updateAdmin(updatedAdmin)`. While saving, show a `CircularProgressIndicator` inside the button and disable it.
+* **Confirmation Dialogs:**
+    * Delete Museum: Show AlertDialog with message "Delete '{museum.name}'? This cannot be undone." Confirm calls delete action.
+    * Delete Credential: Similar confirmation.
+    * Bulk Import Overwrite: If a museum with the same slug already exists, show dialog: "Overwrite existing museum '{existing.name}' with new data?".
 
-> **Validation:** Ensure default credential exists; if default credential is deleted, clear it. Also ensure preferred museum slug in General tab is still valid after site changes (handled in `updateAdmin`).
+*Implementation skeleton for museums list with delete confirmation:*
+```kotlin
+items(museums.values.toList()) { museum ->
+    Row {
+        Text("${museum.name} (${museum.slug}, ${museum.museumId})")
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = { showDeleteMuseumDialog(museum) }) {
+            Icon(Icons.Default.Delete, null)
+        }
+    }
+}
+```
 
 ### 5.3 ScheduleScreen
+
 **State:**
 * `val config by configManager.configFlow.collectAsState()`
-* `var selectedSite by remember { mutableStateOf(config.admin.activeSite) }`
+* `var selectedSiteKey by remember { mutableStateOf(config.admin.activeSite) }`
 * `var selectedMuseumSlug by remember { mutableStateOf("") }`
 * `var selectedCredentialId by remember { mutableStateOf<String?>(null) }`
 * `var selectedMode by remember { mutableStateOf(config.general.mode) }`
 * `var selectedDateTime by remember { mutableStateOf<Long?>(null) }`
+* `var selectedTimezone by remember { mutableStateOf(TimeZone.getDefault().id) }`
 
-**UI:**
-* **Site Dropdown:** `ExposedDropdownMenuBox` from `config.admin.sites.keys`. When changed, reset museum and credential selections.
-* **Museum Dropdown:**
-  * Built from the selected site’s `museums.values`.
-  * Displays museum name.
-  * Selected value stored as `selectedMuseumSlug` (slug).
-  * If the current `selectedMuseumSlug` is not in the new site’s museums, clear it.
-* **Credential Dropdown:**
-  * Built from the selected site’s `credentials`.
-  * Add an extra option "Use default" (`credentialId = null`).
-  * Pre‑select the site’s `defaultCredentialId` if it exists, otherwise "Use default".
+**UI Components:**
+* **Site Dropdown:** Uses `siteEntries` (key to name) to display names. When changed, reset museum and credential selections.
+* **Museum Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.museums?.values`. Displays names; stores slug.
+* **Credential Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.credentials`. Adds an extra option "Use default" (`credentialId = null`). Pre‑select the site’s `defaultCredentialId` if it exists, otherwise "Use default".
 * **Mode Dropdown:** "Alert" / "Booking". Pre‑selected from `selectedMode`.
-* **Date/Time Picker:** Use `DatePickerDialog` + `TimePickerDialog` (or a combined library) to select a future timestamp. Store as `Long` (milliseconds). Show selected date/time in a `TextField` with `read‑only`.
-* **Schedule Button:** Creates a `ScheduledRun` with current selections and calls `configManager.addScheduledRun(run)` and `AlarmScheduler.scheduleRun(run)`.
-* **Scheduled Runs List:** `LazyColumn` of `config.scheduledRuns` sorted by `dropTimeMillis`. Each item shows site, museum, mode, formatted date, and a delete icon. Deleting calls `configManager.removeScheduledRun(id)` and `AlarmScheduler.cancelRun(id)`.
+* **Timezone Dropdown:** Uses a list of common timezones with display names (e.g., "America/Los_Angeles" -> "PST/PDT (Los Angeles)"). Selected value stored as IANA string.
+* **Date/Time Picker:** Use `DatePickerDialog` and `TimePickerDialog` (or a combined library) to select a future timestamp. Store as `Long` (milliseconds). Show selected date/time in a TextField with read‑only.
+* **Schedule Button:** Validates that a future date/time is selected. Creates a `ScheduledRun` with the current selections and calls `configManager.addScheduledRun(run)` and `AlarmScheduler.scheduleRun(run)`.
+* **Scheduled Runs List:** `LazyColumn` of `config.scheduledRuns` sorted by `dropTimeMillis`. Each item shows site (display name), museum name, mode, formatted date/time, and a delete icon. Deleting calls `configManager.removeScheduledRun(id)` and `AlarmScheduler.cancelRun(id)` with a confirmation dialog.
+
+*Implementation details for timezone dropdown:*
+```kotlin
+val timezones = listOf(
+    "America/Los_Angeles" to "PST/PDT (Los Angeles)",
+    "America/Denver" to "MST/MDT (Denver)",
+    "America/Chicago" to "CST/CDT (Chicago)",
+    "America/New_York" to "EST/EDT (New York)",
+    "UTC" to "UTC",
+    "Asia/Kolkata" to "IST (Kolkata)"
+)
+var expandedTz by remember { mutableStateOf(false) }
+ExposedDropdownMenuBox(
+    expanded = expandedTz,
+    onExpandedChange = { expandedTz = it }
+) {
+    TextField(
+        value = timezones.find { it.first == selectedTimezone }?.second ?: "",
+        onValueChange = {},
+        readOnly = true,
+        label = { Text("Timezone") },
+        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedTz) }
+    )
+    ExposedDropdownMenu(
+        expanded = expandedTz,
+        onDismissRequest = { expandedTz = false }
+    ) {
+        timezones.forEach { (tzId, display) ->
+            DropdownMenuItem(
+                text = { Text(display) },
+                onClick = {
+                    selectedTimezone = tzId
+                    expandedTz = false
+                }
+            )
+        }
+    }
+}
+```
 
 ### 5.4 LogsScreen
-* **Live Logs:** `LazyColumn` observing `LogManager.logFlow`. Each item shows timestamp, level, message.
-* **Auto‑scroll Toggle:** Switch to enable auto‑scroll to bottom when new logs arrive.
-* **Export Button:** Opens share sheet with `LogManager.exportLogs(context)` URI.
-* **Clear Button:** Calls `LogManager.clearInMemory()`.
+
+**State:**
+* `val logs by LogManager.logFlow.collectAsState(initial = emptyList())`
+
+**UI:**
+* TopBar with title "Logs" and three icons: Export, Clear, and Debug JSON (optional).
+* `LazyColumn` displaying each log entry with timestamp, level, and message. Use `rememberLazyListState` and auto‑scroll toggle (Switch) to enable/disable scrolling to bottom on new entries.
+* **Export:** Calls `LogManager.exportLogs(context)` and shares the URI via `Intent.ACTION_SEND`.
+* **Clear:** Calls `LogManager.clearInMemory()`.
+* **Debug JSON:** When clicked, fetch the first pending run from `configManager.configFlow.first().scheduledRuns` (if any), build the JSON using `ConfigManager.buildAgentConfig`, and show it in an `AlertDialog` with a copy button.
+    * *Implementation note:* The debug JSON viewer is hidden behind an optional setting or long‑press on the logs title.
 
 ---
+
+### 5.3.5 Timezone Handling (Detailed)
+
+#### 5.3.5.1 User Selection of Timezone
+In the `ScheduleScreen`, the user selects a timezone from a dropdown. The dropdown displays human‑readable names (e.g., "PST/PDT (Los Angeles)") and stores the corresponding IANA timezone ID (e.g., "America/Los_Angeles"). The default selection is the device’s current timezone.
+
+```kotlin
+var selectedTimezone by remember { mutableStateOf(TimeZone.getDefault().id) }
+```
+
+#### 5.3.5.2 Converting User‑Selected Date/Time to UTC
+When the user picks a date and time using the date/time picker, the app must interpret that local date/time in the selected timezone and convert it to UTC milliseconds (epoch). This conversion is essential because `AlarmManager` and all internal storage work with UTC milliseconds.
+
+```kotlin
+fun convertToUtcMillis(localDateTime: LocalDateTime, timezoneId: String): Long {
+    val zoneId = ZoneId.of(timezoneId)
+    val zonedDateTime = localDateTime.atZone(zoneId)
+    return zonedDateTime.toInstant().toEpochMilli()
+}
+```
+The `dropTimeMillis` field of `ScheduledRun` stores the resulting UTC milliseconds.
+
+#### 5.3.5.3 AlarmManager Scheduling
+`AlarmManager.setExactAndAllowWhileIdle()` expects a time in the system’s UTC clock (milliseconds since epoch). Since `dropTimeMillis` is already UTC, no additional conversion is needed. The alarm will fire at the exact UTC moment corresponding to the user’s local time in the chosen timezone.
+
+#### 5.3.5.4 JSON Construction for Go Agent
+The JSON sent to the Go agent includes two fields related to time:
+
+* **dropTime**: an ISO‑8601 string representing the same UTC moment as `dropTimeMillis`. Using `Instant.ofEpochMilli(run.dropTimeMillis).toString()` produces a string like `"2025-04-01T16:00:00Z"` (UTC with Z suffix).
+* **timezone**: the IANA timezone ID stored with the run (e.g., `"America/Los_Angeles"`).
+
+```kotlin
+val request = mapOf(
+    "siteKey" to run.siteKey,
+    "museumSlug" to run.museumSlug,
+    "dropTime" to java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString(),
+    "mode" to run.mode,
+    "timezone" to run.timezone,
+    "fullConfig" to fullConfig
+)
+```
+The Go agent receives this JSON. It can use the `dropTime` as the exact trigger moment (already in UTC) and optionally use the `timezone` field for logging or to adjust the displayed drop time in notifications.
+
+#### 5.3.5.5 Example
+Suppose the user in Los Angeles schedules a run for April 1, 2025, at 09:00 AM in the `America/Los_Angeles` timezone (which is UTC‑7 at that date).
+
+* The app computes `LocalDateTime(2025, 4, 1, 9, 0)` and converts it to UTC: `2025-04-01T16:00:00Z` (milliseconds `1743523200000`).
+* The `ScheduledRun` stores `dropTimeMillis = 1743523200000` and `timezone = "America/Los_Angeles"`.
+* The alarm is set for `1743523200000` (UTC).
+* The JSON contains `"dropTime":"2025-04-01T16:00:00Z"` and `"timezone":"America/Los_Angeles"`.
+* If the device is in a different timezone (e.g., New York), the alarm will still fire at the correct UTC moment (9:00 AM Los Angeles time = 12:00 PM New York time). This ensures the run happens at the user’s intended local time regardless of device location.
 
 ## 6. Scheduling & Background Execution
 
@@ -531,6 +659,7 @@ class AlarmScheduler(private val context: Context) {
             putExtra("credential_id", run.credentialId)
             putExtra("drop_time", run.dropTimeMillis)
             putExtra("mode", run.mode)
+            putExtra("timezone", run.timezone)
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context, run.id.hashCode(), intent,
@@ -565,7 +694,8 @@ class AlarmReceiver : BroadcastReceiver() {
             museumSlug = intent.getStringExtra("museum_slug") ?: return,
             credentialId = intent.getStringExtra("credential_id"),
             dropTimeMillis = intent.getLongExtra("drop_time", 0),
-            mode = intent.getStringExtra("mode") ?: "alert"
+            mode = intent.getStringExtra("mode") ?: "alert",
+            timezone = intent.getStringExtra("timezone") ?: TimeZone.getDefault().id
         )
         BookingForegroundService.start(context, run)
     }
@@ -573,8 +703,6 @@ class AlarmReceiver : BroadcastReceiver() {
 ```
 
 ### 6.3 BootReceiver
-Restores scheduled runs after reboot by reading `scheduledRuns` from DataStore and re‑registering each alarm.
-
 ```kotlin
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -591,12 +719,12 @@ class BootReceiver : BroadcastReceiver() {
 
 ### 6.4 BookingForegroundService
 Extends `LifecycleService`.
-
 * Holds a reference to `MobileAgent` from the AAR.
 * Provides `StateFlow<Boolean>` for `isRunning`.
 * **Concurrency handling:** If `mobileAgent.isRunning()` is true when a new run arrives, log a warning and stop the service without starting the new run.
 * **Run cleanup:** After the run finishes (successfully, with error, or due to timeout), the service calls `configManager.removeScheduledRun(run.id)` to delete the run from the list.
 
+*Implementation skeleton:*
 ```kotlin
 class BookingForegroundService : LifecycleService() {
     private lateinit var mobileAgent: MobileAgent
@@ -724,9 +852,17 @@ object LogManager {
 
 ## 8. Go Agent Integration
 
-* **AAR location:** `app/libs/booking.aar` (built via `gomobile` from the `go-agent` directory).
-* **Build script:** `scripts/build-go.sh` (see below).
-* **Dependency in `app/build.gradle.kts`:** `implementation(files("$rootDir/libs/booking.aar"))`.
+**AAR location:** `app/libs/booking.aar` (built via gomobile from the `go-agent` directory).
+
+**Build script:** `scripts/build-go.sh`:
+```bash
+#!/bin/bash
+set -e
+cd go-agent
+go mod download
+gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
+```
+Dependency in `app/build.gradle.kts`: `implementation(files("$rootDir/libs/booking.aar"))`.
 
 The Go agent exposes `MobileAgent` class with methods: 
 * `start(configJSON: String)`
@@ -742,8 +878,8 @@ The Go agent exposes `MobileAgent` class with methods:
 ## 9. Error Handling & Validation
 
 * **Configuration validation:**
-  * In `ConfigScreen`, before saving admin, check that `defaultCredentialId` exists in credentials; if not, set to `null`.
-  * In `ScheduleScreen`, before creating a run, verify that the selected site and museum exist; if credential is selected, ensure it exists.
+    * In ConfigScreen, before saving admin, ensure `defaultCredentialId` exists in credentials; if not, set to `null`.
+    * In ScheduleScreen, before creating a run, verify that the selected site, museum, and credential (if any) exist in the current config. Show toast if invalid.
 * **Go agent errors:** All errors are logged. The Dashboard can show a toast for critical failures (e.g., "Booking failed").
 * **Network errors:** Logged; no special handling.
 * **Alarm scheduling:** If `dropTimeMillis` is in the past, do not schedule; show toast.
@@ -753,14 +889,14 @@ The Go agent exposes `MobileAgent` class with methods:
 
 ## 10. Security
 
-* **PIN:** Hardcoded `"1234"` in `ConfigScreen` dialog. For production, replace with user‑set PIN stored in `EncryptedSharedPreferences`.
+* **PIN:** Hardcoded "1234" in ConfigScreen dialog. For production, replace with user‑set PIN stored in `EncryptedSharedPreferences`.
 * **Credentials:** Stored in DataStore as plain text. For production, encrypt using `EncryptedSharedPreferences` (but keep the same data model).
 
 ---
 
 ## 11. Build Configuration & Gradle
 
-### 11.1 Project‑level build.gradle.kts
+### 11.1 Project‑level `build.gradle.kts`
 ```kotlin
 plugins {
     id("com.android.application") version "8.2.0" apply false
@@ -769,7 +905,7 @@ plugins {
 }
 ```
 
-### 11.2 App‑level build.gradle.kts
+### 11.2 App‑level `build.gradle.kts`
 ```kotlin
 plugins {
     id("com.android.application")
@@ -779,12 +915,12 @@ plugins {
 
 android {
     namespace = "com.booking.bot"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.booking.bot"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
 
@@ -882,36 +1018,38 @@ cd go-agent
 go mod download
 gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
 ```
-> **Note:** Make it executable via `chmod +x scripts/build-go.sh`. Run before building the Android app.
+*Make it executable: `chmod +x scripts/build-go.sh`. Run before building the Android app.*
 
 ---
 
 ## 13. Testing & Acceptance Criteria
 
-* [ ] App builds without errors on all supported ABIs.
-* [ ] App runs on Android 8.0 (API 26) and Android 14 (API 34) emulators/devices.
-* [ ] PIN `1234` grants access to `ConfigScreen`.
-* [ ] General settings save and persist; changes immediately reflect in Dashboard and Schedule.
-* [ ] Admin can add/edit/delete museums; bulk import works (parses lines, shows preview, imports).
-* [ ] Admin can add/edit/delete credential sets; marking default works.
-* [ ] Schedule screen shows correct museums (by name) and credentials for selected site; default credential preselected.
-* [ ] `Start Now` creates a run with current settings; run triggers in 30 seconds; logs appear.
-* [ ] Scheduled run triggers at exact time (within 1 second) and starts foreground service.
-* [ ] Logs are displayed live; export works (shares file).
-* [ ] After device reboot, scheduled runs are restored (alarms re‑registered).
-* [ ] No experimental Compose APIs used; no compiler warnings about experimental APIs (suppressed via compiler flags).
-* [ ] Release APK builds and uploads to GitHub releases via CI.
-* [ ] **Run cleanup:** After a run finishes (success or failure), the run is automatically removed from the scheduled runs list.
-* [ ] **Concurrency:** If a run is already active, a second scheduled run logs a warning and does not start.
-* [ ] **Missing references:** If a site, museum, or credential referenced by a scheduled run is deleted before the run triggers, the run fails gracefully with a logged error and is removed.
+* App builds without errors on all supported ABIs.
+* App runs on Android 8.0 (API 26) and Android 14 (API 34) emulators/devices.
+* PIN `1234` grants access to ConfigScreen.
+* General settings save and persist; changes immediately reflect in Dashboard and Schedule.
+* Admin can add/edit/delete museums; bulk import works with progress indicator and overwrite confirmation.
+* Admin can add/edit/delete credential sets; marking default works; delete confirms.
+* Schedule screen shows correct museums (by name) and credentials for selected site; default credential preselected.
+* Timezone dropdown works and stored in run.
+* Start Now creates a run with current settings; run triggers in 30 seconds; logs appear.
+* Scheduled run triggers at exact time (within 1 second) and uses stored timezone.
+* Logs are displayed live; export works.
+* Debug JSON viewer shows correct JSON for pending run.
+* After device reboot, scheduled runs are restored (alarms re‑registered).
+* First‑run wizard appears on first launch and saves initial config.
+* No experimental Compose APIs used; no compiler warnings.
+* Release APK builds and uploads to GitHub releases via CI.
+* Run cleanup and concurrency handling work as specified.
 
 ---
 
 ## 14. Appendix: Museum Name Display & Mapping Logic
 
-* **Internal storage:** Museums are stored in `SiteConfig.museums` as a map `slug` -> `Museum`.
+* **Internal storage:** Museums are stored in `SiteConfig.museums` as a map `slug -> Museum`.
 * **UI display:** Whenever a list of museums is shown, we use `museums.values` and display `museum.name`.
 * **User selection:** The user sees names; the selected value is the corresponding `slug`.
 * **GeneralSettings:** Stores `preferredMuseumSlug` (slug).
 * **ScheduledRun:** Stores `museumSlug` (slug).
-* **JSON to Go agent:** The `fullConfig` includes the museum’s `slug` and `museumid`. The `preferredslug` field is also the slug.
+* **JSON to Go agent:** The `fullConfig` includes the museum’s `slug` and `museumid`. The `preferredslug` field is also the `slug`.
+```
