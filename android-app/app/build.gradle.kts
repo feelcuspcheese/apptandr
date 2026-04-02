@@ -91,7 +91,7 @@ android {
 
 dependencies {
     // Go agent AAR (section 8)
-    implementation(files("$rootDir/libs/booking.aar"))
+    implementation(files("libs/booking.aar"))
 
     // Core dependencies
     implementation("androidx.core:core-ktx:1.12.0")

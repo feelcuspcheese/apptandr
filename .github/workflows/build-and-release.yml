@@ -32,11 +32,11 @@ jobs:
 
       - name: Build Go AAR
         run: |
-          mkdir -p android-app/libs
+          mkdir -p android-app/app/libs
           go mod download
           # Build for all supported architectures per TECHNICAL_SPEC.md section 1
           # minSdk = 23 for broad compatibility
-          gomobile bind -target=android -androidapi 23 -o android-app/libs/booking.aar ./mobile
+          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
 
@@ -64,7 +64,7 @@ jobs:
           prerelease: true
           files: |
             android-app/app/build/outputs/apk/debug/*.apk
-            android-app/libs/booking.aar
+            android-app/app/libs/booking.aar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -79,5 +79,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: booking-aar
-          path: android-app/libs/booking.aar
+          path: android-app/app/libs/booking.aar
           if-no-files-found: error
