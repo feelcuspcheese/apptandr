@@ -1,45 +1,47 @@
-```
 # Compiled and build artifacts
 *.class
-*.dex
+*.o
+*.obj
+*.out
+*.dll
 *.so
-*.aar
-*.apk
-*.jar
+*.a
+*.pyc
+__pycache__/
 
 # Dependencies
-.gradle/
-build/
-app/build/
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Android Studio Navigation editor temp files
-.navigation/
-
-# Android Studio profiler traces
-*.tracedata
-
-# Project backup folder
-backup/
-
-# IDE
-.idea/
-*.iml
-*.iws
-*.db-shm
-*.db-wal
-
-# Environment
+node_modules/
+venv/
+.venv/
 .env
 .env.local
 *.env.*
 
-# Logs
-*.log
+# Build directories
+dist/
+build/
+target/
+.gradle/
 
-# OS generated files
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System files
 .DS_Store
 Thumbs.db
-```
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
+.mypy_cache/
+.pytest_cache/
