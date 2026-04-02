@@ -2,43 +2,35 @@
 # Build artifacts
 build/
 *.apk
+*.aab
 *.aar
-*.jar
-*.class
 
 # Gradle
 .gradle/
-!gradle/wrapper/gradle-wrapper.jar
+!gradle.properties
+!gradlew
+!gradlew.bat
 
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Android Studio
+# Android
 *.iml
-*.hprof
-*.lock
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
 
-# Debug & release builds
-debug/
-release/
-
-# Output folder for release build
-output.json
-
-# Log files
-*.log
+# Dependencies
+libs/
+vendor/
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# IDE
-.vscode/
-.idea/
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```
