@@ -11,23 +11,13 @@ import (
 	"agent/pkg/config"
 
 	"github.com/sirupsen/logrus"
-	
-	// This dummy import ensures the bind package stays in go.mod
-	// and is available to the gomobile toolchain during the build.
-	_ "golang.org/x/mobile/bind" 
+
+	// CRITICAL: This keeps the bind tool dependencies in go.mod
+	_ "golang.org/x/mobile/bind"
 )
 
-// LogCallback receives JSON-formatted logs from the agent.
-type LogCallback interface {
-	Log(message string)
-}
-
-// StatusCallback receives status updates ("running", "stopped").
-type StatusCallback interface {
-	OnStatus(status string)
-}
-
-// MobileAgent is the main class instantiated by the Android app.
+// MobileAgent matches TECHNICAL_SPEC.md Section 8
+// gomobile will generate a class named "MobileAgent"
 type MobileAgent struct {
 	agentInst      *agent.Agent
 	logCallback    LogCallback
@@ -35,14 +25,21 @@ type MobileAgent struct {
 	mu             sync.RWMutex
 }
 
-// NewMobileAgent is the constructor for Kotlin's MobileAgent().
+// LogCallback matches setLogCallback((String) -> Unit)
+type LogCallback interface {
+	Log(message string)
+}
+
+// StatusCallback matches setStatusCallback((String) -> Unit)
+type StatusCallback interface {
+	OnStatus(status string)
+}
+
 func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
 
-// Start initiates the agent using a JSON configuration string.
-// This string-based approach is the most stable way to pass complex 
-// Go structs (with maps/durations) across the language boundary.
+// Start matches spec Section 8
 func (m *MobileAgent) Start(configJSON string) {
 	m.mu.Lock()
 	if m.agentInst != nil && m.agentInst.IsRunning() {
@@ -50,7 +47,6 @@ func (m *MobileAgent) Start(configJSON string) {
 		return
 	}
 
-	// Wrapper to match ConfigManager.kt JSON structure
 	var req struct {
 		SiteKey    string           `json:"siteKey"`
 		MuseumSlug string           `json:"museumSlug"`
@@ -62,23 +58,21 @@ func (m *MobileAgent) Start(configJSON string) {
 
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Unmarshal Error: %v", err))
+		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
 		return
 	}
 
 	cfg := req.FullConfig
 	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
-	runID := "mobile-run-" + time.Now().Format("150405")
+	runID := "run-" + time.Now().Format("150405")
 	
-	cfg.ScheduledRuns = []config.ScheduledRun{
-		{
-			ID:         runID,
-			SiteKey:    req.SiteKey,
-			MuseumSlug: req.MuseumSlug,
-			DropTime:   dropTime,
-			Mode:       req.Mode,
-		},
-	}
+	cfg.ScheduledRuns = []config.ScheduledRun{{
+		ID:         runID,
+		SiteKey:    req.SiteKey,
+		MuseumSlug: req.MuseumSlug,
+		DropTime:   dropTime,
+		Mode:       req.Mode,
+	}}
 
 	logger := logrus.New()
 	logger.AddHook(&androidHook{m: m})
@@ -122,7 +116,7 @@ func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
 	m.statusCallback = cb
 }
 
-// Internal helpers
+// Internal formatting for Android LogsScreen
 func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
