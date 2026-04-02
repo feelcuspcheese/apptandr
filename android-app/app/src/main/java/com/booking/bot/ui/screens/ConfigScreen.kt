@@ -33,8 +33,6 @@ fun ConfigScreen(
     configManager: ConfigManager,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    
     // PIN dialog state
     var showPinDialog by remember { mutableStateOf(true) }
     var pinEntered by remember { mutableStateOf("") }
@@ -95,7 +93,6 @@ private fun ConfigContent(
     modifier: Modifier = Modifier
 ) {
     val config by configManager.configFlow.collectAsState(initial = null)
-    val scope = rememberCoroutineScope()
     
     var selectedTab by remember { mutableStateOf(0) }
     val tabTitles = listOf("General", "Sites")
@@ -564,18 +561,16 @@ private fun SitesTab(
                         
                         Button(
                             onClick = {
-                                scope.launch {
-                                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                                    updatedSites[selectedSiteKey] = site.copy(
-                                        baseUrl = baseUrl,
-                                        availabilityEndpoint = availabilityEndpoint,
-                                        digital = digital,
-                                        physical = physical,
-                                        location = location
-                                    )
-                                    val updatedAdmin = config.admin!!.copy(sites = updatedSites)
-                                    configManager.updateAdmin(updatedAdmin)
-                                }
+                                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
+                                updatedSites[selectedSiteKey] = site.copy(
+                                    baseUrl = baseUrl,
+                                    availabilityEndpoint = availabilityEndpoint,
+                                    digital = digital,
+                                    physical = physical,
+                                    location = location
+                                )
+                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                configManager.updateAdmin(updatedAdmin)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -692,16 +687,14 @@ private fun SitesTab(
                                 }
                                 Row {
                                     IconButton(onClick = {
-                                        scope.launch {
-                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                                defaultCredentialId = cred.id
-                                            )
-                                            if (updatedSite != null) {
-                                                updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
-                                                configManager.updateAdmin(updatedAdmin)
-                                            }
+                                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@IconButton
+                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                            defaultCredentialId = cred.id
+                                        )
+                                        if (updatedSite != null) {
+                                            updatedSites[selectedSiteKey] = updatedSite
+                                            val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                            configManager.updateAdmin(updatedAdmin)
                                         }
                                     }) {
                                         Icon(
@@ -732,15 +725,13 @@ private fun SitesTab(
         MuseumEditDialog(
             museum = editingMuseum,
             onSave = { museum ->
-                scope.launch {
-                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val updatedMuseums = currentSite.museums.toMutableMap()
-                    updatedMuseums[museum.slug] = museum
-                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    val updatedAdmin = config.admin!!
-                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
-                }
+                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@MuseumEditDialog
+                val currentSite = updatedSites[selectedSiteKey] ?: return@MuseumEditDialog
+                val updatedMuseums = currentSite.museums.toMutableMap()
+                updatedMuseums[museum.slug] = museum
+                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                configManager.updateAdmin(updatedAdmin)
                 showMuseumDialog = false
                 editingMuseum = null
             },
@@ -756,20 +747,18 @@ private fun SitesTab(
         CredentialEditDialog(
             credential = editingCredential,
             onSave = { credential ->
-                scope.launch {
-                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val credentials = currentSite.credentials.toMutableList()
-                    if (editingCredential != null) {
-                        val index = credentials.indexOfFirst { it.id == credential.id }
-                        if (index >= 0) credentials[index] = credential
-                    } else {
-                        credentials.add(credential)
-                    }
-                    updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                    val updatedAdmin = config.admin!!
-                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
+                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@CredentialEditDialog
+                val currentSite = updatedSites[selectedSiteKey] ?: return@CredentialEditDialog
+                val credentials = currentSite.credentials.toMutableList()
+                if (editingCredential != null) {
+                    val index = credentials.indexOfFirst { it.id == credential.id }
+                    if (index >= 0) credentials[index] = credential
+                } else {
+                    credentials.add(credential)
                 }
+                updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
+                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                configManager.updateAdmin(updatedAdmin)
                 showCredentialDialog = false
                 editingCredential = null
             },
@@ -785,17 +774,15 @@ private fun SitesTab(
         BulkImportDialog(
             existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(),
             onImport = { museums ->
-                scope.launch {
-                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val updatedMuseums = currentSite.museums.toMutableMap()
-                    museums.forEach { museum ->
-                        updatedMuseums[museum.slug] = museum
-                    }
-                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    val updatedAdmin = config.admin!!
-                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
+                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@BulkImportDialog
+                val currentSite = updatedSites[selectedSiteKey] ?: return@BulkImportDialog
+                val updatedMuseums = currentSite.museums.toMutableMap()
+                museums.forEach { museum ->
+                    updatedMuseums[museum.slug] = museum
                 }
+                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                configManager.updateAdmin(updatedAdmin)
                 showBulkImportDialog = false
             },
             onDismiss = {
@@ -813,33 +800,31 @@ private fun SitesTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch {
-                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
-                                    remove(museum.slug)
-                                }
-                            )
-                            if (updatedSite != null) {
-                                updatedSites[selectedSiteKey] = updatedSite
-                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
-                                
-                                // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
-                                val currentConfig = configManager.configFlow.first()
-                                val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
-                                    currentConfig.general.copy(preferredMuseumSlug = "")
-                                } else {
-                                    currentConfig.general
-                                }
-                                configManager.updateAdmin(updatedAdmin)
-                                if (newGeneral != currentConfig.general) {
-                                    configManager.updateGeneral(newGeneral)
-                                }
-                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
-                                configManager.cleanupInvalidRuns()
+                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
+                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                            museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
+                                remove(museum.slug)
                             }
-                            showMuseumDeleteConfirmation = null
+                        )
+                        if (updatedSite != null) {
+                            updatedSites[selectedSiteKey] = updatedSite
+                            val updatedAdmin = config.admin.copy(sites = updatedSites)
+                            
+                            // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
+                            val currentConfig = configManager.configFlow.first()
+                            val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
+                                currentConfig.general.copy(preferredMuseumSlug = "")
+                            } else {
+                                currentConfig.general
+                            }
+                            configManager.updateAdmin(updatedAdmin)
+                            if (newGeneral != currentConfig.general) {
+                                configManager.updateGeneral(newGeneral)
+                            }
+                            // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                            configManager.cleanupInvalidRuns()
                         }
+                        showMuseumDeleteConfirmation = null
                     }
                 ) {
                     Text("Delete")
@@ -862,36 +847,34 @@ private fun SitesTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch {
-                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
-                                    removeAll { it.id == credential.id }
-                                }
-                            )
-                            if (updatedSite != null) {
-                                updatedSites[selectedSiteKey] = updatedSite
-                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
-                                
-                                // Referential integrity: clear defaultCredentialId if deleted credential was default
-                                val siteConfig = updatedAdmin.sites[selectedSiteKey]
-                                val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == credential.id) {
-                                    null
-                                } else {
-                                    siteConfig?.defaultCredentialId
-                                }
-                                val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
-                                val finalAdmin = if (finalSite != null) {
-                                    updatedAdmin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
-                                } else {
-                                    updatedAdmin
-                                }
-                                configManager.updateAdmin(finalAdmin)
-                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
-                                configManager.cleanupInvalidRuns()
+                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
+                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                            credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
+                                removeAll { it.id == credential.id }
                             }
-                            showCredentialDeleteConfirmation = null
+                        )
+                        if (updatedSite != null) {
+                            updatedSites[selectedSiteKey] = updatedSite
+                            val updatedAdmin = config.admin.copy(sites = updatedSites)
+                            
+                            // Referential integrity: clear defaultCredentialId if deleted credential was default
+                            val siteConfig = updatedAdmin.sites[selectedSiteKey]
+                            val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == credential.id) {
+                                null
+                            } else {
+                                siteConfig?.defaultCredentialId
+                            }
+                            val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
+                            val finalAdmin = if (finalSite != null) {
+                                updatedAdmin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
+                            } else {
+                                updatedAdmin
+                            }
+                            configManager.updateAdmin(finalAdmin)
+                            // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                            configManager.cleanupInvalidRuns()
                         }
+                        showCredentialDeleteConfirmation = null
                     }
                 ) {
                     Text("Delete")

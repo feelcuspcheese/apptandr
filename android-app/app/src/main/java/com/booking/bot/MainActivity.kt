@@ -83,9 +83,7 @@ class MainActivity : ComponentActivity() {
 fun BookingBotApp() {
     val navController = rememberNavController()
     var selectedTab by remember { mutableStateOf(0) }
-    val context = LocalContext.current
-    val configManager = remember { ConfigManager.getInstance(context) }
-    val scope = rememberCoroutineScope()
+    val configManager = remember { ConfigManager.getInstance(LocalContext.current) }
     
     // Wizard state - check if first-run wizard has been completed (WIZ-01 through WIZ-08)
     var showWizard by remember { mutableStateOf(false) }
