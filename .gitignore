@@ -1,36 +1,37 @@
-```
-# Build artifacts
-build/
-*.apk
-*.aab
-*.aar
+```yaml
+# GitHub workflow artifacts
+.github/workflows/_temp/
+.github/workflows/_actions/
 
-# Gradle
-.gradle/
-!gradle.properties
-!gradlew
-!gradlew.bat
+# Logs and temporary files from CI/CD
+*.log
+*.tmp
+*.temp
 
-# Android
-*.iml
-local.properties
-captures/
-.externalNativeBuild/
-.cxx/
-
-# Dependencies
-libs/
-vendor/
-
-# Environment
+# Environment and cache files that might be generated during workflows
 .env
 .env.local
-*.env.*
-
-# Logs
-*.log
-
-# OS generated files
+.env.*
+.cache/
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+dist/
+build/
+target/
+.coverage
+coverage/
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 ```
