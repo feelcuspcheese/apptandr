@@ -232,6 +232,8 @@ private fun BulkImportDialog(
     var inputText by remember { mutableStateOf("") }
     var previewMuseums by remember { mutableStateOf<List<Museum>>(emptyList()) }
     var hasParsed by remember { mutableStateOf(false) }
+    var duplicateMuseums by remember { mutableStateOf<List<Museum>>(emptyList()) }
+    var showOverwriteConfirmation by remember { mutableStateOf(false) }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -267,6 +269,8 @@ private fun BulkImportDialog(
                                 } else null
                             }
                         previewMuseums = museums
+                        // Check for duplicates (SITE-09)
+                        duplicateMuseums = museums.filter { it.slug in existingMuseums }
                         hasParsed = true
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -283,11 +287,21 @@ private fun BulkImportDialog(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(previewMuseums) { museum ->
+                                val isDuplicate = museum.slug in existingMuseums
                                 Text(
-                                    "${museum.name} (${museum.slug})",
-                                    style = MaterialTheme.typography.bodySmall
+                                    "${museum.name} (${museum.slug})${if (isDuplicate) " ⚠️ Overwrite" else ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isDuplicate) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                        }
+                        if (duplicateMuseums.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "⚠️ ${duplicateMuseums.size} museum(s) will be overwritten.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
@@ -295,15 +309,27 @@ private fun BulkImportDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onImport(previewMuseums) },
+                onClick = { 
+                    if (duplicateMuseums.isNotEmpty() && !showOverwriteConfirmation) {
+                        showOverwriteConfirmation = true
+                    } else {
+                        onImport(previewMuseums) 
+                    }
+                },
                 enabled = hasParsed && previewMuseums.isNotEmpty()
             ) {
-                Text("Import")
+                Text(if (showOverwriteConfirmation) "Confirm Overwrite" else "Import")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+            TextButton(onClick = { 
+                if (showOverwriteConfirmation) {
+                    showOverwriteConfirmation = false
+                } else {
+                    onDismiss 
+                }
+            }) {
+                Text(if (showOverwriteConfirmation) "Cancel" else "Cancel")
             }
         }
     )
@@ -667,6 +693,8 @@ private fun SitesTab(
     var showBulkImportDialog by remember { mutableStateOf(false) }
     var editingMuseum by remember { mutableStateOf<Museum?>(null) }
     var editingCredential by remember { mutableStateOf<CredentialSet?>(null) }
+    var showMuseumDeleteConfirmation by remember { mutableStateOf<Museum?>(null) }
+    var showCredentialDeleteConfirmation by remember { mutableStateOf<CredentialSet?>(null) }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -846,30 +874,12 @@ private fun SitesTab(
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
-                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                                museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
-                                                    remove(museum.slug)
-                                                }
-                                            )
-                                            if (updatedSite != null) {
-                                                updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
-                                                
-                                                // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
-                                                val currentConfig = configManager.configFlow.first()
-                                                val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
-                                                    currentConfig.general.copy(preferredMuseumSlug = "")
-                                                } else {
-                                                    currentConfig.general
-                                                }
-                                                configManager.updateAdmin(updatedAdmin)
-                                                if (newGeneral != currentConfig.general) {
-                                                    configManager.updateGeneral(newGeneral)
-                                                }
-                                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
-                                                configManager.cleanupInvalidRuns()
-                                            }
+                                            // Show confirmation dialog before deleting museum (SITE-06)
+                                            val museumName = museum.name
+                                            // We need to use a dialog state variable, but since we're in a lambda,
+                                            // we'll create an inline AlertDialog using a var
+                                            // For simplicity, we'll use a direct deletion with confirmation via a separate composable
+                                            showMuseumDeleteConfirmation = museum
                                         }
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")
@@ -943,35 +953,8 @@ private fun SitesTab(
                                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
                                     IconButton(onClick = {
-                                        scope.launch {
-                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
-                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                                credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
-                                                    removeAll { it.id == cred.id }
-                                                }
-                                            )
-                                            if (updatedSite != null) {
-                                                updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
-                                                
-                                                // Referential integrity: clear defaultCredentialId if deleted credential was default
-                                                val siteConfig = updatedAdmin.sites[selectedSiteKey]
-                                                val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == cred.id) {
-                                                    null
-                                                } else {
-                                                    siteConfig?.defaultCredentialId
-                                                }
-                                                val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
-                                                val finalAdmin = if (finalSite != null) {
-                                                    updatedAdmin.copy(sites = updatedAdmin.sites + (selectedSiteKey to finalSite))
-                                                } else {
-                                                    updatedAdmin
-                                                }
-                                                configManager.updateAdmin(finalAdmin)
-                                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
-                                                configManager.cleanupInvalidRuns()
-                                            }
-                                        }
+                                        // Show confirmation dialog before deleting credential (SITE-13)
+                                        showCredentialDeleteConfirmation = cred
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")
                                     }
@@ -1060,6 +1043,107 @@ private fun SitesTab(
             },
             onDismiss = {
                 showBulkImportDialog = false
+            }
+        )
+    }
+    
+    // Museum Delete Confirmation Dialog (SITE-06)
+    showMuseumDeleteConfirmation?.let { museum ->
+        AlertDialog(
+            onDismissRequest = { showMuseumDeleteConfirmation = null },
+            title = { Text("Delete Museum") },
+            text = { Text("Delete '${museum.name}'?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
+                                    remove(museum.slug)
+                                }
+                            )
+                            if (updatedSite != null) {
+                                updatedSites[selectedSiteKey] = updatedSite
+                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                
+                                // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
+                                val currentConfig = configManager.configFlow.first()
+                                val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
+                                    currentConfig.general.copy(preferredMuseumSlug = "")
+                                } else {
+                                    currentConfig.general
+                                }
+                                configManager.updateAdmin(updatedAdmin)
+                                if (newGeneral != currentConfig.general) {
+                                    configManager.updateGeneral(newGeneral)
+                                }
+                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                                configManager.cleanupInvalidRuns()
+                            }
+                            showMuseumDeleteConfirmation = null
+                        }
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMuseumDeleteConfirmation = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Credential Delete Confirmation Dialog (SITE-13)
+    showCredentialDeleteConfirmation?.let { credential ->
+        AlertDialog(
+            onDismissRequest = { showCredentialDeleteConfirmation = null },
+            title = { Text("Delete Credential") },
+            text = { Text("Delete '${credential.label}'?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
+                                    removeAll { it.id == credential.id }
+                                }
+                            )
+                            if (updatedSite != null) {
+                                updatedSites[selectedSiteKey] = updatedSite
+                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                
+                                // Referential integrity: clear defaultCredentialId if deleted credential was default
+                                val siteConfig = updatedAdmin.sites[selectedSiteKey]
+                                val newDefaultCredentialId = if (siteConfig?.defaultCredentialId == credential.id) {
+                                    null
+                                } else {
+                                    siteConfig?.defaultCredentialId
+                                }
+                                val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
+                                val finalAdmin = if (finalSite != null) {
+                                    updatedAdmin.copy(sites = updatedAdmin.sites + (selectedSiteKey to finalSite))
+                                } else {
+                                    updatedAdmin
+                                }
+                                configManager.updateAdmin(finalAdmin)
+                                // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
+                                configManager.cleanupInvalidRuns()
+                            }
+                            showCredentialDeleteConfirmation = null
+                        }
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCredentialDeleteConfirmation = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
