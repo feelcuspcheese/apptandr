@@ -23,6 +23,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: true
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -35,27 +36,27 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          # Use the absolute path to bin for init
-          $(go env GOPATH)/bin/gomobile init
+          # Ensure gobind is in path before init
+          export PATH=$PATH:$(go env GOPATH)/bin
+          gomobile init
 
       - name: Fix Go Dependencies
         run: |
-          # 1. Force the binder package into the module cache
           go get golang.org/x/mobile/bind
-          # 2. Ensure all agent internal packages are tidy
           go mod tidy
           go mod download
 
-      - name: Build Go AAR
+      - name: Build Go AAR (Adhering to Tech Spec Section 8)
         run: |
-          mkdir -p android-app/libs
-          # IMPORTANT: We use the module-aware path 'agent/mobile'
-          # This ensures that internal imports like 'agent/pkg/config' resolve correctly
+          # FIXED: Output path matches the app module's libs folder
+          mkdir -p android-app/app/libs
+          
+          # Using module path 'agent/mobile' as go.mod is in the root
           gomobile bind \
             -target=android \
             -androidapi 23 \
             -v \
-            -o android-app/libs/booking.aar \
+            -o android-app/app/libs/booking.aar \
             agent/mobile
         env:
           GO111MODULE: on
@@ -65,7 +66,8 @@ jobs:
         run: |
           cd android-app
           chmod +x gradlew
-          ./gradlew assembleRelease
+          # Pass flag to suppress SDK 35 warning if necessary, though path is the main fix
+          ./gradlew assembleRelease -Pandroid.suppressUnsupportedCompileSdk=35
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -73,7 +75,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
             android-app/app/build/outputs/apk/release/*.apk
-            android-app/libs/booking.aar
+            android-app/app/libs/booking.aar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
