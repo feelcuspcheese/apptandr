@@ -45,8 +45,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize LogManager
-        LogManager.init(applicationContext)
+        // Initialize LogManager (done in BookingApplication.onCreate())
+        // LogManager.init(applicationContext) - removed duplicate initialization
         LogManager.addLog("INFO", "App started")
 
         // Log configuration loaded (section 2 - Events Logged by the Android App)
