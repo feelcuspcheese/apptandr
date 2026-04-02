@@ -110,6 +110,9 @@ fun DashboardScreen(
                                     configManager.addScheduledRun(run)
                                     AlarmScheduler(context).scheduleRun(run)
 
+                                    // [FIX (BUG-005)]: Immediately start the foreground service so that logs appear instantly
+                                    BookingForegroundService.start(context, run)
+
                                     actionFeedback = "Starting agent in 30 seconds..."
                                     actionSuccess = true
                                 } catch (e: Exception) {
