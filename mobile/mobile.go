@@ -11,9 +11,6 @@ import (
 	"agent/pkg/config"
 
 	"github.com/sirupsen/logrus"
-
-	// CRITICAL: This keeps the bind tool dependencies in go.mod
-	_ "golang.org/x/mobile/bind"
 )
 
 // MobileAgent matches TECHNICAL_SPEC.md Section 8
@@ -39,12 +36,14 @@ func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
 
-// Start matches spec Section 8
-func (m *MobileAgent) Start(configJSON string) {
+// Start matches spec: returns true if started successfully, false otherwise.
+func (m *MobileAgent) Start(configJSON string) bool {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.agentInst != nil && m.agentInst.IsRunning() {
-		m.mu.Unlock()
-		return
+		m.fireLog("WARN", "Agent already running")
+		return false
 	}
 
 	var req struct {
@@ -57,34 +56,39 @@ func (m *MobileAgent) Start(configJSON string) {
 	}
 
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
-		m.mu.Unlock()
 		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
-		return
+		return false
 	}
 
 	cfg := req.FullConfig
-	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
+	dropTime, err := time.Parse(time.RFC3339, req.DropTime)
+	if err != nil {
+		m.fireLog("ERROR", fmt.Sprintf("Invalid dropTime format: %v", err))
+		return false
+	}
 	runID := "run-" + time.Now().Format("150405")
-	
+
 	cfg.ScheduledRuns = []config.ScheduledRun{{
 		ID:         runID,
 		SiteKey:    req.SiteKey,
 		MuseumSlug: req.MuseumSlug,
 		DropTime:   dropTime,
 		Mode:       req.Mode,
+		Timezone:   req.Timezone, // preserve timezone per spec
 	}}
 
 	logger := logrus.New()
 	logger.AddHook(&androidHook{m: m})
 
 	m.agentInst = agent.NewAgent(&cfg, logger)
-	m.mu.Unlock()
 
 	go func() {
 		m.fireStatus("running")
 		_ = m.agentInst.Start(runID)
 		m.fireStatus("stopped")
 	}()
+
+	return true
 }
 
 func (m *MobileAgent) Stop() {
@@ -98,10 +102,7 @@ func (m *MobileAgent) Stop() {
 func (m *MobileAgent) IsRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.agentInst == nil {
-		return false
-	}
-	return m.agentInst.IsRunning()
+	return m.agentInst != nil && m.agentInst.IsRunning()
 }
 
 func (m *MobileAgent) SetLogCallback(cb LogCallback) {
@@ -116,15 +117,16 @@ func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
 	m.statusCallback = cb
 }
 
-// Internal formatting for Android LogsScreen
+// fireLog sends a JSON log entry with timestamp (per spec)
 func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
 	m.mu.RUnlock()
 	if cb != nil {
-		out, _ := json.Marshal(map[string]string{
-			"level":   strings.ToUpper(level),
-			"message": msg,
+		out, _ := json.Marshal(map[string]interface{}{
+			"timestamp": time.Now().UnixMilli(),
+			"level":     strings.ToUpper(level),
+			"message":   msg,
 		})
 		cb.Log(string(out))
 	}
@@ -140,6 +142,7 @@ func (m *MobileAgent) fireStatus(status string) {
 }
 
 type androidHook struct{ m *MobileAgent }
+
 func (h *androidHook) Levels() []logrus.Level { return logrus.AllLevels }
 func (h *androidHook) Fire(e *logrus.Entry) error {
 	h.m.fireLog(e.Level.String(), e.Message)
