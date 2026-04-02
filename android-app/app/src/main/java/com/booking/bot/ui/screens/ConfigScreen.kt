@@ -70,6 +70,7 @@ fun ConfigScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        scope.launch {
                         if (pinEntered == "1234") {
                             showPinDialog = false
                             pinError = false
@@ -561,16 +562,18 @@ private fun SitesTab(
                         
                         Button(
                             onClick = {
-                                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
-                                updatedSites[selectedSiteKey] = site.copy(
-                                    baseUrl = baseUrl,
-                                    availabilityEndpoint = availabilityEndpoint,
-                                    digital = digital,
-                                    physical = physical,
-                                    location = location
-                                )
-                                val updatedAdmin = config.admin.copy(sites = updatedSites)
-                                configManager.updateAdmin(updatedAdmin)
+                                scope.launch {
+                                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                                    updatedSites[selectedSiteKey] = site.copy(
+                                        baseUrl = baseUrl,
+                                        availabilityEndpoint = availabilityEndpoint,
+                                        digital = digital,
+                                        physical = physical,
+                                        location = location
+                                    )
+                                    val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                    configManager.updateAdmin(updatedAdmin)
+                                }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -687,14 +690,16 @@ private fun SitesTab(
                                 }
                                 Row {
                                     IconButton(onClick = {
-                                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@IconButton
-                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                            defaultCredentialId = cred.id
-                                        )
-                                        if (updatedSite != null) {
-                                            updatedSites[selectedSiteKey] = updatedSite
-                                            val updatedAdmin = config.admin.copy(sites = updatedSites)
-                                            configManager.updateAdmin(updatedAdmin)
+                                        scope.launch {
+                                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                                                defaultCredentialId = cred.id
+                                            )
+                                            if (updatedSite != null) {
+                                                updatedSites[selectedSiteKey] = updatedSite
+                                                val updatedAdmin = config.admin.copy(sites = updatedSites)
+                                                configManager.updateAdmin(updatedAdmin)
+                                            }
                                         }
                                     }) {
                                         Icon(
@@ -725,15 +730,17 @@ private fun SitesTab(
         MuseumEditDialog(
             museum = editingMuseum,
             onSave = { museum ->
-                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@MuseumEditDialog
-                val currentSite = updatedSites[selectedSiteKey] ?: return@MuseumEditDialog
-                val updatedMuseums = currentSite.museums.toMutableMap()
-                updatedMuseums[museum.slug] = museum
-                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                val updatedAdmin = config.admin.copy(sites = updatedSites)
-                configManager.updateAdmin(updatedAdmin)
-                showMuseumDialog = false
-                editingMuseum = null
+                scope.launch {
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val updatedMuseums = currentSite.museums.toMutableMap()
+                    updatedMuseums[museum.slug] = museum
+                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                    val updatedAdmin = config.admin.copy(sites = updatedSites)
+                    configManager.updateAdmin(updatedAdmin)
+                    showMuseumDialog = false
+                    editingMuseum = null
+                }
             },
             onDismiss = {
                 showMuseumDialog = false
@@ -747,20 +754,22 @@ private fun SitesTab(
         CredentialEditDialog(
             credential = editingCredential,
             onSave = { credential ->
-                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@CredentialEditDialog
-                val currentSite = updatedSites[selectedSiteKey] ?: return@CredentialEditDialog
-                val credentials = currentSite.credentials.toMutableList()
-                if (editingCredential != null) {
-                    val index = credentials.indexOfFirst { it.id == credential.id }
-                    if (index >= 0) credentials[index] = credential
-                } else {
-                    credentials.add(credential)
+                scope.launch {
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val credentials = currentSite.credentials.toMutableList()
+                    if (editingCredential != null) {
+                        val index = credentials.indexOfFirst { it.id == credential.id }
+                        if (index >= 0) credentials[index] = credential
+                    } else {
+                        credentials.add(credential)
+                    }
+                    updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
+                    val updatedAdmin = config.admin.copy(sites = updatedSites)
+                    configManager.updateAdmin(updatedAdmin)
+                    showCredentialDialog = false
+                    editingCredential = null
                 }
-                updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                val updatedAdmin = config.admin.copy(sites = updatedSites)
-                configManager.updateAdmin(updatedAdmin)
-                showCredentialDialog = false
-                editingCredential = null
             },
             onDismiss = {
                 showCredentialDialog = false
@@ -774,16 +783,18 @@ private fun SitesTab(
         BulkImportDialog(
             existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(),
             onImport = { museums ->
-                val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@BulkImportDialog
-                val currentSite = updatedSites[selectedSiteKey] ?: return@BulkImportDialog
-                val updatedMuseums = currentSite.museums.toMutableMap()
-                museums.forEach { museum ->
-                    updatedMuseums[museum.slug] = museum
+                scope.launch {
+                    val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                    val updatedMuseums = currentSite.museums.toMutableMap()
+                    museums.forEach { museum ->
+                        updatedMuseums[museum.slug] = museum
+                    }
+                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                    val updatedAdmin = config.admin.copy(sites = updatedSites)
+                    configManager.updateAdmin(updatedAdmin)
+                    showBulkImportDialog = false
                 }
-                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                val updatedAdmin = config.admin.copy(sites = updatedSites)
-                configManager.updateAdmin(updatedAdmin)
-                showBulkImportDialog = false
             },
             onDismiss = {
                 showBulkImportDialog = false
@@ -800,8 +811,9 @@ private fun SitesTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
-                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                        scope.launch {
+                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
                             museums = (updatedSites[selectedSiteKey]?.museums?.toMutableMap() ?: mutableMapOf()).apply {
                                 remove(museum.slug)
                             }
@@ -825,6 +837,7 @@ private fun SitesTab(
                             configManager.cleanupInvalidRuns()
                         }
                         showMuseumDeleteConfirmation = null
+                        }
                     }
                 ) {
                     Text("Delete")
@@ -847,8 +860,9 @@ private fun SitesTab(
             confirmButton = {
                 Button(
                     onClick = {
-                        val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@Button
-                        val updatedSite = updatedSites[selectedSiteKey]?.copy(
+                        scope.launch {
+                            val updatedSites = config?.admin?.sites?.toMutableMap() ?: return@launch
+                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
                             credentials = (updatedSites[selectedSiteKey]?.credentials?.toMutableList() ?: mutableListOf()).apply {
                                 removeAll { it.id == credential.id }
                             }
