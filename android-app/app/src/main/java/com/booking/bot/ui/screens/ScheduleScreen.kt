@@ -16,7 +16,6 @@ import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
 import android.app.DatePickerDialog as AndroidDatePickerDialog
@@ -504,16 +503,14 @@ fun ScheduleScreen(
 
 /**
  * Convert local date/time to UTC milliseconds based on timezone (section 5.3.5.2).
+ * 
+ * [FIX (BUG-006)]: Correct conversion algorithm as per spec section 5.5.2.
  */
 private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): Long {
-    val zoneId = ZoneId.of(timezoneId)
-    val localDateTime = LocalDateTime.ofEpochSecond(
-        localDateTimeMillis / 1000,
-        (localDateTimeMillis % 1000 * 1_000_000).toInt(),
-        java.time.ZoneOffset.UTC
-    )
-    val zonedDateTime = localDateTime.atZone(zoneId)
-    return zonedDateTime.toInstant().toEpochMilli()
+    val zone = ZoneId.of(timezoneId)
+    val instant = java.time.Instant.ofEpochMilli(localDateTimeMillis)
+    val zoned = instant.atZone(zone)
+    return zoned.toInstant().toEpochMilli()
 }
 
 @Composable

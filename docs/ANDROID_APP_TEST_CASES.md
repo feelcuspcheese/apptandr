@@ -231,3 +231,29 @@ This document provides exhaustive test cases for every component of the Android 
 | **RT‑03** | Delete credential | Credential removed from ScheduleScreen dropdown immediately. |
 | **RT‑04** | Change default credential | ScheduleScreen pre‑selection updates to the new default. |
 | **RT‑05** | Change preferred museum slug | Dashboard preferred museum name changes instantly. |
+
+---
+## New/Updated test cases from bug fixes:
+
+| ID | Test Case | Expected Result |
+| :--- | :--- | :--- |
+| **SCH‑14** |	ScheduleScreen scrolls on small screen |	All fields (Site, Museum, Credential, Mode, Timezone, Date picker, Schedule button) are reachable by scrolling. |
+| **GEN‑10**| 	Save General Settings – success feedback |	After tapping Save, a temporary message “Settings saved successfully” appears for ~2 seconds.|
+| **SITE‑17** | 	Save Admin Settings – success feedback |	After tapping Save, a temporary message “Site configuration saved successfully” appears. |
+| **DB‑09** |	Start Now – immediate logs |	Within 1 second of tapping Start Now, at least one log entry appears in LogsScreen (e.g., “App initialised” or “Service started”).| 
+| **LOG‑08** |	LogManager initialisation log | 	On app start, a log “App initialised – log system ready” is visible in LogsScreen.|
+| **LOG‑09** |	Go agent log callback works | 	During a run, logs from the Go agent appear in LogsScreen (e.g., “Pre‑warming...”, “Strike started”).|
+| **TZ‑01 to TZ‑07**|	Timezone conversion tests | 	As originally defined – verify correct UTC conversion, DST handling, JSON fields, etc.|
+
+| ID | Test Case | Expected Result |
+| :--- | :--- | :--- |
+| **LOG‑10** | Configuration loaded log | On app start, a log entry “Configuration loaded: activeSite=...” appears in LogsScreen. |
+| **LOG‑11** | Schedule run – log added | After scheduling a run, a log “Scheduled run added: id=...” appears. |
+| **LOG‑12** | Delete run – log added | After deleting a run, a log “Scheduled run removed (user delete): id=...” appears. |
+| **LOG‑13** | Start Now – log added | After tapping Start Now, a log “Start Now run created: id=...” appears within 1 second. |
+| **LOG‑14** | Foreground service start/stop logs | When a run triggers, logs “Foreground service started” and later “Foreground service stopped” appear. |
+| **LOG‑15** | Agent start attempt log | Before agent runs, log “Attempting to start Go agent for run ...” appears. |
+| **LOG‑16** | Alarm scheduled/cancelled logs | When scheduling a run, log “Alarm scheduled for run ...” appears; when deleting, “Alarm cancelled for run ...” appears. |
+| **LOG‑17** | Boot receiver restore log | After device reboot, log “Boot receiver restoring X scheduled runs” appears. |
+| **LOG‑18** | Config save logs | After saving General or Admin settings, log “General/Admin configuration saved: ...” appears. |
+```
