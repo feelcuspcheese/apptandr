@@ -25,11 +25,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile (pinned compatible version)
+      - name: Install gomobile
         run: |
-          # Pin to a version compatible with Go 1.23
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20250909160539-94c8d4f5e4e4
-          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20250909160539-94c8d4f5e4e4
+          # Use @latest to get the most recent, compatible version for Go 1.23
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
