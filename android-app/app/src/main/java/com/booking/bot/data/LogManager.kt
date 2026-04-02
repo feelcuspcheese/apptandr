@@ -27,6 +27,8 @@ object LogManager {
      */
     fun init(context: Context) {
         logFile = File(context.filesDir, "logs.txt")
+        // [FIX (LOG-08)]: Add initial log entry visible in LogsScreen
+        addLog("INFO", "App initialized successfully")
     }
     
     /**

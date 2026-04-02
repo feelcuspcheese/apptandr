@@ -8,9 +8,10 @@
 *.jar
 
 # Dependencies
-.gradle/
 node_modules/
-vendor/
+.gradle/
+build/
+.externalNativeBuild/
 
 # Logs and temp files
 *.log
@@ -27,24 +28,17 @@ vendor/
 .idea/
 *.iml
 *.iws
-*.swo
+*.ipr
+
+# OS generated files
+.DS_Store
+Thumbs.db
 
 # Android specific
 *.keystore
 local.properties
 captures/
 .externalNativeBuild/
-.gradle/
-*.ap_
-*.apks
-*.aab
-
-# Build outputs
-build/
-app/build/
-out/
-
-# System files
-.DS_Store
-Thumbs.db
+.intermediates/
+.profile/
 ```
