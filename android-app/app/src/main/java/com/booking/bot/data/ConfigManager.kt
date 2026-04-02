@@ -93,6 +93,7 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(general = general)
             prefs.withConfig(updated)
         }
+        LogManager.addLog("INFO", "General settings saved")
     }
     
     /**
@@ -117,6 +118,7 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(admin = admin, general = updatedGeneral)
             prefs.withConfig(updated)
         }
+        LogManager.addLog("INFO", "Admin configuration saved")
     }
     
     /**
@@ -130,6 +132,7 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
+        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, dropTime=${run.dropTimeMillis}, mode=${run.mode}")
     }
     
     /**
@@ -143,6 +146,7 @@ class ConfigManager private constructor(private val context: Context) {
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
+        LogManager.addLog("INFO", "Scheduled run removed: id=$runId")
     }
     
     /**
