@@ -25,33 +25,43 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile
+      - name: Add golang.org/x/mobile to module graph
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          export PATH=$PATH:$(go env GOPATH)/bin
-          gomobile init
+          go get golang.org/x/mobile@v0.0.0-20260312152759-81488f6aeb60
+          go mod tidy
 
-      - name: Auto-Repair and Build Go AAR
+      - name: Install gomobile tool
+        run: go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20260312152759-81488f6aeb60
+        env:
+          GO111MODULE: on
+
+      - name: Initialize gomobile (downloads NDK toolchain)
+        run: gomobile init
+        env:
+          GO111MODULE: on
+
+      - name: Build Android AAR
         run: |
           mkdir -p android-app/app/libs
           
           cd mobile
           
-          # 1. Force the go.mod to use Go 1.25 at runtime (GitHub Actions has Go 1.25+)
+          # Force the go.mod to use Go 1.25 at runtime
           go mod edit -go 1.25
           
-          # 2. Add golang.org/x/mobile dependency for gomobile bind
-          go get golang.org/x/mobile@latest
-          
-          # 3. Ensure all dependencies are up to date
+          # Ensure all dependencies are up to date including golang.org/x/mobile/bind
+          go get golang.org/x/mobile@v0.0.0-20260312152759-81488f6aeb60
           go mod tidy
           
           cd ..
           
           export PATH=$PATH:$(go env GOPATH)/bin
           # Build for all supported architectures
-          gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
+          gomobile bind \
+            -target=android/arm64,android/arm \
+            -androidapi 26 \
+            -o android-app/app/libs/booking.aar \
+            ./mobile
         env:
           GO111MODULE: on
 

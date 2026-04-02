@@ -1,32 +1,5 @@
-```
-# Build artifacts
-*.o
-*.obj
-*.a
-*.so
-*.dll
-*.exe
-*.out
-
-# Go-specific ignores
-*.mod
-*.sum
-vendor/
-
-# Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
-
 # Logs and temp files
 *.log
-*.tmp
-*.swp
 
 # Environment
 .env
@@ -35,14 +8,35 @@ target/
 
 # Editors
 .vscode/
-.idea/
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+target/
+.gradle/
 
-# System
+# Compiled files
+*.pyc
+*.class
+*.o
+*.exe
+*.dll
+*.so
+*.a
+*.obj
+*.out
+
+# System files
 .DS_Store
 Thumbs.db
-```
+coverage/
+htmlcov/
+*.tmp
+*.swp
+*.swo
