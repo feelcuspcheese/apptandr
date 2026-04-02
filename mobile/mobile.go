@@ -12,17 +12,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// LogCallback matches the requirement: setLogCallback((String) -> Unit)
+// LogCallback matches the Kotlin lambda: (String) -> Unit
 type LogCallback interface {
 	Log(message string)
 }
 
-// StatusCallback matches the requirement: setStatusCallback((String) -> Unit)
+// StatusCallback matches the Kotlin lambda: (String) -> Unit
 type StatusCallback interface {
 	OnStatus(status string)
 }
 
-// MobileAgent is the class defined in TECHNICAL_SPEC.md Section 8
+// MobileAgent matches the class used in BookingForegroundService.kt
 type MobileAgent struct {
 	agentInst      *agent.Agent
 	logCallback    LogCallback
@@ -30,13 +30,13 @@ type MobileAgent struct {
 	mu             sync.RWMutex
 }
 
-// NewMobileAgent provides the constructor for the Kotlin "MobileAgent()" call
+// NewMobileAgent is the constructor for Kotlin's MobileAgent()
 func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
 
-// agentRequest handles the JSON structure sent by ConfigManager.kt
-type agentRequest struct {
+// mobileRequest matches the JSON wrapper sent by ConfigManager.kt
+type mobileRequest struct {
 	SiteKey    string           `json:"siteKey"`
 	MuseumSlug string           `json:"museumSlug"`
 	DropTime   string           `json:"dropTime"`
@@ -64,18 +64,19 @@ func (m *MobileAgent) Start(configJSON string) {
 		return
 	}
 
-	var req agentRequest
+	var req mobileRequest
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Unmarshal Error: %v", err))
+		m.fireLog("ERROR", fmt.Sprintf("Failed to parse config: %v", err))
 		return
 	}
 
+	// Prepare config and run ID for the agent
 	cfg := req.FullConfig
 	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
-	runID := "mobile-run-" + time.Now().Format("150405")
+	runID := "mobile-" + time.Now().Format("150405")
 	
-	// Inject the specific run details into the config
+	// Ensure the specific run is in the config
 	cfg.ScheduledRuns = []config.ScheduledRun{
 		{
 			ID:         runID,
@@ -87,14 +88,14 @@ func (m *MobileAgent) Start(configJSON string) {
 	}
 
 	logger := logrus.New()
-	logger.AddHook(&androidHook{m: m})
+	logger.AddHook(&androidHook{m: m}) // Pipes logrus to the Android LogManager
 
 	m.agentInst = agent.NewAgent(&cfg, logger)
 	m.mu.Unlock()
 
 	go func() {
 		m.fireStatus("running")
-		m.agentInst.Start(runID)
+		_ = m.agentInst.Start(runID)
 		m.fireStatus("stopped")
 	}()
 }
@@ -121,6 +122,7 @@ func (m *MobileAgent) fireLog(level, msg string) {
 	cb := m.logCallback
 	m.mu.RUnlock()
 	if cb != nil {
+		// Formats for LogManager.kt parsing
 		out, _ := json.Marshal(map[string]string{
 			"level":   strings.ToUpper(level),
 			"message": msg,
