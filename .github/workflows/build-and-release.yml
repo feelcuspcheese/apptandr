@@ -17,8 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # Tell GitHub Actions to use the latest stable Go version (which includes 1.25+)
-          go-version: 'stable' 
+          go-version: 'stable' # Ensures Go 1.25+
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -28,20 +27,23 @@ jobs:
 
       - name: Install gomobile
         run: |
-          # Now we can safely use @latest again!
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
-      - name: Build Go AAR
+      - name: Auto-Repair and Build Go AAR
         run: |
           mkdir -p android-app/app/libs
           cd mobile
           
-          # Clean, standard go commands without forced downgrades
+          # 1. Force the go.mod to use Go 1.25 at runtime
+          go mod edit -go 1.25
+          
+          # 2. Remove any old "replace" or manual version hacks
+          # This cleans up the "downgrade" comments you had
           go mod tidy
-          go mod download
+          
           cd ..
           
           export PATH=$PATH:$(go env GOPATH)/bin
@@ -79,9 +81,6 @@ jobs:
             **Build Details:**
             - Commit: ${{ github.sha }}
             - Triggered by: ${{ github.actor }}
-            
-            **Installation:**
-            Download `app-debug.apk` and install on your Android device.
           draft: false
           prerelease: true
           files: |
