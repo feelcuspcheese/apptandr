@@ -2,8 +2,15 @@ name: Build and Release Android App
 
 on:
   push:
+#    tags:
+#      - 'v*'
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       tag_name:
