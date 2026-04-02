@@ -18,15 +18,16 @@ build/
 *.tmp
 *.swp
 
-# Environment
-.env
-.env.local
-*.env.*
+# Android build outputs
+app/build/
+*.apk
+*.aar
+*.aab
 
-# Editors
-.vscode/
+# IDE
 .idea/
 *.iml
+*.ipr
 *.iws
 *.ipr
 
