@@ -1,33 +1,61 @@
 ```
+# Dependencies
+node_modules/
+
 # Build artifacts
 build/
-*.apk
-*.aab
-*.aar
+dist/
+target/
 
-# Gradle
-.gradle/
-!gradle.properties
-!gradlew
-!gradlew.bat
-
-# IDE
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# Environment
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.*
 .env
-.env.local
-*.env.*
+.env.*
+.pytest_cache/
+.mypy_cache/
+.coverage
 
 # Logs
 *.log
 
-# Temp files
-*.tmp
-*~
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Environment specific
+.env.local
+.env.*
+
+# Compression
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
+*.rar
+*.7z
+*.bz2
+*.xz
+*.zst
 ```
