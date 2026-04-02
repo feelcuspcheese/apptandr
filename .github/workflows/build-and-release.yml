@@ -23,6 +23,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: true
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -34,20 +35,24 @@ jobs:
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          gomobile init
-
-      - name: Prepare Go Dependencies
-        run: |
-          # The 'bind' package is required by the gomobile generator
-          go get golang.org/x/mobile/bind
-          go mod tidy
-          go mod download
+          # Add the go bin to path so gomobile init can find gobind
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          # Wait for path update then init
+          $(go env GOPATH)/bin/gomobile init
 
       - name: Build Go AAR
         run: |
+          # 1. Sync dependencies
+          go mod tidy
+          go mod download
+          # 2. Get the bind package explicitly to satisfy the build tool
+          go get golang.org/x/mobile/bind
+          
           mkdir -p android-app/libs
-          # Target the ./mobile package relative to root
-          gomobile bind -target=android -androidapi 23 -v -o android-app/libs/booking.aar ./mobile
+          
+          # 3. Bind the package using the module-aware path
+          # We use agent/mobile because go.mod defines 'module agent'
+          gomobile bind -target=android -androidapi 23 -v -o android-app/libs/booking.aar agent/mobile
         env:
           GO111MODULE: on
 
