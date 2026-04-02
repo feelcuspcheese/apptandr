@@ -94,6 +94,8 @@ class ConfigManager private constructor(private val context: Context) {
             prefs.withConfig(updated)
         }
         LogManager.addLog("INFO", "General settings saved")
+        // GEN-10: Log success feedback for UI
+        LogManager.addLog("INFO", "Settings saved successfully")
     }
     
     /**
