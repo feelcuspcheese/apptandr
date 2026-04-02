@@ -33,7 +33,6 @@ fun ConfigScreen(
     configManager: ConfigManager,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
     // PIN dialog state
@@ -565,7 +564,7 @@ private fun SitesTab(
                                         physical = physical,
                                         location = location
                                     )
-                                    val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                    val updatedAdmin = config.admin!!.copy(sites = updatedSites)
                                     configManager.updateAdmin(updatedAdmin)
                                 }
                             },
@@ -629,8 +628,6 @@ private fun SitesTab(
                                     IconButton(onClick = {
                                         scope.launch {
                                             // Show confirmation dialog before deleting museum (SITE-06)
-                                            val museumName = museum.name
-                                            // We need to use a dialog state variable, but since we're in a lambda,
                                             // we'll create an inline AlertDialog using a var
                                             // For simplicity, we'll use a direct deletion with confirmation via a separate composable
                                             showMuseumDeleteConfirmation = museum
@@ -693,7 +690,7 @@ private fun SitesTab(
                                             )
                                             if (updatedSite != null) {
                                                 updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
                                                 configManager.updateAdmin(updatedAdmin)
                                             }
                                         }
@@ -732,9 +729,8 @@ private fun SitesTab(
                     val updatedMuseums = currentSite.museums.toMutableMap()
                     updatedMuseums[museum.slug] = museum
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    config?.admin?.let { admin ->
-                        configManager.updateAdmin(admin.copy(sites = updatedSites))
-                    }
+                    val updatedAdmin = config.admin!!
+                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
                 }
                 showMuseumDialog = false
                 editingMuseum = null
@@ -762,9 +758,8 @@ private fun SitesTab(
                         credentials.add(credential)
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                    config?.admin?.let { admin ->
-                        configManager.updateAdmin(admin.copy(sites = updatedSites))
-                    }
+                    val updatedAdmin = config.admin!!
+                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
                 }
                 showCredentialDialog = false
                 editingCredential = null
@@ -789,9 +784,8 @@ private fun SitesTab(
                         updatedMuseums[museum.slug] = museum
                     }
                     updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    config?.admin?.let { admin ->
-                        configManager.updateAdmin(admin.copy(sites = updatedSites))
-                    }
+                    val updatedAdmin = config.admin!!
+                        configManager.updateAdmin(updatedAdmin.copy(sites = updatedSites))
                 }
                 showBulkImportDialog = false
             },
@@ -819,7 +813,7 @@ private fun SitesTab(
                             )
                             if (updatedSite != null) {
                                 updatedSites[selectedSiteKey] = updatedSite
-                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
                                 
                                 // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
                                 val currentConfig = configManager.configFlow.first()
@@ -868,7 +862,7 @@ private fun SitesTab(
                             )
                             if (updatedSite != null) {
                                 updatedSites[selectedSiteKey] = updatedSite
-                                val updatedAdmin = config?.admin?.copy(sites = updatedSites) ?: return@launch
+                                val updatedAdmin = config.admin!!.copy(sites = updatedSites)
                                 
                                 // Referential integrity: clear defaultCredentialId if deleted credential was default
                                 val siteConfig = updatedAdmin.sites[selectedSiteKey]
