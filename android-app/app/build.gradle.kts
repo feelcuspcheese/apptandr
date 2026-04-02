@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.booking.bot"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.booking.bot"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -66,11 +66,21 @@ android {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
 
-    // Android 16 compatibility: legacy packaging for native libraries
+    // Android 16 compatibility: proper native library packaging
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols += listOf("*.so")
         }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/DEPENDENCIES"
+        }
+    }
+
+    // Explicit native library handling for Android 16
+    androidResources {
+        generateLocaleConfig = false
     }
 }
 
