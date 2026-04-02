@@ -341,7 +341,7 @@ fun SiteEditDialog(
                                 physical = physical,
                                 location = location
                             ) ?: SiteConfig(
-                                displayName = siteKey,
+                                name = siteKey,
                                 baseUrl = baseUrl,
                                 availabilityEndpoint = availabilityEndpoint,
                                 digital = digital,

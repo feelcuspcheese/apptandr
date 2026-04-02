@@ -241,7 +241,7 @@ class BookingForegroundService : LifecycleService() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        return super.onBind(intent)
+        return super.onBind(intent!!)
     }
 
     override fun onDestroy() {
