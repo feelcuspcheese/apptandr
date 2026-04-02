@@ -12,8 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.foundation.ExperimentalLayoutApi
-import androidx.compose.foundation.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.booking.bot.data.*
 import com.booking.bot.ui.components.MuseumEditDialog
 import com.booking.bot.ui.components.CredentialEditDialog
@@ -152,7 +152,6 @@ fun WizardScreen(
                                         selected = selectedSiteKey == key,
                                         onClick = { 
                                             selectedSiteKey = key
-                                            config?.admin?.activeSite = key
                                         }
                                     )
                                     Text(key.uppercase(), style = MaterialTheme.typography.bodyLarge)
@@ -570,10 +569,8 @@ fun WizardScreen(
                             scope.launch {
                                 try {
                                     // Update admin config with selected site
-                                    val updatedAdmin = config?.admin?.copy(activeSite = selectedSiteKey)
-                                    if (updatedAdmin != null) {
-                                        configManager.updateAdmin(updatedAdmin)
-                                    }
+                                    val updatedAdmin = (config?.admin ?: AdminConfig()).copy(activeSite = selectedSiteKey)
+                                    configManager.updateAdmin(updatedAdmin)
                                     
                                     // Update general settings
                                     val newGeneral = GeneralSettings(

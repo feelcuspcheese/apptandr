@@ -348,7 +348,8 @@ fun SiteEditDialog(
                                 physical = physical,
                                 location = location,
                                 museums = emptyMap(),
-                                credentials = emptyList()
+                                credentials = emptyList(),
+                                defaultCredentialId = null
                             )
                         )
                     }
