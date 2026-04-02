@@ -11,6 +11,9 @@ import (
 	"agent/pkg/config"
 
 	"github.com/sirupsen/logrus"
+
+	// CRITICAL: This keeps the bind tool dependencies in go.mod
+	_ "golang.org/x/mobile/bind"
 )
 
 // MobileAgent matches TECHNICAL_SPEC.md Section 8
