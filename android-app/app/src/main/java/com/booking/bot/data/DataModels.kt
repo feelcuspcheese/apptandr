@@ -93,7 +93,14 @@ data class AdminConfig(
             location = "0"
         ))
     )
-)
+) {
+    fun copy(
+        activeSite: String = this.activeSite,
+        sites: Map<String, SiteConfig> = this.sites
+    ): AdminConfig {
+        return AdminConfig(activeSite = activeSite, sites = sites)
+    }
+}
 
 /**
  * GeneralSettings data class (section 3.6)
