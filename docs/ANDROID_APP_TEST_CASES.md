@@ -1,10 +1,7 @@
-Here is the document meticulously formatted as a Markdown file, ready to be copied and pasted directly into a GitHub `README.md` or `TESTING.md` file.
+# Comprehensive Test Cases for Android Wrapper of Go Booking Agent
+*(Full 14‑Section Version – Aligned with Latest Technical Specification)*
 
-***
-
-# Comprehensive Target State Validation Checklist for Android Wrapper
-
-This document provides an exhaustive list of test cases, edge cases, and validation steps to ensure the Android app conforms to the technical specification. It covers all UI screens, data flows, configuration handling, scheduling, background execution, error handling, and integration with the Go agent. Each test case includes the action, expected result, and any special notes.
+This document provides exhaustive test cases for every component of the Android app, based on the latest technical specification (14 sections, including timezone handling, UI enhancements, config refresh, central data store, scheduling, alarms, and all other features). It serves as a validation checklist for an agentic AI.
 
 ---
 
@@ -12,12 +9,13 @@ This document provides an exhaustive list of test cases, edge cases, and validat
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **CONF‑01** | Fresh install – no config exists | App starts with default AppConfig (empty museums, default general settings, no scheduled runs). ConfigScreen loads with default values. |
-| **CONF‑02** | Save General settings | After editing any field and tapping Save, the value persists. Relaunch app; values remain. |
-| **CONF‑03** | Save Admin settings (site fields) | Change base URL, endpoint, digital/physical, location, museums, credentials; after Save, config is updated. Re‑enter ConfigScreen; changes are reflected. |
-| **CONF‑04** | Real‑time update across screens | Change Active Site dropdown in ConfigScreen → Dashboard screen updates Quick Stats to show new active site. Change preferred museum slug → Dashboard updates preferred museum name. |
-| **CONF‑05** | DataStore corruption handling | Delete the config file manually (if possible) or simulate corrupt JSON. App should fall back to default AppConfig without crashing. |
-| **CONF‑06** | Concurrency – multiple updates at once | Rapidly save different fields. Final config should be consistent (no partial updates). |
+| **CONF‑01** | Fresh install – no config exists | App starts with default `AppConfig`. ConfigScreen loads default values (General tab: mode="alert", strikeTime="09:00", etc.; Sites tab: default SPL and KCLS sites). No errors. |
+| **CONF‑02** | Save General settings | Change any field (e.g., mode to "booking", strikeTime to "10:00"), tap Save. Re‑open ConfigScreen; changes persisted. |
+| **CONF‑03** | Save Admin settings (site fields) | Change base URL, endpoint, digital/physical, location, museums, credentials. Save. Re‑enter; changes reflected. |
+| **CONF‑04** | Real‑time update across screens | Change active site dropdown in Sites tab → Dashboard Quick Stats updates immediately. Change preferred museum slug → Dashboard preferred museum name updates instantly. |
+| **CONF‑05** | DataStore corruption handling | Manually corrupt `app_config` JSON (e.g., delete closing brace). App should fall back to default `AppConfig` without crash. |
+| **CONF‑06** | Concurrency – rapid saves | Rapidly save multiple changes (e.g., change mode, then strike time, then preferred days). Final config should be consistent (no partial updates). |
+| **CONF‑07** | Config refresh after external edit | If config file is edited externally while app is running, next read should reflect changes (`DataStore` updates automatically). |
 
 ---
 
@@ -25,189 +23,211 @@ This document provides an exhaustive list of test cases, edge cases, and validat
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **DB‑01** | Initial load | Displays status "Idle", countdown to next scheduled run (if any), Quick Stats with active site, mode, preferred museum name. |
-| **DB‑02** | Start Now button | Creates a run with drop time = current time + 30 seconds. Run appears in ScheduleScreen list. Alarm scheduled. |
-| **DB‑03** | Start Now – when no preferred museum selected | Falls back to first museum of active site. Run uses that museum. |
-| **DB‑04** | Start Now – when no default credential | Run uses `credentialId = null`. JSON will have empty credentials (alert mode works; booking mode will fail gracefully). |
-| **DB‑05** | Stop button when run active | Calls `BookingForegroundService.stop()`. Service stops; `isRunning` becomes false. |
-| **DB‑06** | Countdown display | Shows time to next scheduled run (e.g., "2h 30m"). If no runs, shows "No scheduled runs". |
+| **DB‑01** | Initial load | Displays status "Idle", countdown to next scheduled run (or "No scheduled runs"), Quick Stats with active site display name (e.g., "SPL"), mode, preferred museum name. |
+| **DB‑02** | Start Now button | Creates run with `dropTime` = current time + 30 seconds, using current general settings (mode, preferred museum, default credential, device timezone). Run appears in ScheduleScreen list; alarm scheduled. |
+| **DB‑03** | Start Now – no preferred museum | Falls back to first museum of active site. |
+| **DB‑04** | Start Now – no default credential | `credentialId = null`. JSON will have empty credentials (alert mode works; booking fails gracefully). |
+| **DB‑05** | Stop button when run active | Calls `BookingForegroundService.stop()`. Service stops; `isRunning` false. Dashboard updates. |
+| **DB‑06** | Countdown display | Shows time to next scheduled run (e.g., "2h 30m"). Updates every second. |
 | **DB‑07** | Quick Stats updates in real time | Change active site in ConfigScreen → Dashboard updates immediately. Change mode → updates. |
+| **DB‑08** | Click Start Now multiple times | Prevents duplicate runs? (Concurrency: if one already active, second should be ignored). |
 
 ---
 
-## 3. UI Screens – ConfigScreen (General Tab)
+## 3. UI Screens – ConfigScreen (PIN‑Protected)
 
+### 3.1 General Tab
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **GEN‑01** | PIN protection | Enter wrong PIN → dialog stays; correct PIN (`1234`) → shows General and Sites tabs. |
-| **GEN‑02** | Mode selection | Switch between Alert/Booking. Save. Mode reflects in Dashboard and Schedule default. |
-| **GEN‑03** | Strike Time picker | Open time picker, select a time, save. Value stored as "HH:MM". |
-| **GEN‑04** | Preferred Days chips | Click chips to select/deselect. List of day names saved correctly. |
-| **GEN‑05** | ntfy Topic field | Edit text, save. Value persisted. |
-| **GEN‑06** | Preferred Museum dropdown | Displays museum names from active site. Select a museum, save. Slug stored. If museum removed later, dropdown clears on next load. |
-| **GEN‑07** | Performance tuning fields | Edit any numeric/duration field (e.g., check window "45s"). Save. Value stored. |
-| **GEN‑08** | Validation – negative/zero values | Enter invalid (e.g., negative months). Save should show error toast, not save. |
+| **GEN‑01** | PIN protection | Wrong PIN → dialog stays; correct PIN `1234` → shows General and Sites tabs. |
+| **GEN‑02** | Mode selection | Switch Alert/Booking, save. Dashboard and Schedule default mode update. |
+| **GEN‑03** | Strike Time picker | Open time picker, select time (e.g., "14:30"), save. Value stored as `HH:MM`. |
+| **GEN‑04** | Preferred Days chips | Click to select/deselect days. List of day names saved correctly (e.g., `["Monday","Wednesday"]`). |
+| **GEN‑05** | ntfy Topic field | Edit text, save. Persisted. |
+| **GEN‑06** | Preferred Museum dropdown | Displays museum names from active site. Select a museum, save → slug stored. If museum removed later, dropdown clears on next load. |
+| **GEN‑07** | Performance tuning fields | Edit numeric/duration fields (e.g., check window "45s", check interval "0.5s"). Save. Value stored. |
+| **GEN‑08** | Validation – negative/zero values | Enter negative months (e.g., -1) → show error toast, do not save. |
+| **GEN‑09** | Save button progress indicator | While saving, show `CircularProgressIndicator`; disable button. |
+
+### 3.2 Sites Tab
+| ID | Test Case | Expected Result |
+| :--- | :--- | :--- |
+| **SITE‑01** | Site dropdown | Shows site display names (e.g., "SPL", "KCLS") – not internal keys. Selecting changes displayed configuration. |
+| **SITE‑02** | Visual cue header | Shows "Editing SPL Settings" (or similar) above fields. |
+| **SITE‑03** | Edit site fields | Change base URL, endpoint, digital, physical, location values, save. Config updated. |
+| **SITE‑04** | Add museum via dialog | Enter name, slug, museumId; save. Museum appears in list with format: `name (slug, museumId)`. |
+| **SITE‑05** | Edit museum | Tap edit icon, change any field, save. List updates. |
+| **SITE‑06** | Delete museum with confirmation | Tap delete → confirmation dialog "Delete 'Museum Name'?" → confirm → museum removed. If it was preferred museum in General tab, that field is cleared. |
+| **SITE‑07** | Bulk import – valid lines | Paste lines `Name:slug:museumid`, parse preview, import. Museums added (replace duplicates by slug). |
+| **SITE‑08** | Bulk import – invalid lines | Lines with wrong format (e.g., two colons only) are ignored; preview shows only valid ones. |
+| **SITE‑09** | Bulk import – duplicate slug | Show overwrite confirmation dialog before replacing existing museum. |
+| **SITE‑10** | Bulk import progress indicator | During import, show `CircularProgressIndicator`; disable import button until complete. |
+| **SITE‑11** | Add credential | Fill label, username, password, email; save. Credential appears in list. |
+| **SITE‑12** | Edit credential | Change fields, save. List updates. |
+| **SITE‑13** | Delete credential with confirmation | Delete → confirmation → removed. If it was default, default cleared. |
+| **SITE‑14** | Set default credential | Tap star icon on a credential. Only one star filled; `defaultCredentialId` set. |
+| **SITE‑15** | Save admin config with progress | Tap Save → show progress indicator, disable button → on success, hide indicator. |
+| **SITE‑16** | Switching sites without saving | Unsaved changes should be discarded when switching sites (no auto‑save). |
 
 ---
 
-## 4. UI Screens – ConfigScreen (Sites Tab)
+## 4. UI Screens – ScheduleScreen
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **SITE‑01** | Site dropdown | Shows "spl" and "kcls". Selecting changes the displayed configuration. |
-| **SITE‑02** | Edit site fields (base URL, endpoint, digital, physical, location) | Change values, save. Config updated. |
-| **SITE‑03** | Add museum via dialog | Enter name, slug, museumId; save. Museum appears in list. |
-| **SITE‑04** | Edit museum | Tap edit icon, change any field, save. List updates. |
-| **SITE‑05** | Delete museum | Tap delete icon. Museum removed. If it was the preferred museum in General tab, that field is cleared. |
-| **SITE‑06** | Bulk import – valid lines | Paste lines `Name:slug:museumid`, parse preview, import. All museums added (replace duplicates by slug). |
-| **SITE‑07** | Bulk import – invalid lines | Lines with wrong format (less/more colons) are ignored; preview shows only valid ones. |
-| **SITE‑08** | Bulk import – duplicate slug | Overwrites existing museum with same slug (shows warning). |
-| **SITE‑09** | Add credential | Fill label, username, password, email; save. Credential appears in list. |
-| **SITE‑10** | Edit credential | Change fields, save. List updates. |
-| **SITE‑11** | Delete credential | Delete; if it was default, default flag cleared. |
-| **SITE‑12** | Set default credential | Tap star icon on a credential. Only one star filled; `defaultCredentialId` set. |
-| **SITE‑13** | Save admin changes | After edits, tap Save. DataStore updated. |
-| **SITE‑14** | Switching sites without saving | Changes made but not saved should be discarded when switching sites (or persist in memory? Spec says "save required". Should not auto‑save). |
+| **SCH‑01** | Site dropdown | Shows site display names (e.g., "SPL", "KCLS"). Changing resets museum and credential selections. |
+| **SCH‑02** | Museum dropdown | Populated with museum names from selected site. Stores slug. |
+| **SCH‑03** | Credential dropdown | Shows "Use default" plus all credential labels. Pre‑selects site’s default if exists, else "Use default". |
+| **SCH‑04** | Mode dropdown | "Alert" / "Booking". Pre‑selected from `General.mode` but can be overridden. |
+| **SCH‑05** | Timezone dropdown | Shows list of timezones with human‑readable names (e.g., "PST/PDT (Los Angeles)"). Stores IANA ID. Default = device timezone. |
+| **SCH‑06** | Date/Time picker | Open dialog, select future date/time. Field shows formatted date/time in selected timezone. |
+| **SCH‑07** | Schedule button – past date/time | Show toast error, do not create run. |
+| **SCH‑08** | Schedule button – valid | Creates `ScheduledRun` with selected site, museum, credential, mode, UTC millis (converted from local time in selected timezone), and timezone ID. Adds to list, schedules alarm. |
+| **SCH‑09** | Timezone conversion correctness | Pick a date/time in a different timezone (e.g., April 1, 2025, 09:00 Los Angeles). Verify `dropTimeMillis` is UTC equivalent. |
+| **SCH‑10** | Scheduled runs list | Shows all runs sorted by `dropTimeMillis`. Each item shows site display name, museum name, mode, formatted local time according to run’s stored timezone, delete icon. |
+| **SCH‑11** | Delete a run with confirmation | Tap delete → confirmation dialog → run removed from list, alarm cancelled. |
+| **SCH‑12** | Multiple runs with different timezones | Allowed. Each run’s timezone stored and used for display. |
+| **SCH‑13** | Edit scheduled run | Not required by spec; but if implemented, ensure timezone can be changed. |
 
 ---
 
-## 5. UI Screens – ScheduleScreen
+## 5. Timezone Handling & Alarm Scheduling
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **SCH‑01** | Site dropdown | Shows all site keys from admin config. Selecting changes museum and credential dropdowns. |
-| **SCH‑02** | Museum dropdown | Populated with names of museums from selected site. |
-| **SCH‑03** | Credential dropdown | Shows "Use default" plus all credential labels from selected site. Pre‑selects default if exists, else "Use default". |
-| **SCH‑04** | Mode dropdown | "Alert" and "Booking". Pre‑selected from `General.mode` but can be overridden per run. |
-| **SCH‑05** | Date/Time picker | Open dialog, select future date/time. Field shows formatted date. |
-| **SCH‑06** | Schedule button – past date | If selected datetime is in past, show toast error, do not create run. |
-| **SCH‑07** | Schedule button – valid | Creates `ScheduledRun` object, adds to list, schedules alarm. |
-| **SCH‑08** | Scheduled runs list | Shows all runs (future only) sorted by time. Each shows site, museum, mode, formatted date, delete icon. |
-| **SCH‑09** | Delete a run | Tap delete; run removed from list, alarm cancelled. |
-| **SCH‑10** | Multiple runs with same site/different museums | Allowed. Each appears in list. |
-| **SCH‑11** | Multiple runs with different sites | Allowed. |
-| **SCH‑12** | Run with credential = null (use default) | Created with `credentialId = null`. |
-| **SCH‑13** | Run with specific credential | Selected `credentialId` stored. |
+| **TZ‑01** | Device timezone ≠ run timezone | Schedule run in `America/New_York` while device is in `America/Los_Angeles`. Alarm fires at correct UTC time (e.g., 12:00 PM New York time = 9:00 AM Los Angeles time). |
+| **TZ‑02** | Daylight saving transition | Schedule run on a date that crosses DST (e.g., March 9, 2025, 02:30 `America/Los_Angeles` is invalid). App should show error or use next valid time. |
+| **TZ‑03** | AlarmManager uses UTC | Alarm set with `dropTimeMillis` (UTC). Fires at exact UTC moment regardless of device timezone changes after scheduling. |
+| **TZ‑04** | Boot recovery after reboot | After reboot, runs restored; alarms re‑scheduled using stored UTC millis. |
+| **TZ‑05** | JSON dropTime format | `dropTime` in JSON is ISO‑8601 with Z suffix (UTC). Example: `2025-04-01T16:00:00Z`. |
+| **TZ‑06** | JSON timezone field | Contains IANA ID (e.g., `"America/Los_Angeles"`). |
+| **TZ‑07** | Timezone dropdown persistence | Selected timezone is stored in `ScheduledRun` and used when editing a run (if edit supported). |
 
 ---
 
-## 6. Configuration Propagation & Real‑time Updates
+## 6. Scheduled Runs – Trigger & Execution
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **PROP‑01** | Admin adds new museum | ScheduleScreen museum dropdown updates immediately (if site selected). General tab preferred museum dropdown updates. |
-| **PROP‑02** | Admin deletes a museum | If museum was selected in a pending run, that run will fail gracefully at trigger time (logged). |
-| **PROP‑03** | Admin changes site base URL | Pending runs will use new URL when triggered (because config is fetched at trigger time). |
-| **PROP‑04** | Admin changes default credential | ScheduleScreen credential dropdown updates. |
-| **PROP‑05** | User changes preferred museum slug in General | Dashboard Quick Stats updates; Start Now uses new preferred museum. |
+| **RUN‑01** | Run triggers at exact time | Alarm fires (within 1 second); `BookingForegroundService` starts. |
+| **RUN‑02** | Foreground service notification | Notification shows "Booking Bot" with current status (e.g., "Pre‑warming"). |
+| **RUN‑03** | Service builds JSON at trigger time | Uses latest site settings, museums, credentials, and run’s stored timezone (not snapshot) at the time of trigger. |
+| **RUN‑04** | JSON includes correct timezone field | `timezone` field equals run’s stored IANA ID. |
+| **RUN‑05** | Agent starts and logs appear | Logs show "Pre‑warming", "Strike started", etc., in `LogsScreen`. |
+| **RUN‑06** | Run finishes successfully | Agent stops; service removes run from list; logs show removal. |
+| **RUN‑07** | Run fails (e.g., wrong credentials) | Agent logs error; service removes run; no crash. |
+| **RUN‑08** | Run timeout | Check window expires; agent stops; service removes run. |
+| **RUN‑09** | Concurrency handling | Second alarm fires while first is active → service logs warning and stops without starting agent. |
+| **RUN‑10** | Missing references at trigger | `buildAgentConfig` returns null (e.g. site/museum deleted); service logs error, removes run, stops. |
+| **RUN‑11** | Stop button in notification | Tap stop → service stops agent, removes run, stops service. |
 
 ---
 
-## 7. Scheduling & AlarmManager
+## 7. JSON Serialization & Deserialization
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **ALARM‑01** | Schedule a run for 1 minute later | Alarm fires within 1 second of target time (allowing for system jitter). |
-| **ALARM‑02** | Schedule multiple runs with different times | Each alarm fires at its respective time. |
-| **ALARM‑03** | Device in doze mode (Android 6+) | Alarm should still fire because we use `setExactAndAllowWhileIdle`. |
-| **ALARM‑04** | Device reboot before run | `BootReceiver` restores alarms; run triggers at original time (if not passed). |
-| **ALARM‑05** | Cancel run via UI | Alarm cancelled; after reboot, not restored. |
-| **ALARM‑06** | Run scheduled but then time passed while device off | When device boots, run should not trigger if its time is in the past? Spec does not specify. We can decide to ignore past runs (they will be removed after next trigger or on boot). Ensure no crash. |
-| **ALARM‑07** | Two runs at exactly the same time | Only one can run at a time; second will be ignored (concurrency handling). |
+| **JSON‑01** | `AppConfig` serialization | Save config → JSON string stored in `app_config` DataStore key. |
+| **JSON‑02** | Deserialization on app start | Loads correctly; fallback to default if missing. |
+| **JSON‑03** | `ScheduledRun` includes timezone | After serialization/deserialization, timezone field retains its value. |
+| **JSON‑04** | `buildAgentConfig` output | Contains all required fields: `siteKey`, `museumSlug`, `dropTime` (ISO UTC), `mode`, `timezone`, `fullConfig`. |
+| **JSON‑05** | Protected defaults in JSON | `bookinglinkselector`, `loginform` field names, etc., match Defaults constants, not user‑editable. |
+| **JSON‑06** | Credential fallback | If credential missing, JSON uses empty strings for username/password/email. |
+| **JSON‑07** | Timezone serialization round‑trip | Save a run with timezone `"Asia/Kolkata"`, restart app, load run → timezone still `"Asia/Kolkata"`. |
 
 ---
 
-## 8. BookingForegroundService & Go Agent Triggering
+## 8. Logging & Debugging
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **SRV‑01** | Alarm triggers – start service | Foreground service starts, notification appears. |
-| **SRV‑02** | Service builds JSON from current config | JSON matches expected structure; uses current config values (not snapshot). |
-| **SRV‑03** | Service starts Go agent with JSON | Agent starts; logs appear in LogsScreen. |
-| **SRV‑04** | Run finishes successfully | Agent stops; service removes run from list and stops itself. |
-| **SRV‑05** | Run fails (error) | Logged; service removes run and stops. |
-| **SRV‑06** | Run timeout (check window expires) | Agent stops; service removes run and stops. |
-| **SRV‑07** | Concurrency – second run while first active | Second alarm fires, service logs warning and stops without starting agent. |
-| **SRV‑08** | Stop button while service active | Service calls `mobileAgent.stop()`, stops itself, run removed. |
-| **SRV‑09** | Missing site/museum/credential in config at trigger time | `buildAgentConfig` returns null; service logs error, removes run, stops without starting agent. |
-| **SRV‑10** | Notification updates | Notification shows status messages as agent runs. |
-| **SRV‑11** | Notification stop button | Tapping stop action stops the service. |
+| **LOG‑01** | Live logs appear in LogsScreen | Timestamp, level, message displayed. |
+| **LOG‑02** | Export logs | Tap export → share sheet opens with log file containing all logs. |
+| **LOG‑03** | Clear in‑memory logs | Clears screen display; file remains unchanged. |
+| **LOG‑04** | Debug JSON viewer (optional) | Tap (e.g., long‑press logs title) → shows JSON for first pending run; copy button works. |
+| **LOG‑05** | Auto‑scroll toggle | When enabled, new logs scroll to bottom. When disabled, user can scroll manually. |
 
 ---
 
-## 9. Go Agent JSON Validation
+## 9. First‑Run Wizard
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **JSON‑01** | JSON structure matches `mobile/agent.go` expectation | Must contain `siteKey`, `museumSlug`, `dropTime`, `mode`, `timezone`, `fullConfig` with all required fields. |
-| **JSON‑02** | `fullConfig.sites[siteKey]` contains correct museumid | Uses `museum.museumId` from config. |
-| **JSON‑03** | `loginform` fields filled with selected credential (or empty if none) | If credential exists, username, password, email are populated; else empty strings. |
-| **JSON‑04** | Protected defaults (selectors, field names) are hardcoded | No user‑editable values appear; they match `Defaults` constants. |
-| **JSON‑05** | `preferredslug` is slug, not name | Matches `general.preferredMuseumSlug`. |
+| **WIZ‑01** | First launch after install | Wizard appears (not main UI). |
+| **WIZ‑02** | Complete wizard steps | After finishing, config saved, flag set, main UI shown. |
+| **WIZ‑03** | Second launch | Wizard does not appear; main UI loads directly. |
+| **WIZ‑04** | Wizard – site selection | Allows choosing SPL or KCLS, edit fields. |
+| **WIZ‑05** | Wizard – add museums | Bulk import or single add works. |
+| **WIZ‑06** | Wizard – add credentials | At least one credential required. |
+| **WIZ‑07** | Wizard – general settings | Mode, strike time, preferred days, ntfy topic, preferred museum are set. |
+| **WIZ‑08** | Wizard – cancel | Cancelling should not save config; flag not set. |
 
 ---
 
-## 10. Logging & Error Reporting
+## 10. Edge Cases & Stress Testing
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **LOG‑01** | Go agent logs | Log entries appear in LogsScreen with timestamp, level, message. |
-| **LOG‑02** | App internal logs (e.g., "Run X removed") | Also appear. |
-| **LOG‑03** | Error logging | Errors (e.g., missing museum) logged with `ERROR` level. |
-| **LOG‑04** | Export logs | Tap export; share sheet opens with log file attached. File contains all logs (including those from previous runs). |
-| **LOG‑05** | Clear in‑memory logs | Clears screen display; file remains unchanged. |
-| **LOG‑06** | Auto‑scroll toggle | When enabled, new logs automatically scroll to bottom. |
-
----
-
-## 11. Edge Cases & Stress Testing
-
-| ID | Test Case | Expected Result |
-| :--- | :--- | :--- |
-| **EDGE‑01** | Add >100 museums in a site | UI should still load and scroll (`LazyColumn`). |
-| **EDGE‑02** | Add >50 credential sets | Scrollable list; performance acceptable. |
+| **EDGE‑01** | Add >100 museums | UI scrolls (`LazyColumn`) without lag. |
+| **EDGE‑02** | Add >50 credentials | Scrollable list; performance OK. |
 | **EDGE‑03** | Schedule >100 runs | List scrolls; alarms scheduled. |
-| **EDGE‑04** | Run scheduled for a time that has already passed (e.g., user sets clock back) | At schedule time, validation should prevent past times. But if it somehow gets into list (e.g., after system time change), alarm might fire immediately or not. Ensure no crash. |
-| **EDGE‑05** | Device low battery / extreme power saving | Foreground service may be killed. After battery returns, should reschedule via `BootReceiver`? Not covered; but app may not recover. Acceptable for MVP. |
-| **EDGE‑06** | Network loss during agent execution | Agent logs network error; continues. No crash. |
-| **EDGE‑07** | Large log file | Log file grows. Export still works. |
-| **EDGE‑08** | Simultaneous admin config change and run trigger | Config change occurs while agent is building JSON? Should use latest config because DataStore updates are atomic. |
-| **EDGE‑09** | Delete a museum that is referenced by pending run | At trigger time, `buildAgentConfig` logs error, run removed. No crash. |
-| **EDGE‑10** | Delete a credential that is referenced by pending run | Same graceful failure. |
+| **EDGE‑04** | Run scheduled for past time | System clock moved back. At schedule time, validation prevents. If already in list, alarm may fire immediately; no crash. |
+| **EDGE‑05** | Extreme power saving | Foreground service may be killed. After battery returns, no automatic recovery (acceptable for MVP). |
+| **EDGE‑06** | Network loss during agent run | Logs network error; no crash. |
+| **EDGE‑07** | Large log file (>10 MB) | Export still works. |
+| **EDGE‑08** | Config update while run is active | Run uses config at trigger time; changes after trigger do not affect active run. |
+| **EDGE‑09** | Delete museum referenced by run | At trigger, `buildAgentConfig` returns null; run removed gracefully. |
+| **EDGE‑10** | Delete credential referenced by run | Same graceful failure. |
+| **EDGE‑11** | Timezone with half‑hour offset | E.g. `Asia/Kolkata`. Conversion to UTC works correctly. |
+| **EDGE‑12** | Date/time picker – leap year | February 29, 2024, selected → valid. |
 
 ---
 
-## 12. Integration with Go Agent (Simulated)
+## 11. Integration with Go Agent (Simulated)
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **INT‑01** | Alert mode run – no booking attempted | Agent should only check and send ntfy notification (if new dates). Logs show "Alert sent". |
-| **INT‑02** | Booking mode run – correct credentials | Agent logs in, books, sends success notification. Run removed. |
-| **INT‑03** | Booking mode run – wrong credentials | Login fails; logs show error; run removed. |
-| **INT‑04** | Booking mode run – spot already taken | Booking fails; logs show "spot no longer available"; run removed. |
+| **INT‑01** | Alert mode – no booking | Agent checks availability, sends ntfy notification (if new dates). Logs show "Alert sent". |
+| **INT‑02** | Booking mode – correct credentials | Agent logs in, books, sends success notification. Run removed. |
+| **INT‑03** | Booking mode – wrong credentials | Login fails; logs error; run removed. |
+| **INT‑04** | Booking mode – spot already taken | Booking fails; logs "spot no longer available"; run removed. |
 | **INT‑05** | Agent returns success | Service removes run. |
 | **INT‑06** | Agent returns error | Service logs error, removes run. |
+| **INT‑07** | Agent logs are parsed correctly | JSON log entries from Go agent are displayed with correct level (INFO, ERROR, etc.). |
 
 ---
 
-## 13. Build & Release
+## 12. Build & Release
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **REL‑01** | Build AAR with `scripts/build-go.sh` | Produces `libs/booking.aar` without errors. |
+| **REL‑01** | Build AAR with script | `scripts/build-go.sh` runs successfully, `libs/booking.aar` created. |
 | **REL‑02** | Build APK | `./gradlew assembleRelease` succeeds. |
-| **REL‑03** | APK installs on arm64-v8a device | Works. |
-| **REL‑04** | APK installs on armeabi-v7a device | Works. |
-| **REL‑05** | GitHub Actions workflow (tag push) | Builds AAR, APK, signs, creates release with assets. |
-| **REL‑06** | ProGuard rules | No stripping of Go or serialization classes. App runs in release mode. |
+| **REL‑03** | APK installs on `arm64-v8a` device | Works. |
+| **REL‑04** | APK installs on `armeabi-v7a` device | Works. |
+| **REL‑05** | GitHub Actions workflow | Tag push builds AAR, APK, signs, creates release with assets. |
+| **REL‑06** | ProGuard rules | No stripping of Go or serialization classes. Release mode runs properly. |
 
 ---
 
-## 14. Performance & Stability
+## 13. Performance & Stability
 
 | ID | Test Case | Expected Result |
 | :--- | :--- | :--- |
-| **PERF‑01** | App cold start time | < 3 seconds on average device. |
-| **PERF‑02** | Memory usage | < 80 MB during idle; < 120 MB during run. |
-| **PERF‑03** | Battery drain | Not excessive; foreground service with wakelock during run only. |
-| **PERF‑04** | UI smoothness | Scrolling lists (museums, logs) should be smooth (60 fps). |
+| **PERF‑01** | App cold start | < 3 seconds. |
+| **PERF‑02** | Memory usage | Idle < 80 MB; during run < 120 MB. |
+| **PERF‑03** | Battery drain | Not excessive; foreground service with wakelock only active during run. |
+| **PERF‑04** | UI smoothness | Scrolling lists (museums, logs) maintain ~60 fps. |
+| **PERF‑05** | Alarm precision | 99% of alarms fire within ±1 second of target. |
+
+---
+
+## 14. Real‑Time Updates & Central DataStore
+
+| ID | Test Case | Expected Result |
+| :--- | :--- | :--- |
+| **RT‑01** | Config change updates other screens | Change active site in ConfigScreen → Dashboard Quick Stats updates without refresh. |
+| **RT‑02** | Add museum in ConfigScreen | New museum appears in ScheduleScreen museum dropdown without restarting app. |
+| **RT‑03** | Delete credential | Credential removed from ScheduleScreen dropdown immediately. |
+| **RT‑04** | Change default credential | ScheduleScreen pre‑selection updates to the new default. |
+| **RT‑05** | Change preferred museum slug | Dashboard preferred museum name changes instantly. |
