@@ -419,16 +419,42 @@ fun ScheduleScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(sortedRuns) { run ->
+                        var showDeleteDialog by remember { mutableStateOf(false) }
+                        
                         RunItem(
                             run = run,
                             config = config,
-                            onDelete = {
-                                scope.launch {
-                                    configManager.removeScheduledRun(run.id)
-                                    AlarmScheduler(context).cancelRun(run.id)
-                                }
-                            }
+                            onDelete = { showDeleteDialog = true }
                         )
+                        
+                        if (showDeleteDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = { Text("Delete Scheduled Run") },
+                                text = { 
+                                    val museumName = config?.admin?.sites?.get(run.siteKey)?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
+                                    Text("Delete scheduled run for $museumName?") 
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                configManager.removeScheduledRun(run.id)
+                                                AlarmScheduler(context).cancelRun(run.id)
+                                            }
+                                            showDeleteDialog = false
+                                        }
+                                    ) {
+                                        Text("Delete")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -521,7 +547,9 @@ private fun RunItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(run.dropTimeMillis)),
+                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).apply {
+                        timeZone = TimeZone.getTimeZone(run.timezone)
+                    }.format(Date(run.dropTimeMillis)),
                     style = MaterialTheme.typography.bodySmall
                 )
                 credential?.let {

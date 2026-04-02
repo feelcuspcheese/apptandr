@@ -27,6 +27,7 @@ class ConfigManager private constructor(private val context: Context) {
     
     companion object {
         private val CONFIG_KEY = stringPreferencesKey("app_config")
+        private val WIZARD_COMPLETED_KEY = booleanPreferencesKey("wizard_completed")
         
         @Volatile
         private var instance: ConfigManager? = null
@@ -35,6 +36,26 @@ class ConfigManager private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: ConfigManager(context.applicationContext).also { instance = it }
             }
+        }
+    }
+    
+    /**
+     * Check if the first-run wizard has been completed.
+     */
+    suspend fun isWizardCompleted(): Boolean {
+        return context.dataStore.data.map { prefs ->
+            prefs[WIZARD_COMPLETED_KEY] ?: false
+        }.first()
+    }
+    
+    /**
+     * Set the wizard completed flag.
+     */
+    suspend fun setWizardCompleted(completed: Boolean) {
+        context.dataStore.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[WIZARD_COMPLETED_KEY] = completed
+            }.toPreferences()
         }
     }
     

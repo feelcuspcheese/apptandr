@@ -7,9 +7,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +21,7 @@ import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.ui.navigation.BottomNavItem
 import com.booking.bot.ui.screens.*
+import kotlinx.coroutines.launch
 
 /**
  * Main Activity - entry point for the app.
@@ -75,47 +76,82 @@ fun BookingBotApp() {
     var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val configManager = remember { ConfigManager.getInstance(context) }
-
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            NavigationBar {
-                BottomNavItem.items.forEachIndexed { index, item ->
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.title) },
-                        label = { Text(item.title) },
-                        selected = selectedTab == index,
-                        onClick = {
-                            selectedTab = index
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
+    val scope = rememberCoroutineScope()
+    
+    // Wizard state - check if first-run wizard has been completed (WIZ-01 through WIZ-08)
+    var showWizard by remember { mutableStateOf(false) }
+    var wizardCheckComplete by remember { mutableStateOf(false) }
+    
+    // Check wizard status on launch
+    LaunchedEffect(Unit) {
+        val completed = configManager.isWizardCompleted()
+        showWizard = !completed
+        wizardCheckComplete = true
+    }
+    
+    if (!wizardCheckComplete) {
+        // Show loading while checking wizard status
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+    
+    // Show wizard if first run
+    if (showWizard) {
+        WizardScreen(
+            configManager = configManager,
+            onComplete = {
+                showWizard = false
+            },
+            onCancel = {
+                // Cancel should not save config or set flag (WIZ-08)
+                showWizard = false
+            }
+        )
+    } else {
+        // Show main UI
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                NavigationBar {
+                    BottomNavItem.items.forEachIndexed { index, item ->
+                        NavigationBarItem(
+                            icon = { Icon(item.icon, contentDescription = item.title) },
+                            label = { Text(item.title) },
+                            selected = selectedTab == index,
+                            onClick = {
+                                selectedTab = index
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = "dashboard",
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable("dashboard") {
-                DashboardScreen(configManager = configManager)
-            }
-            composable("config") {
-                ConfigScreen(configManager = configManager)
-            }
-            composable("schedule") {
-                ScheduleScreen(configManager = configManager)
-            }
-            composable("logs") {
-                LogsScreen()
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = "dashboard",
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                composable("dashboard") {
+                    DashboardScreen(configManager = configManager)
+                }
+                composable("config") {
+                    ConfigScreen(configManager = configManager)
+                }
+                composable("schedule") {
+                    ScheduleScreen(configManager = configManager)
+                }
+                composable("logs") {
+                    LogsScreen()
+                }
             }
         }
     }

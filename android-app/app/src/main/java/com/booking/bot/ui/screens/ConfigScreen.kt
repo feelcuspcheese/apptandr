@@ -719,6 +719,10 @@ private fun SitesTab(
             if (site != null) {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        // Visual cue for site being edited (SITE-02)
+                        Text("Editing ${site.name} Settings", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
                         Text("Site Configuration", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
                         
