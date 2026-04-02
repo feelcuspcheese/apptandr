@@ -3,8 +3,14 @@ package com.booking.bot.scheduler
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.booking.bot.data.ConfigManager
+import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
 import com.booking.bot.service.BookingForegroundService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * AlarmReceiver following TECHNICAL_SPEC.md section 6.2.
@@ -24,6 +30,7 @@ class AlarmReceiver : BroadcastReceiver() {
             timezone = intent.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
         )
         
+        LogManager.addLog("INFO", "Starting Go agent for run ${run.id}")
         BookingForegroundService.start(context, run)
     }
 }

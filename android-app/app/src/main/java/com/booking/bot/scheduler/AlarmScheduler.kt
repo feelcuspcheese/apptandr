@@ -50,6 +50,10 @@ class AlarmScheduler(private val context: Context) {
                 pendingIntent
             )
         }
+        
+        // Log alarm scheduled event
+        val utcTime = java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString()
+        LogManager.addLog("INFO", "Alarm scheduled for run ${run.id} at $utcTime")
     }
     
     /**
@@ -65,5 +69,8 @@ class AlarmScheduler(private val context: Context) {
         )
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(pendingIntent)
+        
+        // Log alarm cancelled event
+        LogManager.addLog("INFO", "Alarm cancelled for run $runId")
     }
 }

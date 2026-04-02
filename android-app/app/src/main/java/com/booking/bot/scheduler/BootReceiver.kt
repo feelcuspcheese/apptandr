@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.booking.bot.data.ConfigManager
+import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,10 +26,12 @@ class BootReceiver : BroadcastReceiver() {
                 
                 // Re-schedule only future runs (filter out past runs)
                 val currentTime = System.currentTimeMillis()
-                config.scheduledRuns.forEach { run: ScheduledRun ->
-                    if (run.dropTimeMillis > currentTime) {
-                        scheduler.scheduleRun(run)
-                    }
+                val futureRuns = config.scheduledRuns.filter { it.dropTimeMillis > currentTime }
+                
+                LogManager.addLog("INFO", "Restoring ${futureRuns.count()} scheduled runs after reboot")
+                
+                futureRuns.forEach { run: ScheduledRun ->
+                    scheduler.scheduleRun(run)
                 }
             }
         }

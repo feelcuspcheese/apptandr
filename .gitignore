@@ -9,19 +9,42 @@
 
 # Dependencies
 .gradle/
-build/
-app/build/
+node_modules/
+vendor/
 
-# Environment specific
-.local.properties
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
 .idea/
 *.iml
 *.iws
+*.swo
 
-# Log files
-*.log
+# Android specific
+*.keystore
+local.properties
+captures/
+.externalNativeBuild/
+.gradle/
+*.ap_
+*.apks
+*.aab
 
-# OS generated files
+# Build outputs
+build/
+app/build/
+out/
+
+# System files
 .DS_Store
 Thumbs.db
 ```
