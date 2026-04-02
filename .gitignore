@@ -1,44 +1,34 @@
 ```
-# Compiled and build artifacts
+# Kotlin/Android build artifacts
 *.class
-*.dex
-*.so
+*.jar
+*.war
 *.aar
 *.apk
-*.jar
+*.dex
 
-# Dependencies
+# Gradle
 .gradle/
-node_modules/
-vendor/
+build/
+intermediates/
+outputs/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
+# Android
+*.ap_
+*.aab
+*.so
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
+# IDE
 .idea/
 *.iml
-*.iws
 *.ipr
+*.iws
 
-# Android specific
-*.keystore
+# Temp files
+*.tmp
+*.temp
+*.log
+
+# Local configuration
 local.properties
-captures/
-.externalNativeBuild
-.gradle
-build/
-app/build/
-
-# Kotlin specific
-kotlin/
-*.kotlin_metadata
 ```
