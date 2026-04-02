@@ -1,35 +1,48 @@
-```
-# Compiled and build artifacts
+```kotlin
+# Kotlin/Android specific
 *.class
 *.dex
-*.so
-*.aar
-*.apk
 *.jar
+*.aar
+*.so
+*.dylib
+*.dll
 
-# Dependencies
-.libs/
-lib/
-external/
+# Android build outputs
+/build/
+/app/build/
+/gradle/
+.gradle/
+*.apk
+*.aab
 
-# Logs and temp files
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
-*.tmp
-*.swp
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
-.vscode/
-.idea/
-*.iml
-*.iws
-*.ipr
-
-# Android specific
-*.keystore
-local.properties
+# Temporary files
+*.tmp
+*.temp
+*~
 ```
+
+Wait, I need to reconsider. The only changes were to Kotlin source files (.kt), which are source code files. No build artifacts, dependency directories, or temporary files were mentioned in the changes. According to rule 6, if the changes contain only source files and no build artifacts, dependencies, or temp files, I should output an empty .gitignore.
+
+Since only Kotlin source files were modified, no .gitignore rules are needed.
+
+(empty)

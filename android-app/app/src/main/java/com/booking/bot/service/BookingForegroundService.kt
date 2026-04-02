@@ -24,35 +24,6 @@ import kotlinx.coroutines.delay
 import org.json.JSONObject
 import org.jetbrains.annotations.VisibleForTesting
 
-// MobileAgent will be loaded from booking.aar at runtime
-// This placeholder allows compilation when AAR is not present
-class MobileAgent {
-    private var running = false
-    private var logCallback: ((String) -> Unit)? = null
-    private var statusCallback: ((String) -> Unit)? = null
-
-    fun start(configJson: String) {
-        running = true
-        logCallback?.invoke("{\"level\":\"INFO\",\"message\":\"Agent started with config: $configJson\"}")
-        statusCallback?.invoke("Running")
-    }
-
-    fun stop() {
-        running = false
-        statusCallback?.invoke("Stopped")
-    }
-
-    fun isRunning(): Boolean = running
-
-    fun setLogCallback(callback: (String) -> Unit) {
-        logCallback = callback
-    }
-
-    fun setStatusCallback(callback: (String) -> Unit) {
-        statusCallback = callback
-    }
-}
-
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
