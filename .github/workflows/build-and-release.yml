@@ -59,11 +59,11 @@ jobs:
             - Built at: ${{ github.event.head_commit.timestamp }}
             
             **Installation:**
-            Download `app-debug-universal.apk` and install on your Android device.
+            Download `app-debug.apk` and install on your Android device.
           draft: false
           prerelease: true
           files: |
-            android-app/app/build/outputs/apk/debug/app-debug-universal.apk
+            android-app/app/build/outputs/apk/debug/app-debug.apk
             android-app/libs/booking.aar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: android-app/app/build/outputs/apk/debug/app-debug-universal.apk
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Upload AAR (Artifact)
