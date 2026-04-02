@@ -19,6 +19,7 @@ var (
 )
 
 // SetLogCallback sets a callback function to receive log messages from Go agent.
+// The callback receives JSON strings like: {"timestamp":123456,"level":"INFO","message":"Pre-warming..."}
 func SetLogCallback(fn func(string)) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -132,12 +133,15 @@ func (h *LogCallbackHook) Levels() []logrus.Level {
 }
 
 func (h *LogCallbackHook) Fire(entry *logrus.Entry) error {
-	msg := fmt.Sprintf("[%s] %s", entry.Level.String(), entry.Message)
+	// Format log entry as JSON per TECHNICAL_SPEC.md section 8
+	timestamp := entry.Time.UnixMilli()
+	level := entry.Level.String()
+	message := entry.Message
+	
+	jsonLog := fmt.Sprintf(`{"timestamp":%d,"level":"%s","message":"%s"}`, timestamp, level, message)
+	
 	if h.callback != nil {
-		h.callback(msg)
+		h.callback(jsonLog)
 	}
 	return nil
 }
-
-// Helper types for config (mirroring pkg/config but simplified for JSON unmarshaling)
-// These are here to avoid circular dependencies and ensure gomobile compatibility.

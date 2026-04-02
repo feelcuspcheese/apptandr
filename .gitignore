@@ -1,16 +1,16 @@
-```
+```go
 # Compiled and build artifacts
-*.class
-*.dex
+*.o
+*.obj
+*.a
 *.so
-*.aar
-*.apk
-*.jar
+*.dll
+*.exe
+*.out
 
 # Dependencies
-.libs/
-lib/
-external/
+vendor/
+Godeps/
 
 # Logs and temp files
 *.log
@@ -25,11 +25,25 @@ external/
 # Editors
 .vscode/
 .idea/
-*.iml
-*.iws
-*.ipr
+*.swp
+*.swo
 
-# Android specific
-*.keystore
-local.properties
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Build artifacts
+bin/
+pkg/
+*.test
+*.prof
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```
+
+Wait, I need to reconsider this. Looking at the input again, only `mobile/mobile.go` was modified, which is a Go source file. There are no build artifacts, dependency directories, or temporary files in the change list that would warrant adding ignore rules.
+
+(empty — output nothing)
