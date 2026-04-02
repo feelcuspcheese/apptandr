@@ -1,43 +1,44 @@
-```yaml
-name: Build and Release
+```
+# Build artifacts
+build/
+*.apk
+*.aar
+*.jar
+*.class
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.19'
-        
-    - name: Install dependencies
-      run: |
-        go mod tidy
-        
-    - name: Build
-      run: |
-        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o myapp .
-        
-    - name: Test
-      run: go test -v ./...
-      
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Android Studio
+*.iml
+*.hprof
+*.lock
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Debug & release builds
+debug/
+release/
+
+# Output folder for release build
+output.json
+
+# Log files
+*.log
+
+# Environment
+.env
+.env.local
+.env.*
+
+# IDE
+.vscode/
+.idea/
 ```
