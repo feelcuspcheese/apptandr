@@ -1,37 +1,34 @@
 ```
 # Dependencies
-go.mod
-go.sum
+go/pkg/
 
 # Build artifacts
 *.o
 *.a
 *.so
-*.dylib
-*.dll
 *.exe
-*.out
+*.dll
+*.dylib
+*.jar
+*.war
+*.class
 
 # Go-specific
 *.test
 *.prof
 cover.out
-coverage.html
 
-# General build/output directories
-bin/
-pkg/
-target/
-
-# Logs
+# Logs and temp files
 *.log
+*.tmp
+*.swp
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
-# Editors/IDE
+# Editors
 .vscode/
 .idea/
 *.swp
@@ -46,58 +43,7 @@ coverage/
 htmlcov/
 .coverage
 
-# Cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# Virtual environments
-venv/
-.venv/
-env/
-.ENV
-
-# Node
-node_modules/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-.ENV
-.python-version
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-
-# Java
-*.class
-*.jar
-*.war
-*.ear
-*.nar
-target/
-.gradle/
-build/
-
-# C/C++
-*.o
-*.a
-*.so
-*.dll
-*.exe
-*.out
-*.obj
-
-# Compressed
+# Compressed files
 *.zip
 *.gz
 *.tar
@@ -116,8 +62,4 @@ build/
 *.Z
 *.lz
 *.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```

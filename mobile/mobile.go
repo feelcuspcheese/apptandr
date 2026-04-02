@@ -11,50 +11,42 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// MobileAgent is the main class exposed to Android per TECHNICAL_SPEC.md section 8.
-// It provides instance methods: start(), stop(), isRunning(), setLogCallback(), setStatusCallback().
-type MobileAgent struct {
-	mu         sync.Mutex
-	ag         *agent.Agent
-	logger     *logrus.Logger
-	logCb      func(string)
-	statusCb   func(string)
-}
-
-// NewMobileAgent creates a new MobileAgent instance.
-func NewMobileAgent() *MobileAgent {
-	return &MobileAgent{}
-}
+var (
+	currentAgent   *agent.Agent
+	mu             sync.Mutex
+	logCallback    func(string)
+	statusCallback func(string)
+)
 
 // SetLogCallback sets a callback function to receive log messages from Go agent.
 // The callback receives JSON strings like: {"timestamp":123456,"level":"INFO","message":"Pre-warming..."}
-func (m *MobileAgent) SetLogCallback(fn func(string)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.logCb = fn
+func SetLogCallback(fn func(string)) {
+	mu.Lock()
+	defer mu.Unlock()
+	logCallback = fn
 }
 
 // SetStatusCallback sets a callback function to receive status updates.
-func (m *MobileAgent) SetStatusCallback(fn func(string)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.statusCb = fn
+func SetStatusCallback(fn func(string)) {
+	mu.Lock()
+	defer mu.Unlock()
+	statusCallback = fn
 }
 
 // Start starts the booking agent with the given JSON configuration.
 // Returns true if started successfully, false otherwise.
-func (m *MobileAgent) Start(configJSON string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func Start(configJSON string) bool {
+	mu.Lock()
+	defer mu.Unlock()
 
-	if m.ag != nil && m.ag.IsRunning() {
-		m.sendLog("Agent already running")
+	if currentAgent != nil && currentAgent.IsRunning() {
+		sendLog("Agent already running")
 		return false
 	}
 
 	var cfg config.AppConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
-		m.sendLog(fmt.Sprintf("Failed to parse config JSON: %v", err))
+		sendLog(fmt.Sprintf("Failed to parse config JSON: %v", err))
 		return false
 	}
 
@@ -65,68 +57,62 @@ func (m *MobileAgent) Start(configJSON string) bool {
 	})
 
 	// Custom hook to send logs to callback
-	logger.AddHook(&LogCallbackHook{callback: m.sendLog})
+	logger.AddHook(&LogCallbackHook{callback: sendLog})
 
 	a := agent.NewAgent(&cfg, logger)
-	m.ag = a
+	currentAgent = a
 
 	go func() {
 		// Run the agent for the first scheduled run
 		if len(cfg.ScheduledRuns) == 0 {
-			m.sendLog("No scheduled runs found in config")
+			sendLog("No scheduled runs found in config")
 			return
 		}
 		runID := cfg.ScheduledRuns[0].ID
 		if err := a.Start(runID); err != nil {
-			m.sendLog(fmt.Sprintf("Agent error: %v", err))
+			sendLog(fmt.Sprintf("Agent error: %v", err))
 		} else {
-			m.sendLog("Agent finished successfully")
+			sendLog("Agent finished successfully")
 		}
-		// Clear agent reference after completion
-		m.mu.Lock()
-		m.ag = nil
-		m.mu.Unlock()
-		m.sendStatus("stopped")
 	}()
 
-	m.sendStatus("running")
+	sendStatus("running")
 	return true
 }
 
 // Stop stops the currently running agent.
-func (m *MobileAgent) Stop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func Stop() {
+	mu.Lock()
+	defer mu.Unlock()
 
-	if m.ag != nil {
-		m.ag.Stop()
-		m.ag = nil
-		m.sendStatus("stopped")
-		m.sendLog("Agent stopped by user")
+	if currentAgent != nil {
+		currentAgent.Stop()
+		currentAgent = nil
+		sendStatus("stopped")
+		sendLog("Agent stopped by user")
 	}
 }
 
 // IsRunning returns true if the agent is currently running.
-func (m *MobileAgent) IsRunning() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.ag != nil && m.ag.IsRunning()
+func IsRunning() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return currentAgent != nil && currentAgent.IsRunning()
 }
 
-// Internal helpers
-func (m *MobileAgent) sendLog(msg string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.logCb != nil {
-		m.logCb(msg)
+func sendLog(msg string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if logCallback != nil {
+		logCallback(msg)
 	}
 }
 
-func (m *MobileAgent) sendStatus(status string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.statusCb != nil {
-		m.statusCb(status)
+func sendStatus(status string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if statusCallback != nil {
+		statusCallback(status)
 	}
 }
 
