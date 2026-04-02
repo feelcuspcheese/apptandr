@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for the release (e.g., v1.0.0)'
+        description: 'Tag name'
         required: true
         type: string
 
@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-          cache: true
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -33,35 +32,31 @@ jobs:
 
       - name: Install gomobile and gobind
         run: |
-          # Install both tools at once to ensure version parity
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          
-          # Add GOPATH/bin to the PATH for the duration of this job
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          
-          # Initialize gomobile (must be able to find gobind in PATH)
+          # Use the absolute path to bin for init
           $(go env GOPATH)/bin/gomobile init
 
-      - name: Priming Go Module and Bind dependencies
+      - name: Fix Go Dependencies
         run: |
-          # Critical Fix: Explicitly add the bind package to satisfying the toolchain check
+          # 1. Force the binder package into the module cache
           go get golang.org/x/mobile/bind
+          # 2. Ensure all agent internal packages are tidy
           go mod tidy
           go mod download
 
-      - name: Build Go AAR (Section 8 Tech Spec)
+      - name: Build Go AAR
         run: |
           mkdir -p android-app/libs
-          
-          # Use relative path ./mobile to ensure tool chain local resolution
-          # Target API 23 for wide compatibility per Tech Spec
+          # IMPORTANT: We use the module-aware path 'agent/mobile'
+          # This ensures that internal imports like 'agent/pkg/config' resolve correctly
           gomobile bind \
             -target=android \
             -androidapi 23 \
             -v \
             -o android-app/libs/booking.aar \
-            ./mobile
+            agent/mobile
         env:
           GO111MODULE: on
           CGO_ENABLED: 1
@@ -70,7 +65,6 @@ jobs:
         run: |
           cd android-app
           chmod +x gradlew
-          # This builds the Universal APK as configured in your build.gradle.kts
           ./gradlew assembleRelease
 
       - name: Create Release
