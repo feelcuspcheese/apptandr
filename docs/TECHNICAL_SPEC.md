@@ -915,12 +915,12 @@ plugins {
 
 android {
     namespace = "com.booking.bot"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.booking.bot"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -964,6 +964,23 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
+    
+    // Android 16 compatibility: proper native library packaging
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += listOf("*.so")
+        }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/DEPENDENCIES"
+        }
+    }
+    
+    // Explicit native library handling for Android 16
+    androidResources {
+        generateLocaleConfig = false
+    }
 }
 
 dependencies {
@@ -1004,6 +1021,34 @@ dependencies {
 -keepclassmembers class * {
     @kotlinx.serialization.Serializable <fields>;
 }
+
+# Android 16 compatibility: keep native library classes
+-keep class * extends java.lang.Thread { *; }
+-keepclassmembers class * extends java.lang.Thread {
+    public void run();
+}
+
+# Keep foreground service
+-keep class com.booking.bot.service.** { *; }
+-keep class * extends android.app.Service { *; }
+
+# Keep scheduler components
+-keep class com.booking.bot.scheduler.** { *; }
+-keep class * extends android.content.BroadcastReceiver { *; }
+
+# Keep ViewModel and Lifecycle
+-keep class * extends androidx.lifecycle.ViewModel { *; }
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+
+# Keep Coroutines
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+
+# Keep DataStore
+-keep class androidx.datastore.preferences.** { *; }
+-keep class androidx.datastore.core.** { *; }
 ```
 
 ---
@@ -1025,7 +1070,7 @@ gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
 ## 13. Testing & Acceptance Criteria
 
 * App builds without errors on all supported ABIs.
-* App runs on Android 8.0 (API 26) and Android 14 (API 34) emulators/devices.
+* App runs on Android 8.0 (API 26) through Android 15 (API 35) emulators/devices.
 * PIN `1234` grants access to ConfigScreen.
 * General settings save and persist; changes immediately reflect in Dashboard and Schedule.
 * Admin can add/edit/delete museums; bulk import works with progress indicator and overwrite confirmation.
@@ -1041,6 +1086,7 @@ gomobile bind -target=android -o ../libs/booking.aar -androidapi 21 ./mobile
 * No experimental Compose APIs used; no compiler warnings.
 * Release APK builds and uploads to GitHub releases via CI.
 * Run cleanup and concurrency handling work as specified.
+* **Android 16 Compatibility:** The app uses `targetSdk = 35` (Android 15) for maximum compatibility with Android 16 devices while avoiding SDK 36 preview issues. Native library packaging is configured with `useLegacyPackaging = true` for proper JNI library loading on Android 16.
 
 ---
 
