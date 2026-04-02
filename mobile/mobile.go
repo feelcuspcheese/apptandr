@@ -12,26 +12,26 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// LogCallback matches the Kotlin interface for receiving JSON logs.
+// LogCallback matches the spec for setLogCallback((String) -> Unit)
 type LogCallback interface {
 	Log(message string)
 }
 
-// StatusCallback matches the Kotlin interface for agent status updates.
+// StatusCallback matches the spec for setStatusCallback((String) -> Unit)
 type StatusCallback interface {
 	OnStatus(status string)
 }
 
-// MobileAgent is the exported struct that gomobile binds to a Java class.
+// MobileAgent exports the class requested in TECHNICAL_SPEC.md Section 8
 type MobileAgent struct {
-	agent          *agent.Agent
+	agentInst      *agent.Agent
 	logCallback    LogCallback
 	statusCallback StatusCallback
 	mu             sync.RWMutex
 }
 
-// agentRequest matches the JSON wrapper sent by ConfigManager.kt.
-type agentRequest struct {
+// Internal wrapper to handle the complex JSON coming from Android DataStore
+type mobileStartRequest struct {
 	SiteKey    string           `json:"siteKey"`
 	MuseumSlug string           `json:"museumSlug"`
 	DropTime   string           `json:"dropTime"`
@@ -58,47 +58,42 @@ func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
 
 func (m *MobileAgent) Start(configJSON string) {
 	m.mu.Lock()
-	if m.agent != nil && m.agent.IsRunning() {
+	if m.agentInst != nil && m.agentInst.IsRunning() {
 		m.mu.Unlock()
-		m.fireLog("WARN", "Agent is already running")
 		return
 	}
 
-	var req agentRequest
+	var req mobileStartRequest
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Failed to parse config: %v", err))
+		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
 		return
 	}
 
-	// Setup internal configuration from the mobile request
+	// Reconstruct the internal config for the agent
 	cfg := req.FullConfig
 	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
-	runID := "mobile-" + time.Now().Format("150405")
+	runID := "run-" + time.Now().Format("150405")
 	
-	// Ensure the agent has the specific run in its queue
-	run := config.ScheduledRun{
-		ID:         runID,
-		SiteKey:    req.SiteKey,
-		MuseumSlug: req.MuseumSlug,
-		DropTime:   dropTime,
-		Mode:       req.Mode,
+	cfg.ScheduledRuns = []config.ScheduledRun{
+		{
+			ID:         runID,
+			SiteKey:    req.SiteKey,
+			MuseumSlug: req.MuseumSlug,
+			DropTime:   dropTime,
+			Mode:       req.Mode,
+		},
 	}
-	cfg.ScheduledRuns = []config.ScheduledRun{run}
 
 	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-	// Hook logrus into the Android callback
-	logger.AddHook(&androidLogHook{m: m})
+	logger.AddHook(&androidHook{m: m}) // Pipe logrus logs to Android callback
 
-	m.agent = agent.NewAgent(&cfg, logger)
+	m.agentInst = agent.NewAgent(&cfg, logger)
 	m.mu.Unlock()
 
 	go func() {
 		m.fireStatus("running")
-		if err := m.agent.Start(runID); err != nil {
-			m.fireLog("ERROR", fmt.Sprintf("Agent failure: %v", err))
-		}
+		m.agentInst.Start(runID)
 		m.fireStatus("stopped")
 	}()
 }
@@ -106,31 +101,31 @@ func (m *MobileAgent) Start(configJSON string) {
 func (m *MobileAgent) Stop() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.agent != nil {
-		m.agent.Stop()
+	if m.agentInst != nil {
+		m.agentInst.Stop()
 	}
 }
 
 func (m *MobileAgent) IsRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.agent == nil {
+	if m.agentInst == nil {
 		return false
 	}
-	return m.agent.IsRunning()
+	return m.agentInst.IsRunning()
 }
 
-func (m *MobileAgent) fireLog(level, message string) {
+// fireLog formats Go logs as the JSON string Android expects: {"level":"...","message":"..."}
+func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
 	m.mu.RUnlock()
 	if cb != nil {
-		logObj := map[string]string{
+		out, _ := json.Marshal(map[string]string{
 			"level":   strings.ToUpper(level),
-			"message": message,
-		}
-		bytes, _ := json.Marshal(logObj)
-		cb.Log(string(bytes))
+			"message": msg,
+		})
+		cb.Log(string(out))
 	}
 }
 
@@ -143,12 +138,9 @@ func (m *MobileAgent) fireStatus(status string) {
 	}
 }
 
-type androidLogHook struct {
-	m *MobileAgent
-}
-
-func (h *androidLogHook) Levels() []logrus.Level { return logrus.AllLevels }
-func (h *androidLogHook) Fire(entry *logrus.Entry) error {
-	h.m.fireLog(entry.Level.String(), entry.Message)
+type androidHook struct{ m *MobileAgent }
+func (h *androidHook) Levels() []logrus.Level { return logrus.AllLevels }
+func (h *androidHook) Fire(e *logrus.Entry) error {
+	h.m.fireLog(e.Level.String(), e.Message)
 	return nil
 }
