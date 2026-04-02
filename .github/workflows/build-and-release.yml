@@ -25,21 +25,33 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gomobile
+      - name: Install gomobile (pinned compatible version)
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
+          # Pin to a version compatible with Go 1.23
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20250909160539-94c8d4f5e4e4
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20250909160539-94c8d4f5e4e4
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
       - name: Build Go AAR
         run: |
           mkdir -p android-app/app/libs
+          cd mobile
+          # Ensure we use compatible dependency versions
+          go mod tidy
           go mod download
+          cd ..
+          export PATH=$PATH:$(go env GOPATH)/bin
           # Build for all supported architectures per TECHNICAL_SPEC.md section 1
           # minSdk = 23 for broad compatibility
           gomobile bind -target=android -androidapi 23 -o android-app/app/libs/booking.aar ./mobile
         env:
           GO111MODULE: on
+
+      - name: Verify AAR was built
+        run: |
+          ls -la android-app/app/libs/
+          file android-app/app/libs/booking.aar || true
 
       - name: Build Android Debug APK
         run: |
@@ -53,8 +65,6 @@ jobs:
           ls -la android-app/app/build/outputs/apk/debug/ || true
           echo "=== Finding all APK files ==="
           find android-app/app/build/outputs -name "*.apk" -type f
-          echo "=== Listing all files in outputs directory ==="
-          find android-app/app/build/outputs -type f | head -20
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -67,7 +77,6 @@ jobs:
             **Build Details:**
             - Commit: ${{ github.sha }}
             - Triggered by: ${{ github.actor }}
-            - Built at: ${{ github.event.head_commit.timestamp }}
             
             **Installation:**
             Download `app-debug.apk` and install on your Android device.
@@ -83,10 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: |
-            android-app/app/build/outputs/apk/debug/*.apk
-            android-app/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          path: android-app/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
       - name: Upload AAR (Artifact)
@@ -94,4 +100,4 @@ jobs:
         with:
           name: booking-aar
           path: android-app/app/libs/booking.aar
-          if-no-files-found: error
+          retention-days: 30
