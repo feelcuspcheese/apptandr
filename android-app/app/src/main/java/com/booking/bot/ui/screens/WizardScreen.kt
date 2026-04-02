@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.FlowRow
 import com.booking.bot.data.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -323,7 +324,7 @@ fun WizardScreen(
                                                             
                                                             val newDefaultCredentialId = if (updatedSite.defaultCredentialId == cred.id) null else updatedSite.defaultCredentialId
                                                             val finalSite = updatedSite.copy(defaultCredentialId = newDefaultCredentialId)
-                                                            val finalAdmin = updatedAdmin.copy(sites = updatedAdmin.sites + (selectedSiteKey to finalSite))
+                                                            val finalAdmin = updatedAdmin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
                                                             configManager.updateAdmin(finalAdmin)
                                                         }
                                                     }

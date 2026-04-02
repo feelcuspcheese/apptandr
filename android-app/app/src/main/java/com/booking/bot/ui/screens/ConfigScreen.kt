@@ -1125,7 +1125,7 @@ private fun SitesTab(
                                 }
                                 val finalSite = siteConfig?.copy(defaultCredentialId = newDefaultCredentialId)
                                 val finalAdmin = if (finalSite != null) {
-                                    updatedAdmin.copy(sites = updatedAdmin.sites + (selectedSiteKey to finalSite))
+                                    updatedAdmin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
                                 } else {
                                     updatedAdmin
                                 }
