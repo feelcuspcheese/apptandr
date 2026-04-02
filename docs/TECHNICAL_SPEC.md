@@ -396,19 +396,54 @@ All screens use `androidx.compose.material3` stable components. The app uses a B
 **Content:**
 *   **Status Card:** Status: `${if (isRunning) "Running" else "Idle"}`
 *   **Next Run Countdown:** Computed from `config.scheduledRuns` sorted by `dropTimeMillis`. Show time remaining until the nearest run (or "No scheduled runs").
-*   **Start Now Button:** Creates a run with `dropTimeMillis = System.currentTimeMillis() + 30_000`, using:
-    *   `siteKey = config.admin.activeSite`
-    *   `museumSlug = config.general.preferredMuseumSlug` (if empty, use first museum in active site’s museums)
-    *   `credentialId = config.admin.sites[activeSite].defaultCredentialId`
-    *   `mode = config.general.mode`
-    *   `timezone = TimeZone.getDefault().id`
-    
+*  **Countdown Display:**  
+  A `Text` field below the Start Now button that shows the time remaining until the next scheduled run (if any). For the “Start Now” action, this field may be temporarily overridden to show the 30‑second countdown, or a separate `Text` can be used. The spec requires at least one visual indication of the pending start.
+* **Start Now Button:**  
+  - When clicked, immediately disable the button and show a `CircularProgressIndicator` (or change text to “Starting...”).  
+  - Create a run with `dropTimeMillis = System.currentTimeMillis() + 30_000` (30 seconds from now).  
+  - Display a **countdown timer** (e.g., “Agent starts in 30s”) that updates every second.  
+  - After the run is created and the foreground service is started, the button may be re‑enabled (or kept disabled until the run finishes).  
+  - If the run fails to start (e.g., invalid configuration), show a toast and re‑enable the button.
+
+  **Implementation snippet:**
+  ```kotlin
+  var isStarting by remember { mutableStateOf(false) }
+  var countdown by remember { mutableStateOf(0) }
+  var countdownJob: Job? = null
+
+  Button(
+      onClick = {
+          isStarting = true
+          countdown = 30
+          countdownJob = scope.launch {
+              while (countdown > 0) {
+                  delay(1000)
+                  countdown--
+              }
+              // Actually start the agent
+              startNow()
+              isStarting = false
+          }
+      },
+      enabled = !isStarting && !isRunning
+  ) {
+      if (isStarting) {
+          CircularProgressIndicator(modifier = Modifier.size(20.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Starting in ${countdown}s")
+      } else {
+          Text("Start Now")
+      }
+  }
+  ```kotlin
+   
     Adds run via `configManager.addScheduledRun` and calls `AlarmScheduler.scheduleRun`.
 
     **[FIX (BUG-005)]:** Immediately start the foreground service so that logs appear instantly:
-    ```kotlin
+
     BookingForegroundService.start(context, run)
-    ```
+
+  
 *   **Stop Button:** Calls `BookingForegroundService.stop(context)`. If a run is active, also stops the service.
 *   **Quick Stats:** Show:
     *   Active Site: `config.admin.sites[config.admin.activeSite]?.name ?: config.admin.activeSite`
@@ -653,17 +688,20 @@ ExposedDropdownMenuBox(
 ```
 
 ### 5.4 LogsScreen
+
 **State:**
-*   `val logs by LogManager.logFlow.collectAsState(initial = emptyList())`
+- `val logsState = remember { mutableStateListOf<LogEntry>() }`
+- Load existing logs on first composition using `LaunchedEffect(Unit) { logsState.addAll(LogManager.getCurrentLogs()) }`
+- Collect new logs via `LaunchedEffect(Unit) { LogManager.logFlow.collect { logsState.add(it) } }`
 
 **UI:**
-*   TopBar with title "Logs" and three icons: Export, Clear, and Debug JSON (optional).
-*   LazyColumn displaying each log entry with timestamp, level, and message. Use `rememberLazyListState` and auto‑scroll toggle (Switch) to enable/disable scrolling to bottom on new entries.
-*   **Export:** Calls `LogManager.exportLogs(context)` and shares the URI via `Intent.ACTION_SEND`.
-*   **Clear:** Calls `LogManager.clearInMemory()`.
-*   **Debug JSON:** When clicked, fetch the first pending run from `configManager.configFlow.first().scheduledRuns` (if any), build the JSON using `ConfigManager.buildAgentConfig`, and show it in an AlertDialog with a copy button.
+- TopBar with title "Logs" and three icons: Export, Clear, and Debug JSON (optional).
+- `LazyColumn` displaying each log entry with timestamp, level, and message. Use `rememberLazyListState` and auto‑scroll toggle (Switch) to enable/disable scrolling to bottom on new entries.
+- **Export:** Calls `LogManager.exportLogs(context)` and shares the URI via `Intent.ACTION_SEND`.
+- **Clear:** Calls `LogManager.clearInMemory()` and also clears the displayed `logsState`.
+- **Debug JSON:** When clicked, fetch the first pending run from `configManager.configFlow.first().scheduledRuns` (if any), build the JSON using `ConfigManager.buildAgentConfig`, and show it in an `AlertDialog` with a copy button.
 
-*Implementation note:* The debug JSON viewer is hidden behind an optional setting or long‑press on the logs title.
+**Log persistence across screens:** When the LogsScreen is opened, it must display all log entries currently stored in the in‑memory buffer (`LogManager.getCurrentLogs()`). New logs must be appended in real time. This ensures that users do not lose log history when navigating away and back. The log buffer survives configuration changes (e.g., rotation) because the log list is held in a `remember` state (or a ViewModel scoped to the activity).
 
 ### 5.5 Timezone Handling (Detailed)
 
@@ -890,7 +928,7 @@ class BookingForegroundService : LifecycleService() {
 
 ---
 
-## 7. LogManager
+### 7.1 LogManager Implementation (updated)
 
 ```kotlin
 object LogManager {
@@ -903,7 +941,7 @@ object LogManager {
 
     fun init(context: Context) {
         logFile = File(context.filesDir, "logs.txt")
-        addLog("INFO", "App initialised – log system ready")   // Initial log
+        addLog("INFO", "App initialised – log system ready")
     }
 
     fun addLog(level: String, message: String) {
@@ -915,6 +953,9 @@ object LogManager {
         writeToFile(entry)
         _logFlow.tryEmit(entry)
     }
+
+    // NEW: Returns a copy of the current in‑memory buffer
+    fun getCurrentLogs(): List<LogEntry> = synchronized(buffer) { buffer.toList() }
 
     private fun writeToFile(entry: LogEntry) {
         try {
@@ -930,11 +971,10 @@ object LogManager {
 
     fun clearInMemory() {
         synchronized(buffer) { buffer.clear() }
+        // Also clear the flow? Not needed – just buffer.
     }
 }
 ```
-**[FIX (LOG-08)]:** The `init` function now adds an initial log entry, visible in LogsScreen.
-
 
 ### 7.4 Required Log Events (Detailed Implementation)
 
@@ -1322,6 +1362,12 @@ Make it executable: `chmod +x scripts/build-go.sh`. Run before building the Andr
 | **LOG‑08** | LogManager initialisation log | On app start, a log “App initialised – log system ready” is visible in LogsScreen. |
 | **LOG‑09** | Go agent log callback works | During a run, logs from the Go agent appear in LogsScreen (e.g., “Pre‑warming...”, “Strike started”). |
 | **TZ‑01 to TZ‑07** | Timezone conversion tests | As originally defined – verify correct UTC conversion, DST handling, JSON fields, etc. |
+| ID | Test Case | Expected Result |
+|----|-----------|------------------|
+| **LOG‑19** | Logs survive screen navigation | Generate a log, go to another screen, return to LogsScreen – the previous log is still visible. |
+| **LOG‑20** | Logs survive rotation | Rotate device while on LogsScreen – all logs remain visible. |
+| **LOG‑21** | Logs show buffer on open | Before opening LogsScreen, generate several logs. Then open LogsScreen – all those logs appear immediately. |
+| **DB‑10** | Start Now – countdown and feedback | After clicking Start Now, the button is disabled and shows a progress indicator with a countdown (e.g., “Starting in 30s”). The countdown decreases every second. After 30 seconds, the agent starts and logs appear. |
 
 *All other existing test cases (CONF‑01 to CONF‑07, DB‑01 to DB‑08, GEN‑01 to GEN‑09, SITE‑01 to SITE‑16, SCH‑01 to SCH‑13, RUN‑01 to RUN‑11, JSON‑01 to JSON‑07, LOG‑01 to LOG‑07, WIZ‑01 to WIZ‑08, EDGE‑01 to EDGE‑12, INT‑01 to INT‑07, REL‑01 to REL‑06, PERF‑01 to PERF‑05, RT‑01 to RT‑05) remain valid.*
 
