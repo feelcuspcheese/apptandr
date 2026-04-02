@@ -64,31 +64,7 @@ data class SiteConfig(
     val museums: Map<String, Museum> = emptyMap(),
     val credentials: List<CredentialSet> = emptyList(),
     var defaultCredentialId: String? = null
-) {
-    fun copy(
-        name: String = this.name,
-        baseUrl: String = this.baseUrl,
-        availabilityEndpoint: String = this.availabilityEndpoint,
-        digital: Boolean = this.digital,
-        physical: Boolean = this.physical,
-        location: String = this.location,
-        museums: Map<String, Museum> = this.museums,
-        credentials: List<CredentialSet> = this.credentials,
-        defaultCredentialId: String? = this.defaultCredentialId
-    ): SiteConfig {
-        return SiteConfig(
-            name = name,
-            baseUrl = baseUrl,
-            availabilityEndpoint = availabilityEndpoint,
-            digital = digital,
-            physical = physical,
-            location = location,
-            museums = museums,
-            credentials = credentials,
-            defaultCredentialId = defaultCredentialId
-        )
-    }
-}
+)
 
 /**
  * AdminConfig data class (section 3.5)

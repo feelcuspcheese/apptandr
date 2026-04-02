@@ -57,7 +57,7 @@ fun ConfigScreen(
                         label = { Text("PIN") },
                         singleLine = true,
                         isError = pinError,
-                        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(
+                        keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.NumberPassword
                         )
                     )
