@@ -1,28 +1,33 @@
 package mobile
 
 import (
-	"agent/pkg/agent"
-	"agent/pkg/config"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"agent/pkg/agent"
+	"agent/pkg/config"
+
 	"github.com/sirupsen/logrus"
+	
+	// This dummy import ensures the bind package stays in go.mod
+	// and is available to the gomobile toolchain during the build.
+	_ "golang.org/x/mobile/bind" 
 )
 
-// LogCallback matches the Kotlin lambda: (String) -> Unit
+// LogCallback receives JSON-formatted logs from the agent.
 type LogCallback interface {
 	Log(message string)
 }
 
-// StatusCallback matches the Kotlin lambda: (String) -> Unit
+// StatusCallback receives status updates ("running", "stopped").
 type StatusCallback interface {
 	OnStatus(status string)
 }
 
-// MobileAgent matches the class used in BookingForegroundService.kt
+// MobileAgent is the main class instantiated by the Android app.
 type MobileAgent struct {
 	agentInst      *agent.Agent
 	logCallback    LogCallback
@@ -30,33 +35,14 @@ type MobileAgent struct {
 	mu             sync.RWMutex
 }
 
-// NewMobileAgent is the constructor for Kotlin's MobileAgent()
+// NewMobileAgent is the constructor for Kotlin's MobileAgent().
 func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
 
-// mobileRequest matches the JSON wrapper sent by ConfigManager.kt
-type mobileRequest struct {
-	SiteKey    string           `json:"siteKey"`
-	MuseumSlug string           `json:"museumSlug"`
-	DropTime   string           `json:"dropTime"`
-	Mode       string           `json:"mode"`
-	Timezone   string           `json:"timezone"`
-	FullConfig config.AppConfig `json:"fullConfig"`
-}
-
-func (m *MobileAgent) SetLogCallback(cb LogCallback) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.logCallback = cb
-}
-
-func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.statusCallback = cb
-}
-
+// Start initiates the agent using a JSON configuration string.
+// This string-based approach is the most stable way to pass complex 
+// Go structs (with maps/durations) across the language boundary.
 func (m *MobileAgent) Start(configJSON string) {
 	m.mu.Lock()
 	if m.agentInst != nil && m.agentInst.IsRunning() {
@@ -64,19 +50,26 @@ func (m *MobileAgent) Start(configJSON string) {
 		return
 	}
 
-	var req mobileRequest
+	// Wrapper to match ConfigManager.kt JSON structure
+	var req struct {
+		SiteKey    string           `json:"siteKey"`
+		MuseumSlug string           `json:"museumSlug"`
+		DropTime   string           `json:"dropTime"`
+		Mode       string           `json:"mode"`
+		Timezone   string           `json:"timezone"`
+		FullConfig config.AppConfig `json:"fullConfig"`
+	}
+
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Failed to parse config: %v", err))
+		m.fireLog("ERROR", fmt.Sprintf("Unmarshal Error: %v", err))
 		return
 	}
 
-	// Prepare config and run ID for the agent
 	cfg := req.FullConfig
 	dropTime, _ := time.Parse(time.RFC3339, req.DropTime)
-	runID := "mobile-" + time.Now().Format("150405")
+	runID := "mobile-run-" + time.Now().Format("150405")
 	
-	// Ensure the specific run is in the config
 	cfg.ScheduledRuns = []config.ScheduledRun{
 		{
 			ID:         runID,
@@ -88,7 +81,7 @@ func (m *MobileAgent) Start(configJSON string) {
 	}
 
 	logger := logrus.New()
-	logger.AddHook(&androidHook{m: m}) // Pipes logrus to the Android LogManager
+	logger.AddHook(&androidHook{m: m})
 
 	m.agentInst = agent.NewAgent(&cfg, logger)
 	m.mu.Unlock()
@@ -117,12 +110,24 @@ func (m *MobileAgent) IsRunning() bool {
 	return m.agentInst.IsRunning()
 }
 
+func (m *MobileAgent) SetLogCallback(cb LogCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logCallback = cb
+}
+
+func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusCallback = cb
+}
+
+// Internal helpers
 func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
 	m.mu.RUnlock()
 	if cb != nil {
-		// Formats for LogManager.kt parsing
 		out, _ := json.Marshal(map[string]string{
 			"level":   strings.ToUpper(level),
 			"message": msg,
