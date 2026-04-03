@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Central Configuration Manager following TECHNICAL_SPEC.md section 4.
@@ -234,83 +238,104 @@ class ConfigManager private constructor(private val context: Context) {
      * Field names are case-sensitive and must match the Go struct exactly.
      * Returns null if required site/museum/credential is not found.
      */
+    /**
+     * Build JSON config for Go agent.
+     * Following section 4.3, this creates the exact JSON expected by mobile/agent.go.
+     * Field names are case-sensitive and must match the Go struct exactly.
+     * Returns null if required site/museum/credential is not found.
+     *
+     * FIX (Bug 2): The original implementation built `request` and `fullConfig` as
+     * Map<String, Any> (mixed value types: String, Boolean, Int, List<String>, nested
+     * Maps) and passed them to `jsonEncoder.encodeToString(request)`.
+     *
+     * kotlinx.serialization resolves the serializer for the reified type T inferred
+     * from the call site. For `Map<String, Any>` it needs a serializer for `Any`,
+     * which does not exist, throwing:
+     *   SerializationException: Serializer for class 'Any' is not found.
+     *   Please ensure that class is marked as @Serializable and that the serialization
+     *   compiler plugin is applied.
+     *
+     * The fix is to build the JSON tree directly using the kotlinx.serialization.json
+     * DSL (`buildJsonObject` / `buildJsonArray` / `put`), which produces a fully typed
+     * `JsonObject`. Calling `.toString()` on that yields correct JSON without touching
+     * any `Any`-typed serializer.
+     */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
         val museum = site.museums[run.museumSlug] ?: return null
-        
-        // Determine credential to use
+
+        // Determine credential to use (explicit > site default > empty)
         val credential = run.credentialId?.let { id ->
             site.credentials.find { it.id == id }
         } ?: site.defaultCredentialId?.let { id ->
             site.credentials.find { it.id == id }
         }
-        
-        val (username, password, email) = credential?.let {
-            Triple(it.username, it.password, it.email)
-        } ?: Triple("", "", "")
-        
-        val fullConfig = mapOf(
-            "active_site" to config.admin.activeSite,
-            "mode" to config.general.mode,
-            "strike_time" to config.general.strikeTime,
-            "preferred_days" to config.general.preferredDays,
-            "ntfy_topic" to config.general.ntfyTopic,
-            "check_window" to config.general.checkWindow,
-            "check_interval" to config.general.checkInterval,
-            "request_jitter" to config.general.requestJitter,
-            "months_to_check" to config.general.monthsToCheck,
-            "pre_warm_offset" to config.general.preWarmOffset,
-            "max_workers" to config.general.maxWorkers,
-            "rest_cycle_checks" to config.general.restCycleChecks,
-            "rest_cycle_duration" to config.general.restCycleDuration,
-            "sites" to mapOf(
-                run.siteKey to mapOf(
-                    "name" to site.name,
-                    "baseurl" to site.baseUrl,
-                    "availabilityendpoint" to site.availabilityEndpoint,
-                    "digital" to site.digital,
-                    "physical" to site.physical,
-                    "location" to site.location,
-                    "bookinglinkselector" to Defaults.BOOKING_LINK_SELECTOR,
-                    "loginform" to mapOf(
-                        "usernamefield" to Defaults.USERNAME_FIELD,
-                        "passwordfield" to Defaults.PASSWORD_FIELD,
-                        "submitbutton" to Defaults.SUBMIT_BUTTON,
-                        "csrfselector" to "",
-                        "username" to username,
-                        "password" to password,
-                        "email" to email,
-                        "authidselector" to Defaults.AUTH_ID_SELECTOR,
-                        "loginurlselector" to Defaults.LOGIN_URL_SELECTOR
-                    ),
-                    "bookingform" to mapOf(
-                        "actionurl" to "",
-                        "fields" to emptyList<String>(),
-                        "emailfield" to Defaults.EMAIL_FIELD
-                    ),
-                    "successindicator" to Defaults.SUCCESS_INDICATOR,
-                    "museums" to mapOf(
-                        museum.slug to mapOf(
-                            "name" to museum.name,
-                            "slug" to museum.slug,
-                            "museumid" to museum.museumId
-                        )
-                    ),
-                    "preferredslug" to config.general.preferredMuseumSlug
-                )
-            )
-        )
-        
-        val request = mapOf(
-            "siteKey" to run.siteKey,
-            "museumSlug" to run.museumSlug,
-            "dropTime" to java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString(),
-            "mode" to run.mode,
-            "timezone" to run.timezone,
-            "fullConfig" to fullConfig
-        )
-        
-        return jsonEncoder.encodeToString(request)
+        val username = credential?.username ?: ""
+        val password = credential?.password ?: ""
+        val email    = credential?.email    ?: ""
+
+        val requestJson = buildJsonObject {
+            put("siteKey",    run.siteKey)
+            put("museumSlug", run.museumSlug)
+            put("dropTime",   java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString())
+            put("mode",       run.mode)
+            put("timezone",   run.timezone)
+            put("fullConfig", buildJsonObject {
+                put("active_site",         config.admin.activeSite)
+                put("mode",                config.general.mode)
+                put("strike_time",         config.general.strikeTime)
+                put("preferred_days",      buildJsonArray {
+                    config.general.preferredDays.forEach { add(it) }
+                })
+                put("ntfy_topic",          config.general.ntfyTopic)
+                put("check_window",        config.general.checkWindow)
+                put("check_interval",      config.general.checkInterval)
+                put("request_jitter",      config.general.requestJitter)
+                put("months_to_check",     config.general.monthsToCheck)
+                put("pre_warm_offset",     config.general.preWarmOffset)
+                put("max_workers",         config.general.maxWorkers)
+                put("rest_cycle_checks",   config.general.restCycleChecks)
+                put("rest_cycle_duration", config.general.restCycleDuration)
+                put("sites", buildJsonObject {
+                    put(run.siteKey, buildJsonObject {
+                        put("name",                 site.name)
+                        put("baseurl",              site.baseUrl)
+                        put("availabilityendpoint", site.availabilityEndpoint)
+                        put("digital",              site.digital)
+                        put("physical",             site.physical)
+                        put("location",             site.location)
+                        put("bookinglinkselector",  Defaults.BOOKING_LINK_SELECTOR)
+                        put("loginform", buildJsonObject {
+                            put("usernamefield",    Defaults.USERNAME_FIELD)
+                            put("passwordfield",    Defaults.PASSWORD_FIELD)
+                            put("submitbutton",     Defaults.SUBMIT_BUTTON)
+                            put("csrfselector",     "")
+                            put("username",         username)
+                            put("password",         password)
+                            put("email",            email)
+                            put("authidselector",   Defaults.AUTH_ID_SELECTOR)
+                            put("loginurlselector", Defaults.LOGIN_URL_SELECTOR)
+                        })
+                        put("bookingform", buildJsonObject {
+                            put("actionurl",  "")
+                            put("fields",     buildJsonArray { })
+                            put("emailfield", Defaults.EMAIL_FIELD)
+                        })
+                        put("successindicator", Defaults.SUCCESS_INDICATOR)
+                        put("museums", buildJsonObject {
+                            put(museum.slug, buildJsonObject {
+                                put("name",     museum.name)
+                                put("slug",     museum.slug)
+                                put("museumid", museum.museumId)
+                            })
+                        })
+                        put("preferredslug", config.general.preferredMuseumSlug)
+                    })
+                })
+            })
+        }
+
+        return requestJson.toString()
     }
 }
 
