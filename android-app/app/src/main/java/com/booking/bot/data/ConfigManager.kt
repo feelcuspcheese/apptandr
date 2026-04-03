@@ -20,28 +20,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Central Configuration Manager following TECHNICAL_SPEC.md section 4.
- * Single source of truth using DataStore with a single JSON key.
- * 
- * This manager provides reactive updates via configFlow - any change to configuration
- * automatically emits a new AppConfig, and all screens observing the flow will recompose.
- */
-
-// Reusable Json instances with proper configuration
 private val jsonDecoder = Json { ignoreUnknownKeys = true }
 private val jsonEncoder = Json { encodeDefaults = true }
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_config")
-
-// FIX (Bug 3): AtomicBoolean to ensure "Configuration loaded" log fires only once
-private val configLoadedOnce = AtomicBoolean(false)
 
 class ConfigManager private constructor(private val context: Context) {
     
     companion object {
         private val CONFIG_KEY = stringPreferencesKey("app_config")
         private val WIZARD_COMPLETED_KEY = booleanPreferencesKey("wizard_completed")
+        private val configLoadedOnce = AtomicBoolean(false)
         
         @Volatile
         private var instance: ConfigManager? = null
@@ -53,18 +42,12 @@ class ConfigManager private constructor(private val context: Context) {
         }
     }
     
-    /**
-     * Check if the first-run wizard has been completed.
-     */
     suspend fun isWizardCompleted(): Boolean {
         return context.dataStore.data.map { prefs ->
             prefs[WIZARD_COMPLETED_KEY] ?: false
         }.first()
     }
     
-    /**
-     * Set the wizard completed flag.
-     */
     suspend fun setWizardCompleted(completed: Boolean) {
         context.dataStore.updateData { prefs ->
             prefs.toMutablePreferences().apply {
@@ -73,14 +56,8 @@ class ConfigManager private constructor(private val context: Context) {
         }
     }
     
-    /**
-     * Flow that emits AppConfig whenever DataStore changes.
-     * Following section 4.2, this enables reactive updates across all screens.
-     * Safe deserialization: filters out invalid ScheduledRun entries.
-     */
     val configFlow: Flow<AppConfig> = context.dataStore.data
         .catch { e ->
-            // Log corruption for CONF-05
             LogManager.addLog("ERROR", "DataStore corruption detected: ${e.message}")
             emit(emptyPreferences()) 
         }
@@ -91,7 +68,6 @@ class ConfigManager private constructor(private val context: Context) {
             } else {
                 try {
                     val config = jsonDecoder.decodeFromString<AppConfig>(json)
-                    // Filter out invalid scheduled runs (section 4.2)
                     val validRuns = config.scheduledRuns.filter { run ->
                         run.siteKey.isNotBlank() &&
                         run.museumSlug.isNotBlank() &&
@@ -105,69 +81,48 @@ class ConfigManager private constructor(private val context: Context) {
                     config.copy(scheduledRuns = validRuns)
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Failed to parse config: ${e.message}")
-                    AppConfig() // fallback to default
+                    AppConfig() 
                 }
             }.also { config ->
-                // FIX (Bug 3): Log only the first time config is loaded
                 if (configLoadedOnce.compareAndSet(false, true)) {
                     LogManager.addLog("INFO", "Configuration loaded: activeSite=${config.admin.activeSite}, runs=${config.scheduledRuns.size}")
                 }
             }
         }
     
-    /**
-     * Update general settings.
-     * Following section 4.2, this updates only the general portion of AppConfig.
-     */
     suspend fun updateGeneral(general: GeneralSettings) {
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
             val updated = current.copy(general = general)
             prefs.withConfig(updated)
         }
-        // [7.4.11]: Log general configuration saved with key details
         LogManager.addLog("INFO", "General configuration saved: mode=${general.mode}, strikeTime=${general.strikeTime}")
     }
     
-    /**
-     * Update admin configuration.
-     * Following section 4.2, this also validates that preferredMuseumSlug is still valid
-     * for the active site, clearing it if the museum no longer exists.
-     */
     suspend fun updateAdmin(admin: AdminConfig) {
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
-            
-            // Validate preferredMuseumSlug against active site's museums
             val activeSite = admin.activeSite
             val validMuseums = admin.sites[activeSite]?.museums?.keys ?: emptySet()
             val newPreferredSlug = if (current.general.preferredMuseumSlug in validMuseums) {
                 current.general.preferredMuseumSlug
             } else {
-                "" // Clear if invalid
+                ""
             }
-            
             val updatedGeneral = current.general.copy(preferredMuseumSlug = newPreferredSlug)
             val updated = current.copy(admin = admin, general = updatedGeneral)
             prefs.withConfig(updated)
         }
-        // [7.4.11]: Log admin configuration saved with key details
         LogManager.addLog("INFO", "Admin configuration saved: activeSite=${admin.activeSite}")
     }
     
-    /**
-     * Add a scheduled run.
-     * Following section 4.2, this validates all fields and throws IllegalArgumentException on failure.
-     */
     suspend fun addScheduledRun(run: ScheduledRun) {
-        // Validate all fields (section 4.2.1)
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
         if (run.museumSlug.isBlank()) throw IllegalArgumentException("Museum slug cannot be blank")
         if (run.dropTimeMillis <= System.currentTimeMillis()) throw IllegalArgumentException("Drop time must be in the future")
         if (run.mode !in listOf("alert", "booking")) throw IllegalArgumentException("Mode must be 'alert' or 'booking'")
         if (run.timezone.isBlank()) throw IllegalArgumentException("Timezone cannot be blank")
 
-        // Validate site/museum/credential existence
         val config = configFlow.first()
         val site = config.admin.sites[run.siteKey] ?: throw IllegalArgumentException("Site not found: ${run.siteKey}")
         if (run.museumSlug !in site.museums.keys) throw IllegalArgumentException("Museum not found: ${run.museumSlug}")
@@ -175,7 +130,6 @@ class ConfigManager private constructor(private val context: Context) {
             throw IllegalArgumentException("Credential not found: ${run.credentialId}")
         }
 
-        // [7.4.2]: Log scheduled run added with full details per spec
         LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}, dropTime=${run.dropTimeMillis}, mode=${run.mode}, timezone=${run.timezone}")
         
         context.dataStore.updateData { prefs ->
@@ -186,12 +140,7 @@ class ConfigManager private constructor(private val context: Context) {
         }
     }
     
-    /**
-     * Remove a scheduled run by ID.
-     * Following section 3.8, finished runs should be removed so they no longer appear.
-     */
     suspend fun removeScheduledRun(runId: String) {
-        // [7.4.3]: Log scheduled run removed (user delete)
         LogManager.addLog("INFO", "Scheduled run removed (user delete): id=$runId")
         
         context.dataStore.updateData { prefs ->
@@ -202,11 +151,6 @@ class ConfigManager private constructor(private val context: Context) {
         }
     }
     
-    /**
-     * Validate and clean up invalid scheduled runs.
-     * Removes runs where museum or credential no longer exists (PROP-02, EDGE-09, EDGE-10).
-     * Should be called periodically or when museums/credentials are deleted.
-     */
     suspend fun cleanupInvalidRuns(): List<String> {
         val removedRunIds = mutableListOf<String>()
         context.dataStore.updateData { prefs ->
@@ -221,7 +165,7 @@ class ConfigManager private constructor(private val context: Context) {
                     site?.credentials?.any { it.id == id }
                 } ?: site?.defaultCredentialId?.let { defaultId ->
                     site.credentials.any { it.id == defaultId }
-                } ?: true // If no credential specified and no default, still valid
+                } ?: true
                 
                 if (museumExists && credentialExists) {
                     validRunIds.add(run.id)
@@ -238,39 +182,10 @@ class ConfigManager private constructor(private val context: Context) {
         return removedRunIds
     }
     
-    /**
-     * Build JSON config for Go agent.
-     * Following section 4.3, this creates the exact JSON expected by mobile/agent.go.
-     * Field names are case-sensitive and must match the Go struct exactly.
-     * Returns null if required site/museum/credential is not found.
-     */
-    /**
-     * Build JSON config for Go agent.
-     * Following section 4.3, this creates the exact JSON expected by mobile/agent.go.
-     * Field names are case-sensitive and must match the Go struct exactly.
-     * Returns null if required site/museum/credential is not found.
-     *
-     * FIX (Bug 2): The original implementation built `request` and `fullConfig` as
-     * Map<String, Any> (mixed value types: String, Boolean, Int, List<String>, nested
-     * Maps) and passed them to `jsonEncoder.encodeToString(request)`.
-     *
-     * kotlinx.serialization resolves the serializer for the reified type T inferred
-     * from the call site. For `Map<String, Any>` it needs a serializer for `Any`,
-     * which does not exist, throwing:
-     *   SerializationException: Serializer for class 'Any' is not found.
-     *   Please ensure that class is marked as @Serializable and that the serialization
-     *   compiler plugin is applied.
-     *
-     * The fix is to build the JSON tree directly using the kotlinx.serialization.json
-     * DSL (`buildJsonObject` / `buildJsonArray` / `put`), which produces a fully typed
-     * `JsonObject`. Calling `.toString()` on that yields correct JSON without touching
-     * any `Any`-typed serializer.
-     */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
         val museum = site.museums[run.museumSlug] ?: return null
 
-        // Determine credential to use (explicit > site default > empty)
         val credential = run.credentialId?.let { id ->
             site.credentials.find { it.id == id }
         } ?: site.defaultCredentialId?.let { id ->
@@ -344,8 +259,6 @@ class ConfigManager private constructor(private val context: Context) {
         return requestJson.toString()
     }
 }
-
-// Extension functions for Preferences (section 4.2)
 
 private val CONFIG_KEY = stringPreferencesKey("app_config")
 

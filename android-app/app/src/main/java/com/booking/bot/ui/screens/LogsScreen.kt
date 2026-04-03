@@ -30,30 +30,19 @@ fun LogsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Observe logs reactively from LogManager.logFlow (section 5.4)
     val logs = remember { mutableStateListOf<LogEntry>() }
+    var lastBufferedTs by remember { mutableStateOf(-1L) }
 
-    // FIX (Bug 3): Watermark to skip duplicates when loading buffer + subscribing to flow
-    var lastBufferedTs by remember { mutableStateOf(0L) }
-
-    // Load existing logs on first composition (section 5.4 - LOG-21)
     LaunchedEffect(Unit) {
-        val bufferedLogs = LogManager.getCurrentLogs()
-        logs.addAll(bufferedLogs)
-        // Set watermark to the latest timestamp in the buffer
-        if (bufferedLogs.isNotEmpty()) {
-            lastBufferedTs = bufferedLogs.maxOf { it.timestamp }
+        val currentLogs = LogManager.getCurrentLogs()
+        logs.addAll(currentLogs)
+        if (currentLogs.isNotEmpty()) {
+            lastBufferedTs = currentLogs.last().timestamp
         }
-    }
-
-    // Collect new logs via logFlow (section 5.4)
-    // FIX (Bug 3): Skip entries with timestamps <= lastBufferedTs to avoid duplicates
-    LaunchedEffect(Unit) {
+        
         LogManager.logFlow.collect { entry ->
             if (entry.timestamp > lastBufferedTs) {
                 logs.add(entry)
-                lastBufferedTs = entry.timestamp
-                // Keep buffer size manageable
                 if (logs.size > 500) {
                     logs.removeAt(0)
                 }
@@ -61,18 +50,15 @@ fun LogsScreen(
         }
     }
 
-    // Auto-scroll state using LazyListState
     val listState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
-    // Scroll to bottom when new logs arrive and auto-scroll is enabled
     LaunchedEffect(logs.size, autoScrollEnabled) {
         if (autoScrollEnabled && logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.lastIndex)
         }
     }
 
-    // Feedback state
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
@@ -81,7 +67,6 @@ fun LogsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header with controls
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -90,7 +75,6 @@ fun LogsScreen(
             Text("Live Logs", style = MaterialTheme.typography.titleLarge)
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Auto-scroll toggle
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Switch(
                         checked = autoScrollEnabled,
@@ -99,13 +83,11 @@ fun LogsScreen(
                     Text("Auto-scroll", style = MaterialTheme.typography.bodySmall)
                 }
 
-                // Export button
                 IconButton(
                     onClick = {
                         scope.launch {
                             try {
                                 val uri = LogManager.exportLogs(context)
-                                // Share intent with chooser
                                 val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(android.content.Intent.EXTRA_STREAM, uri)
@@ -122,10 +104,10 @@ fun LogsScreen(
                     Icon(Icons.Default.Share, contentDescription = "Export")
                 }
 
-                // Clear button
                 IconButton(
                     onClick = {
                         LogManager.clearInMemory()
+                        logs.clear()
                         feedbackMessage = "Logs cleared"
                     }
                 ) {
@@ -134,7 +116,6 @@ fun LogsScreen(
             }
         }
 
-        // Feedback message
         if (feedbackMessage != null) {
             Card(
                 colors = CardDefaults.cardColors(
@@ -150,7 +131,6 @@ fun LogsScreen(
             }
         }
 
-        // Logs list
         Card(
             modifier = Modifier
                 .fillMaxWidth()
