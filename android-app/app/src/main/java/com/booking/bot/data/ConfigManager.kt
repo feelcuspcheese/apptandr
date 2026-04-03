@@ -90,7 +90,7 @@ class ConfigManager private constructor(private val context: Context) {
                     if (validRuns.size != config.scheduledRuns.size) {
                         LogManager.addLog("WARN", "Removed ${config.scheduledRuns.size - validRuns.size} invalid scheduled runs")
                     }
-                    config.copy(scheduledRuns = validRuns.toMutableList())
+                    config.copy(scheduledRuns = validRuns)
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Failed to parse config: ${e.message}")
                     AppConfig() // fallback to default
@@ -166,7 +166,7 @@ class ConfigManager private constructor(private val context: Context) {
         
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
-            val updatedRuns = (current.scheduledRuns + run).toMutableList()
+            val updatedRuns = current.scheduledRuns + run
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
@@ -182,7 +182,7 @@ class ConfigManager private constructor(private val context: Context) {
         
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
-            val updatedRuns = current.scheduledRuns.filter { it.id != runId }.toMutableList()
+            val updatedRuns = current.scheduledRuns.filter { it.id != runId }
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
@@ -217,7 +217,7 @@ class ConfigManager private constructor(private val context: Context) {
                 }
             }
             
-            val updatedRuns = current.scheduledRuns.filter { it.id in validRunIds }.toMutableList()
+            val updatedRuns = current.scheduledRuns.filter { it.id in validRunIds }
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
         }
