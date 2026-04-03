@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.booking.bot.data.ConfigManager
@@ -29,45 +28,6 @@ import mobile.MobileAgent
  * Runs the Go agent as a foreground service with persistent notification.
  *
  * Provides StateFlow<Boolean> for isRunning state that UI can observe.
- *
- * CRITICAL FEATURES (per audit report):
- * - CG-04: Concurrency check  – prevents multiple runs from starting simultaneously
- * - CG-01/CG-02: Polling loop – waits for agent completion before stopping
- * - CG-03: cleanupAndStop()  – removes completed run from scheduledRuns
- * - CG-05: Timeout handling  – forces cleanup after 10 minutes max
- *
- * -----------------------------------------------------------------------
- * FIX (Bug 1a) – App freeze / ANR when agent runs
- * -----------------------------------------------------------------------
- * Root cause:
- *   serviceScope used Dispatchers.Main. This caused every operation in the
- *   launch{} block — including JNI calls (mobileAgent.start / isRunning /
- *   stop) and LogManager.addLog() (which writes to disk) — to execute on
- *   the Android main thread.
- *
- *   Two combined effects produced the freeze:
- *
- *   1. mobileAgent?.isRunning() is a JNI call made from the main thread
- *      every second. JNI calls are synchronous — the main thread is
- *      suspended inside the JVM→Go boundary for the duration. While Go's
- *      mutex operations are fast, the Go runtime GC or goroutine scheduler
- *      can introduce multi-millisecond delays. Accumulated over the run
- *      lifetime this degrades main-thread responsiveness.
- *
- *   2. mobileAgent?.stop() calls Go's Stop() → agent.Stop() → a.wg.Wait()
- *      which is a BLOCKING call that waits for all agent goroutines to
- *      finish. Running this on the main thread caused an ANR whenever Stop
- *      was triggered (manual or timeout), freezing the UI until Go's
- *      goroutines drained — potentially several seconds.
- *
- * Fix: change serviceScope dispatcher to Dispatchers.IO. All JNI calls and
- * suspend operations now run on the IO thread pool. The main thread remains
- * free for Compose rendering, navigation, and input handling.
- *
- * MutableStateFlow.value assignments (_isRunning.value = …) are thread-safe
- * and do not require Dispatchers.Main. stopSelf() is also safe from any
- * thread (internally posts to the Service's main-thread handler).
- * -----------------------------------------------------------------------
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -107,19 +67,11 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // FIX: Dispatchers.IO replaces Dispatchers.Main.
-    // See class-level KDoc above for full explanation.
-    // -------------------------------------------------------------------------
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var mobileAgent: MobileAgent? = null
     private var currentRun: ScheduledRun? = null
 
-    /**
-     * Callback for receiving log messages from the Go agent (called from Go goroutine threads).
-     * LogManager.addLog() is thread-safe; see LogManager for the full threading contract.
-     */
     private fun onGoLog(jsonLog: String) {
         try {
             val json = org.json.JSONObject(jsonLog)
@@ -133,10 +85,6 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
-    /**
-     * Callback for receiving status updates from the Go agent (called from Go goroutine threads).
-     * NotificationManager.notify() is thread-safe on Android.
-     */
     private fun onGoStatus(status: String) {
         updateNotification(status)
     }
@@ -163,20 +111,16 @@ class BookingForegroundService : LifecycleService() {
                 timezone = it.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
             )
 
-            // CG-04: Concurrency check — must run on the main thread before startForeground
             if (mobileAgent?.isRunning() == true) {
                 LogManager.addLog("WARN", "Run ${run.id} ignored – another run is already active")
                 stopSelf()
                 return START_NOT_STICKY
             }
 
-            // startForeground() MUST be called on the main thread (here in onStartCommand)
-            // before the coroutine launches. This satisfies Android O's 5-second rule.
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
             currentRun = run
 
-            // All heavy work (config I/O, JNI, polling) now runs on Dispatchers.IO.
             serviceScope.launch {
                 try {
                     LogManager.addLog("INFO", "Foreground service started for run ${run.id}")
@@ -202,10 +146,10 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Attempting to start Go agent for run ${run.id}")
-                    // FIX (Bug 2): Check return value of start() and cleanup immediately on failure
-                    val startedSuccessfully = mobileAgent?.start(agentConfigJson)
-                    if (startedSuccessfully != true) {
-                        LogManager.addLog("ERROR", "Go agent failed to start for run ${run.id}")
+                    val started = mobileAgent?.start(agentConfigJson) ?: false
+                    
+                    if (!started) {
+                        LogManager.addLog("ERROR", "Failed to start Go agent for run ${run.id}")
                         cleanupAndStop(run.id)
                         return@launch
                     }
@@ -213,16 +157,12 @@ class BookingForegroundService : LifecycleService() {
                     LogManager.addLog("INFO", "Go agent started successfully for run ${run.id}")
                     updateNotification("Running...")
 
-                    // CG-01/CG-02: Polling loop on IO thread — main thread stays free.
-                    // CG-05: Timeout after 10 minutes.
                     val startTime = System.currentTimeMillis()
                     while (mobileAgent?.isRunning() == true) {
                         delay(1000)
                         val elapsed = System.currentTimeMillis() - startTime
                         if (elapsed > RUN_TIMEOUT_MS) {
                             LogManager.addLog("WARN", "Run ${run.id} timed out after ${RUN_TIMEOUT_MS / 1000}s – forcing cleanup")
-                            // mobileAgent.stop() calls a.wg.Wait() which blocks.
-                            // On Dispatchers.IO this blocks an IO thread, not the main thread.
                             mobileAgent?.stop()
                             break
                         }
@@ -247,15 +187,9 @@ class BookingForegroundService : LifecycleService() {
         stopAgent()
     }
 
-    /**
-     * Stop the Go agent and clean up (manual stop path via notification action).
-     * Runs on Dispatchers.IO so mobileAgent.stop() → a.wg.Wait() does NOT block main thread.
-     */
     private fun stopAgent() {
         serviceScope.launch {
             try {
-                // mobileAgent.stop() calls Go Stop() → a.wg.Wait() which is BLOCKING.
-                // Running on IO thread is safe and expected here.
                 mobileAgent?.stop()
                 mobileAgent = null
                 LogManager.addLog("INFO", "Agent stopped manually")
@@ -273,10 +207,6 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
-    /**
-     * CG-03: Cleanup and stop after run completion.
-     * Removes the completed run from scheduledRuns and stops the service.
-     */
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
         mobileAgent = null
