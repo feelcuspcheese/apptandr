@@ -373,9 +373,16 @@ fun ScheduleScreen(
                                 feedbackMessage = "Run scheduled successfully!"
                                 feedbackSuccess = true
                                 selectedDateTime = null
+                            } catch (e: IllegalArgumentException) {
+                                // Validation error - show user-friendly message
+                                feedbackMessage = "Validation failed: ${e.message}"
+                                feedbackSuccess = false
+                                LogManager.addLog("ERROR", "Schedule validation failed: ${e.message}")
                             } catch (e: Exception) {
+                                // Unexpected error
                                 feedbackMessage = "Failed to schedule: ${e.message}"
                                 feedbackSuccess = false
+                                LogManager.addLog("ERROR", "Schedule failed: ${e.message}")
                             }
                         }
                     }
