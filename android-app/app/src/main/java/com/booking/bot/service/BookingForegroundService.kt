@@ -202,7 +202,13 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Attempting to start Go agent for run ${run.id}")
-                    mobileAgent?.start(agentConfigJson)
+                    // FIX (Bug 2): Check return value of start() and cleanup immediately on failure
+                    val startedSuccessfully = mobileAgent?.start(agentConfigJson)
+                    if (startedSuccessfully != true) {
+                        LogManager.addLog("ERROR", "Go agent failed to start for run ${run.id}")
+                        cleanupAndStop(run.id)
+                        return@launch
+                    }
 
                     LogManager.addLog("INFO", "Go agent started successfully for run ${run.id}")
                     updateNotification("Running...")

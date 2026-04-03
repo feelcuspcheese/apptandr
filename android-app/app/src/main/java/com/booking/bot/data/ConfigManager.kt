@@ -18,6 +18,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Central Configuration Manager following TECHNICAL_SPEC.md section 4.
@@ -32,6 +33,9 @@ private val jsonDecoder = Json { ignoreUnknownKeys = true }
 private val jsonEncoder = Json { encodeDefaults = true }
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_config")
+
+// FIX (Bug 3): AtomicBoolean to ensure "Configuration loaded" log fires only once
+private val configLoadedOnce = AtomicBoolean(false)
 
 class ConfigManager private constructor(private val context: Context) {
     
@@ -104,8 +108,10 @@ class ConfigManager private constructor(private val context: Context) {
                     AppConfig() // fallback to default
                 }
             }.also { config ->
-                // [7.4.1]: Log configuration loaded
-                LogManager.addLog("INFO", "Configuration loaded: activeSite=${config.admin.activeSite}, runs=${config.scheduledRuns.size}")
+                // FIX (Bug 3): Log only the first time config is loaded
+                if (configLoadedOnce.compareAndSet(false, true)) {
+                    LogManager.addLog("INFO", "Configuration loaded: activeSite=${config.admin.activeSite}, runs=${config.scheduledRuns.size}")
+                }
             }
         }
     
