@@ -25,6 +25,13 @@ import kotlinx.coroutines.delay
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
  * PIN-protected admin configuration screen with General and Sites tabs.
+ * 
+ * Features:
+ * - PIN Protection (1234)
+ * - Real-time DataStore sync
+ * - [GEN-10] [SITE-17] Save feedback messages
+ * - [BUG-002] Site field reset logic
+ * - Flexible Duration parsing (s, m, ms) for Go Agent compatibility
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +96,7 @@ fun ConfigScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfigContent(
     configManager: ConfigManager,
@@ -133,7 +140,7 @@ private fun GeneralTab(
     var ntfyTopic by remember { mutableStateOf("myappointments") }
     var preferredMuseumSlug by remember { mutableStateOf("") }
 
-    // Performance tuning - initialized to defaults, populated via LaunchedEffect
+    // Performance tuning states
     var checkWindow     by remember { mutableStateOf(Defaults.CHECK_WINDOW) }
     var checkInterval   by remember { mutableStateOf(Defaults.CHECK_INTERVAL) }
     var requestJitter   by remember { mutableStateOf(Defaults.REQUEST_JITTER) }
@@ -143,12 +150,12 @@ private fun GeneralTab(
     var restCycleChecks by remember { mutableStateOf(Defaults.REST_CYCLE_CHECKS.toString()) }
     var restCycleDuration by remember { mutableStateOf(Defaults.REST_CYCLE_DURATION) }
 
-    // Preferred days
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     var selectedDays by remember { mutableStateOf(setOf("Monday", "Wednesday", "Friday")) }
 
-    // Museum dropdown state
     var museumExpanded by remember { mutableStateOf(false) }
+    
+    // [GEN-10] Feedback state for saving
     var saveFeedback by remember { mutableStateOf<String?>(null) }
 
     // Sync all local state from DataStore whenever config changes.
@@ -179,7 +186,7 @@ private fun GeneralTab(
                 context,
                 { _, h, m -> strikeTime = String.format("%02d:%02d", h, m) },
                 hour, minute,
-                true // 24-hour view
+                true 
             ).also { dialog ->
                 dialog.setOnDismissListener { showTimePicker = false }
                 dialog.show()
@@ -192,7 +199,7 @@ private fun GeneralTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Mode Selection
+        // Mode
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -216,7 +223,7 @@ private fun GeneralTab(
             }
         }
         
-        // Strike Time with TimePicker dialog
+        // Strike Time
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -279,7 +286,7 @@ private fun GeneralTab(
             }
         }
         
-        // Preferred Museum Dropdown
+        // Preferred Museum
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -300,9 +307,7 @@ private fun GeneralTab(
                             readOnly = true,
                             label = { Text("Select Museum") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = museumExpanded) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor()
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
                         )
                         ExposedDropdownMenu(
                             expanded = museumExpanded,
@@ -323,19 +328,17 @@ private fun GeneralTab(
             }
         }
         
-        // Performance Tuning Section
+        // Performance Tuning
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Performance Tuning", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // Fixed duration fields: allows letters (s, m, h) and decimals
                     OutlinedTextField(
                         value = checkWindow,
                         onValueChange = { checkWindow = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
                         label = { Text("Check Window (e.g. 60s, 1.5m)") },
-                        placeholder = { Text("60s") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -344,7 +347,6 @@ private fun GeneralTab(
                         value = checkInterval,
                         onValueChange = { checkInterval = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
                         label = { Text("Check Interval (e.g. 0.81s)") },
-                        placeholder = { Text("0.81s") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -352,18 +354,15 @@ private fun GeneralTab(
                     OutlinedTextField(
                         value = requestJitter,
                         onValueChange = { requestJitter = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
-                        label = { Text("Request Jitter (e.g. 0.18s, 800ms)") },
-                        placeholder = { Text("0.18s") },
+                        label = { Text("Request Jitter (e.g. 0.18s)") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // Integer fields remain digits only
                     OutlinedTextField(
                         value = monthsToCheck,
                         onValueChange = { monthsToCheck = it.filter { char -> char.isDigit() } },
                         label = { Text("Months to Check") },
-                        placeholder = { Text("2") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -372,7 +371,6 @@ private fun GeneralTab(
                         value = preWarmOffset,
                         onValueChange = { preWarmOffset = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
                         label = { Text("Pre-Warm Offset (e.g. 30s)") },
-                        placeholder = { Text("30s") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -381,7 +379,6 @@ private fun GeneralTab(
                         value = maxWorkers,
                         onValueChange = { maxWorkers = it.filter { char -> char.isDigit() } },
                         label = { Text("Max Workers") },
-                        placeholder = { Text("2") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -390,7 +387,6 @@ private fun GeneralTab(
                         value = restCycleChecks,
                         onValueChange = { restCycleChecks = it.filter { char -> char.isDigit() } },
                         label = { Text("Rest Cycle Checks") },
-                        placeholder = { Text("12") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -399,22 +395,22 @@ private fun GeneralTab(
                         value = restCycleDuration,
                         onValueChange = { restCycleDuration = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
                         label = { Text("Rest Cycle Duration (e.g. 3s)") },
-                        placeholder = { Text("3s") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
         }
         
-        // Save Button
+        // Save Button [GEN-10]
         item {
             Button(
                 onClick = {
                     scope.launch {
-                        // Helper to ensure durations always have a unit suffix (fallback to 's' if user just types a number)
+                        // Helper: Ensure the duration strings have a unit so Go ParseDuration doesn't fail
                         fun formatDuration(input: String, default: String): String {
                             val trimmed = input.trim()
                             if (trimmed.isEmpty()) return default
+                            // If user typed only a number (e.g. "60"), assume seconds
                             if (trimmed.matches(Regex("^[0-9]+(\\.[0-9]+)?$"))) return "${trimmed}s"
                             return trimmed
                         }
@@ -425,7 +421,6 @@ private fun GeneralTab(
                             preferredDays = selectedDays.toList(),
                             ntfyTopic = ntfyTopic,
                             preferredMuseumSlug = preferredMuseumSlug,
-                            // Apply flexible formatting for durations
                             checkWindow = formatDuration(checkWindow, Defaults.CHECK_WINDOW),
                             checkInterval = formatDuration(checkInterval, Defaults.CHECK_INTERVAL),
                             requestJitter = formatDuration(requestJitter, Defaults.REQUEST_JITTER),
@@ -437,6 +432,8 @@ private fun GeneralTab(
                         )
                         
                         configManager.updateGeneral(newGeneral)
+                        
+                        // User feedback per test case GEN-10
                         saveFeedback = "Settings saved successfully!"
                         delay(2000)
                         saveFeedback = null
@@ -449,8 +446,18 @@ private fun GeneralTab(
             
             if (saveFeedback != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Text(saveFeedback!!, modifier = Modifier.padding(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = saveFeedback!!,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
         }
@@ -476,6 +483,8 @@ private fun SitesTab(
     var editingCredential by remember { mutableStateOf<CredentialSet?>(null) }
     var showMuseumDeleteConfirmation by remember { mutableStateOf<Museum?>(null) }
     var showCredentialDeleteConfirmation by remember { mutableStateOf<CredentialSet?>(null) }
+    
+    // [SITE-17] Feedback state for saving
     var saveFeedback by remember { mutableStateOf<String?>(null) }
     
     LazyColumn(
@@ -500,9 +509,7 @@ private fun SitesTab(
                             readOnly = true,
                             label = { Text("Select Site") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = siteExpanded) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor()
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
                         )
                         ExposedDropdownMenu(
                             expanded = siteExpanded,
@@ -523,16 +530,13 @@ private fun SitesTab(
             }
         }
         
-        // Site-specific fields
+        // Site-specific fields [BUG-002]
         item {
             val site = config?.admin?.sites?.get(selectedSiteKey)
             if (site != null) {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("Editing ${site.name} Settings", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        Text("Site Configuration", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         var baseUrl by remember { mutableStateOf(site.baseUrl) }
@@ -565,10 +569,7 @@ private fun SitesTab(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = digital, onCheckedChange = { digital = it })
                                 Text("Digital")
@@ -603,6 +604,8 @@ private fun SitesTab(
                                     )
                                     val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
                                     configManager.updateAdmin(updatedAdmin)
+                                    
+                                    // [SITE-17] feedback
                                     saveFeedback = "Site configuration saved successfully!"
                                     delay(2000)
                                     saveFeedback = null
@@ -616,7 +619,11 @@ private fun SitesTab(
                         if (saveFeedback != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                                Text(saveFeedback!!, modifier = Modifier.padding(12.dp))
+                                Text(
+                                    text = saveFeedback!!, 
+                                    modifier = Modifier.padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
                             }
                         }
                     }
@@ -657,9 +664,7 @@ private fun SitesTab(
                     } else {
                         museums.forEach { museum ->
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
@@ -671,9 +676,7 @@ private fun SitesTab(
                                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
                                     IconButton(onClick = {
-                                        scope.launch {
-                                            showMuseumDeleteConfirmation = museum
-                                        }
+                                        scope.launch { showMuseumDeleteConfirmation = museum }
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")
                                     }
@@ -713,9 +716,7 @@ private fun SitesTab(
                     } else {
                         credentials.forEach { cred ->
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
@@ -745,9 +746,7 @@ private fun SitesTab(
                                     IconButton(onClick = { editingCredential = cred; showCredentialDialog = true }) {
                                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
-                                    IconButton(onClick = {
-                                        showCredentialDeleteConfirmation = cred
-                                    }) {
+                                    IconButton(onClick = { showCredentialDeleteConfirmation = cred }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")
                                     }
                                 }
@@ -759,6 +758,7 @@ private fun SitesTab(
         }
     }
 
+    // Dialogs
     if (showMuseumDialog) {
         MuseumEditDialog(
             museum = editingMuseum,
@@ -830,9 +830,7 @@ private fun SitesTab(
                     showBulkImportDialog = false
                 }
             },
-            onDismiss = {
-                showBulkImportDialog = false
-            }
+            onDismiss = { showBulkImportDialog = false }
         )
     }
     
@@ -868,14 +866,10 @@ private fun SitesTab(
                             showMuseumDeleteConfirmation = null
                         }
                     }
-                ) {
-                    Text("Delete")
-                }
+                ) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { showMuseumDeleteConfirmation = null }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showMuseumDeleteConfirmation = null }) { Text("Cancel") }
             }
         )
     }
@@ -903,20 +897,16 @@ private fun SitesTab(
                                 currentSite.defaultCredentialId
                             }
                             val finalSite = updatedSite.copy(defaultCredentialId = newDefaultCredentialId)
-                            val finalAdmin = currentConfig.admin.copy(sites = updatedSites.toMutableMap() + (selectedSiteKey to finalSite))
+                            val finalAdmin = currentConfig.admin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
                             configManager.updateAdmin(finalAdmin)
                             configManager.cleanupInvalidRuns()
                             showCredentialDeleteConfirmation = null
                         }
                     }
-                ) {
-                    Text("Delete")
-                }
+                ) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { showCredentialDeleteConfirmation = null }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showCredentialDeleteConfirmation = null }) { Text("Cancel") }
             }
         )
     }
