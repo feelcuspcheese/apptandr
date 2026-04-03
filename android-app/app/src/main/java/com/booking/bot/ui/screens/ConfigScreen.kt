@@ -127,29 +127,104 @@ private fun GeneralTab(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    
-    var mode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
-    var strikeTime by remember { mutableStateOf(config?.general?.strikeTime ?: "09:00") }
+
+    // -------------------------------------------------------------------------
+    // FIX (Bug 2 — root cause): Settings always reset to defaults on screen open.
+    //
+    // The original code initialised every local state variable with:
+    //   remember { mutableStateOf(config?.general?.field ?: Default) }
+    //
+    // `remember { }` only runs its initialiser ONCE — on the first composition.
+    // At that moment config is ALWAYS null (collectAsState(initial = null)).
+    // So every field gets its hardcoded default. Milliseconds later DataStore
+    // emits the real config, GeneralTab recomposes with a non-null config
+    // parameter, but `remember` ignores the changed parameter — it holds the
+    // values from the first composition (defaults).
+    //
+    // Fix: initialise state from defaults and then add LaunchedEffect(config)
+    // which re-syncs ALL local state whenever config changes (null→loaded,
+    // or loaded→saved). The effect runs on the first non-null emission and
+    // on every subsequent emission (e.g., after Save completes), keeping the
+    // UI consistent with the DataStore source of truth.
+    // -------------------------------------------------------------------------
+
+    var mode by remember { mutableStateOf("alert") }
+    var strikeTime by remember { mutableStateOf("09:00") }
     var showTimePicker by remember { mutableStateOf(false) }
-    var ntfyTopic by remember { mutableStateOf(config?.general?.ntfyTopic ?: "myappointments") }
-    var preferredMuseumSlug by remember { mutableStateOf(config?.general?.preferredMuseumSlug ?: "") }
-    
+    var ntfyTopic by remember { mutableStateOf("myappointments") }
+    var preferredMuseumSlug by remember { mutableStateOf("") }
+
     // Performance tuning
-    var checkWindow by remember { mutableStateOf(config?.general?.checkWindow ?: Defaults.CHECK_WINDOW) }
-    var checkInterval by remember { mutableStateOf(config?.general?.checkInterval ?: Defaults.CHECK_INTERVAL) }
-    var requestJitter by remember { mutableStateOf(config?.general?.requestJitter ?: Defaults.REQUEST_JITTER) }
-    var monthsToCheck by remember { mutableStateOf((config?.general?.monthsToCheck ?: Defaults.MONTHS_TO_CHECK).toString()) }
-    var preWarmOffset by remember { mutableStateOf(config?.general?.preWarmOffset ?: Defaults.PRE_WARM_OFFSET) }
-    var maxWorkers by remember { mutableStateOf((config?.general?.maxWorkers ?: Defaults.MAX_WORKERS).toString()) }
-    var restCycleChecks by remember { mutableStateOf((config?.general?.restCycleChecks ?: Defaults.REST_CYCLE_CHECKS).toString()) }
-    var restCycleDuration by remember { mutableStateOf(config?.general?.restCycleDuration ?: Defaults.REST_CYCLE_DURATION) }
-    
+    var checkWindow     by remember { mutableStateOf(Defaults.CHECK_WINDOW) }
+    var checkInterval   by remember { mutableStateOf(Defaults.CHECK_INTERVAL) }
+    var requestJitter   by remember { mutableStateOf(Defaults.REQUEST_JITTER) }
+    var monthsToCheck   by remember { mutableStateOf(Defaults.MONTHS_TO_CHECK.toString()) }
+    var preWarmOffset   by remember { mutableStateOf(Defaults.PRE_WARM_OFFSET) }
+    var maxWorkers      by remember { mutableStateOf(Defaults.MAX_WORKERS.toString()) }
+    var restCycleChecks by remember { mutableStateOf(Defaults.REST_CYCLE_CHECKS.toString()) }
+    var restCycleDuration by remember { mutableStateOf(Defaults.REST_CYCLE_DURATION) }
+
     // Preferred days
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    var selectedDays by remember { mutableStateOf(config?.general?.preferredDays?.toSet() ?: setOf("Monday", "Wednesday", "Friday")) }
-    
+    var selectedDays by remember { mutableStateOf(setOf("Monday", "Wednesday", "Friday")) }
+
     // Museum dropdown state
     var museumExpanded by remember { mutableStateOf(false) }
+
+    // Sync all local state from DataStore whenever config changes.
+    // This covers two cases:
+    //   1. Initial load: config transitions null → AppConfig; fields populate
+    //      with saved values instead of hardcoded defaults.
+    //   2. Post-save: config re-emits after updateGeneral(); fields reflect
+    //      exactly what was persisted (e.g., validation may have clamped a value).
+    LaunchedEffect(config) {
+        config?.general?.let { g ->
+            mode              = g.mode
+            strikeTime        = g.strikeTime
+            ntfyTopic         = g.ntfyTopic
+            preferredMuseumSlug = g.preferredMuseumSlug
+            checkWindow       = g.checkWindow
+            checkInterval     = g.checkInterval
+            requestJitter     = g.requestJitter
+            monthsToCheck     = g.monthsToCheck.toString()
+            preWarmOffset     = g.preWarmOffset
+            maxWorkers        = g.maxWorkers.toString()
+            restCycleChecks   = g.restCycleChecks.toString()
+            restCycleDuration = g.restCycleDuration
+            selectedDays      = g.preferredDays.toSet()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // FIX (Bug 2b): TimePicker infinite-dialog loop.
+    // The original code called android.app.TimePickerDialog(...).show() DIRECTLY
+    // inside the composable body (inside `if (showTimePicker)`). This is a side
+    // effect executed during composition — it fires on every recomposition while
+    // the flag is true, which creates a new dialog on every frame. Additionally,
+    // showTimePicker was never reset to false after the dialog opened, so it
+    // stayed true across all subsequent recompositions, spawning an endless chain
+    // of overlapping dialogs.
+    //
+    // Fix: move the dialog creation into LaunchedEffect(showTimePicker) so it
+    // fires exactly ONCE per flag change. The dialog's dismiss listener resets
+    // the flag to false, breaking the loop.
+    // -------------------------------------------------------------------------
+    LaunchedEffect(showTimePicker) {
+        if (showTimePicker) {
+            val parts = strikeTime.split(":")
+            val hour   = parts.getOrNull(0)?.toIntOrNull() ?: 9
+            val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            android.app.TimePickerDialog(
+                context,
+                { _, h, m -> strikeTime = String.format("%02d:%02d", h, m) },
+                hour, minute,
+                true // 24-hour view
+            ).also { dialog ->
+                dialog.setOnDismissListener { showTimePicker = false }
+                dialog.show()
+            }
+        }
+    }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -406,27 +481,8 @@ private fun GeneralTab(
         }
     }
     
-    // TimePicker Dialog for Strike Time
-    if (showTimePicker) {
-        val currentTime = remember { 
-            Calendar.getInstance().apply {
-                val parts = strikeTime.split(":")
-                set(Calendar.HOUR_OF_DAY, parts.getOrNull(0)?.toIntOrNull() ?: 9)
-                set(Calendar.MINUTE, parts.getOrNull(1)?.toIntOrNull() ?: 0)
-            }
-        }
-        
-        android.app.TimePickerDialog(
-            context,
-            { _, hour, minute ->
-                strikeTime = String.format("%02d:%02d", hour, minute)
-            },
-            currentTime.get(Calendar.HOUR_OF_DAY),
-            currentTime.get(Calendar.MINUTE),
-            true // is24HourView
-        ).show()
-    }
 }
+// Note: TimePicker is now launched from LaunchedEffect(showTimePicker) above — no inline .show() here.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
