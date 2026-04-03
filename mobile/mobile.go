@@ -97,6 +97,62 @@ func (m *MobileAgent) Start(configJSON string) bool {
                 return d
         }
 
+        // FIX: Parse Sites from map[string]interface{} to map[string]config.Site
+        parseSites := func(raw interface{}) map[string]config.Site {
+                result := make(map[string]config.Site)
+                if rawMap, ok := raw.(map[string]interface{}); ok {
+                        for siteKey, siteData := range rawMap {
+                                if siteMap, ok := siteData.(map[string]interface{}); ok {
+                                        site := config.Site{
+                                                Name:                 getString(siteMap, "name"),
+                                                BaseURL:              getString(siteMap, "baseurl"),
+                                                AvailabilityEndpoint: getString(siteMap, "availabilityendpoint"),
+                                                Digital:              getBool(siteMap, "digital"),
+                                                Physical:             getBool(siteMap, "physical"),
+                                                Location:             getString(siteMap, "location"),
+                                                BookingLinkSelector:  getString(siteMap, "bookinglinkselector"),
+                                                SuccessIndicator:     getString(siteMap, "successindicator"),
+                                                Museums:              parseMuseums(siteMap["museums"]),
+                                        }
+                                        result[siteKey] = site
+                                }
+                        }
+                }
+                return result
+        }
+
+        // Helper to parse Museums from map[string]interface{} to map[string]config.Museum
+        parseMuseums := func(raw interface{}) map[string]config.Museum {
+                result := make(map[string]config.Museum)
+                if rawMap, ok := raw.(map[string]interface{}); ok {
+                        for museumSlug, museumData := range rawMap {
+                                if museumMap, ok := museumData.(map[string]interface{}); ok {
+                                        museum := config.Museum{
+                                                Name:     getString(museumMap, "name"),
+                                                Slug:     getString(museumMap, "slug"),
+                                                MuseumID: getString(museumMap, "museumid"),
+                                        }
+                                        result[museumSlug] = museum
+                                }
+                        }
+                }
+                return result
+        }
+
+        // Helper functions for type-safe extraction
+        getString := func(m map[string]interface{}, key string) string {
+                if v, ok := m[key].(string); ok {
+                        return v
+                }
+                return ""
+        }
+        getBool := func(m map[string]interface{}, key string) bool {
+                if v, ok := m[key].(bool); ok {
+                        return v
+                }
+                return false
+        }
+
         cfg := config.AppConfig{
                 ActiveSite:         req.FullConfig.ActiveSite,
                 Mode:               req.FullConfig.Mode,
@@ -111,6 +167,7 @@ func (m *MobileAgent) Start(configJSON string) bool {
                 MaxWorkers:         req.FullConfig.MaxWorkers,
                 RestCycleChecks:    req.FullConfig.RestCycleChecks,
                 RestCycleDuration:  parseDuration(req.FullConfig.RestCycleDuration, 1*time.Second),
+                Sites:              parseSites(req.FullConfig.Sites),
         }
 
         dropTime, err := time.Parse(time.RFC3339, req.DropTime)
