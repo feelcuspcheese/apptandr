@@ -1,7 +1,7 @@
 # Appointment Agent – User Guide
 
 ## 1. Overview
-The **Appointment Agent** is a Go‑based tool that monitors library passes (e.g., on `spl.libcal.com` and `rooms.kcls.org`) and either sends **ntfy** notifications when appointments become available or automatically books them based on your preferences. It runs as a Docker container and provides a modern, mobile‑friendly web dashboard for configuration and monitoring.
+The **Appointment Agent** is a Go‑based tool that monitors library passes (e.g., on `spl..com` and `rooms..org`) and either sends **ntfy** notifications when appointments become available or automatically books them based on your preferences. It runs as a Docker container and provides a modern, mobile‑friendly web dashboard for configuration and monitoring.
 
 ### Key Features
 *   **Two sites:** Seattle Public Library (SPL) and King County Library System (KCLS).
@@ -60,7 +60,7 @@ Click the **⚙️ Admin** button in the top navigation bar. You will see two ta
 
 **For each site:**
 1.  **Global Settings:**
-    *   **Base URL:** e.g., `https://spl.libcal.com` (SPL) or `https://rooms.kcls.org` (KCLS).
+    *   **Base URL:** e.g., `https://spl..com` (SPL) or `https://rooms..org` (KCLS).
     *   **Availability Endpoint:** `/pass/availability/institution` (usually stays as is).
     *   **Digital / Physical:** Check the type of passes available.
     *   **Location:** Usually `0`.
@@ -162,7 +162,7 @@ strike_time: "09:00"
 sites:
   spl:
     name: SPL
-    baseurl: https://spl.libcal.com
+    baseurl: https://spl..com
     availabilityendpoint: /pass/availability/institution
     digital: true
     physical: false
@@ -195,7 +195,7 @@ sites:
     preferredslug: SAM
   kcls:
     name: KCLS
-    baseurl: https://rooms.kcls.org
+    baseurl: https://rooms..org
     availabilityendpoint: /pass/availability/institution
     digital: true
     physical: false
