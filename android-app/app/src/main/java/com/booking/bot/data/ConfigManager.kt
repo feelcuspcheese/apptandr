@@ -78,7 +78,7 @@ class ConfigManager private constructor(private val context: Context) {
                 AppConfig()
             } else {
                 try {
-                    val config = Json.decodeFromString<AppConfig>(json)
+                    val config = Json { ignoreUnknown = true }.decodeFromString<AppConfig>(json)
                     // Filter out invalid scheduled runs (section 4.2)
                     val validRuns = config.scheduledRuns.filter { run ->
                         run.siteKey.isNotBlank() &&
@@ -316,10 +316,10 @@ private val CONFIG_KEY = stringPreferencesKey("app_config")
 
 fun Preferences.toAppConfig(): AppConfig {
     val json = this[CONFIG_KEY] ?: return AppConfig()
-    return Json.decodeFromString(json)
+    return Json { ignoreUnknown = true }.decodeFromString(json)
 }
 
 fun Preferences.withConfig(config: AppConfig): Preferences {
-    val json = Json.encodeToString(config)
+    val json = Json { encodeDefaults = true }.encodeToString(config)
     return toMutablePreferences().apply { this[CONFIG_KEY] = json }.toPreferences()
 }
