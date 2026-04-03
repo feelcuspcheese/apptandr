@@ -1,16 +1,23 @@
 package com.booking.bot
 
 import android.Manifest
+import android.app.AlarmManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.ui.Alignment
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -26,13 +33,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Main Activity - entry point for the app.
- * Sets up Jetpack Compose with BottomNavigation and NavHost.
- * Following TECHNICAL_SPEC.md section 5.
+ * Main Activity - Entry point for the Booking Bot application.
+ * 
+ * Audit Fixes:
+ * 1. Implements a safe, non-recursive permission gauntlet.
+ * 2. Handles Notification -> Exact Alarm -> Battery Optimization sequentially.
+ * 3. Prevents ActivityNotFoundException on restricted OEM devices.
  */
 class MainActivity : ComponentActivity() {
 
-    private val requestPermissionLauncher = registerForActivityResult(
+    // Launcher for Notification Permission (Android 13+)
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
@@ -40,41 +51,93 @@ class MainActivity : ComponentActivity() {
         } else {
             LogManager.addLog("WARN", "Notification permission denied")
         }
+        // Proceed to next step in gauntlet
+        checkExactAlarmPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Initialize LogManager (done in BookingApplication.onCreate())
-        // LogManager.init(applicationContext) - removed duplicate initialization
         LogManager.addLog("INFO", "App started")
 
-        // Log configuration loaded (section 2 - Events Logged by the Android App)
+        // Initialize Config and log current state
         val configManager = ConfigManager.getInstance(applicationContext)
         lifecycleScope.launch {
             val config = configManager.configFlow.first()
-            val activeSite = config.admin.activeSite
-            LogManager.addLog("INFO", "Config loaded: activeSite=$activeSite")
+            LogManager.addLog("INFO", "Config loaded: activeSite=${config.admin.activeSite}")
         }
 
-        // Request notification permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            when {
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED -> {
-                    // Permission already granted
-                }
-                else -> {
-                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }
-        }
+        // Start sequential permission checks (Gauntlet)
+        initPermissionGauntlet()
 
         setContent {
             MaterialTheme {
                 BookingBotApp()
+            }
+        }
+    }
+
+    /**
+     * Step 1: Notifications
+     */
+    private fun initPermissionGauntlet() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val status = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            if (status != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                checkExactAlarmPermission()
+            }
+        } else {
+            checkExactAlarmPermission()
+        }
+    }
+
+    /**
+     * Step 2: Exact Alarms (Android 12+)
+     */
+    private fun checkExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                LogManager.addLog("WARN", "Exact Alarm permission missing")
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // Fallback for some device variants
+                    try {
+                        startActivity(Intent(Settings.ACTION_ALARM_READY_LIST))
+                    } catch (e2: Exception) {
+                        LogManager.addLog("ERROR", "Could not open Exact Alarm settings")
+                    }
+                }
+            }
+        }
+        // Proceed to next step
+        checkBatteryOptimizations()
+    }
+
+    /**
+     * Step 3: Battery Optimization (Deep Doze Protection)
+     */
+    private fun checkBatteryOptimizations() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                LogManager.addLog("INFO", "Requesting Battery Optimization whitelist")
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        // Fallback to the general list if direct request is blocked by OEM
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (e2: Exception) {
+                        Toast.makeText(this, "Please disable battery optimization for this app manually", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
@@ -87,11 +150,9 @@ fun BookingBotApp() {
     val context = LocalContext.current
     val configManager = remember { ConfigManager.getInstance(context) }
     
-    // Wizard state - check if first-run wizard has been completed (WIZ-01 through WIZ-08)
     var showWizard by remember { mutableStateOf(false) }
     var wizardCheckComplete by remember { mutableStateOf(false) }
     
-    // Check wizard status on launch
     LaunchedEffect(Unit) {
         val completed = configManager.isWizardCompleted()
         showWizard = !completed
@@ -99,27 +160,19 @@ fun BookingBotApp() {
     }
     
     if (!wizardCheckComplete) {
-        // Show loading while checking wizard status
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
     }
     
-    // Show wizard if first run
     if (showWizard) {
         WizardScreen(
             configManager = configManager,
-            onComplete = {
-                showWizard = false
-            },
-            onCancel = {
-                // Cancel should not save config or set flag (WIZ-08)
-                showWizard = false
-            }
+            onComplete = { showWizard = false },
+            onCancel = { showWizard = false }
         )
     } else {
-        // Show main UI
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             bottomBar = {
@@ -149,18 +202,10 @@ fun BookingBotApp() {
                 startDestination = "dashboard",
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable("dashboard") {
-                    DashboardScreen(configManager = configManager)
-                }
-                composable("config") {
-                    ConfigScreen(configManager = configManager)
-                }
-                composable("schedule") {
-                    ScheduleScreen(configManager = configManager)
-                }
-                composable("logs") {
-                    LogsScreen()
-                }
+                composable("dashboard") { DashboardScreen(configManager = configManager) }
+                composable("config") { ConfigScreen(configManager = configManager) }
+                composable("schedule") { ScheduleScreen(configManager = configManager) }
+                composable("logs") { LogsScreen() }
             }
         }
     }
