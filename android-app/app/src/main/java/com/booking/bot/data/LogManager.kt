@@ -78,11 +78,8 @@ object LogManager {
     }
     
     /**
-     * Get current buffer contents (for debugging/testing).
+     * Returns a copy of the current in-memory buffer.
+     * Used by LogsScreen to display existing logs on open (section 5.4).
      */
-    fun getBufferCopy(): List<LogEntry> {
-        synchronized(buffer) {
-            return buffer.toList()
-        }
-    }
+    fun getCurrentLogs(): List<LogEntry> = synchronized(buffer) { buffer.toList() }
 }

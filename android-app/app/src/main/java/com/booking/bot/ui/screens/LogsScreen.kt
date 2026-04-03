@@ -33,6 +33,12 @@ fun LogsScreen(
     // Observe logs reactively from LogManager.logFlow (section 5.4)
     val logs = remember { mutableStateListOf<LogEntry>() }
 
+    // Load existing logs on first composition (section 5.4 - LOG-21)
+    LaunchedEffect(Unit) {
+        logs.addAll(LogManager.getCurrentLogs())
+    }
+
+    // Collect new logs via logFlow (section 5.4)
     LaunchedEffect(Unit) {
         LogManager.logFlow.collect { entry ->
             logs.add(entry)
