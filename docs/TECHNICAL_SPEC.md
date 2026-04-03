@@ -216,28 +216,61 @@ data class AppConfig(
 ```
 *Run Lifecycle:* When a run finishes (successfully or due to timeout/error), it must be removed from `scheduledRuns` (handled by `BookingForegroundService`).
 
+
+### 3.9 Serialization Safety Requirements
+
+All data classes used for JSON serialization (i.e., annotated with `@Serializable`) must meet the following criteria:
+
+- **No `Any` or `Any?` fields** – every field must have a concrete, serializable type (`String`, `Int`, `Boolean`, `List<T>`, `Map<K,V>`, or another `@Serializable` class).
+- **All nested classes must also be `@Serializable`** – the compiler plugin needs full visibility.
+- **The `kotlinx.serialization` plugin must be applied** in the app’s `build.gradle.kts`:
+  ```kotlin
+  plugins {
+      id("org.jetbrains.kotlin.plugin.serialization")
+  }
 ---
 
 ## 4. Central Configuration Manager
 
 ### 4.1 Storage
+
 Use `androidx.datastore.preferences.core.Preferences` with a single key `"app_config"` holding the JSON string of `AppConfig`.
 
 **Dependencies:**
-*   `androidx.datastore:datastore-preferences:1.0.0`
-*   `org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0`
+- `androidx.datastore:datastore-preferences:1.0.0`
+- `org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0`
 
 ### 4.2 ConfigManager Implementation
+
 ```kotlin
 class ConfigManager(context: Context) {
     private val dataStore = context.dataStore
-    val configFlow: Flow<AppConfig> = dataStore.data
-        .catch { emit(AppConfig()) }
-        .map { prefs ->
-            prefs[CONFIG_KEY]?.let { json ->
-                Json.decodeFromString<AppConfig>(json)
-            } ?: AppConfig()
+
+    // Safe deserialisation: filters out invalid ScheduledRun entries
+val configFlow: Flow<AppConfig> = dataStore.data
+    .catch { emit(AppConfig()) }
+    .map { prefs ->
+        val json = prefs[CONFIG_KEY]
+        if (json == null) return@map AppConfig()
+        try {
+            val config = Json.decodeFromString<AppConfig>(json)
+            // Filter out invalid scheduled runs
+            val validRuns = config.scheduledRuns.filter { run ->
+                run.siteKey.isNotBlank() &&
+                run.museumSlug.isNotBlank() &&
+                run.dropTimeMillis > 0 &&
+                run.mode in listOf("alert", "booking") &&
+                run.timezone.isNotBlank()
+            }
+            if (validRuns.size != config.scheduledRuns.size) {
+                LogManager.addLog("WARN", "Removed ${config.scheduledRuns.size - validRuns.size} invalid scheduled runs")
+            }
+            config.copy(scheduledRuns = validRuns.toMutableList())
+        } catch (e: Exception) {
+            LogManager.addLog("ERROR", "Failed to parse config: ${e.message}")
+            AppConfig() // fallback to default
         }
+    }
 
     suspend fun updateGeneral(general: GeneralSettings) {
         dataStore.updateData { prefs ->
@@ -261,19 +294,28 @@ class ConfigManager(context: Context) {
         }
     }
 
-    suspend fun addScheduledRun(run: ScheduledRun) {
-        // Validate existence at scheduling time
-        val config = configFlow.first()
-        val site = config.admin.sites[run.siteKey] ?: error("Site not found")
-        if (run.museumSlug !in site.museums) error("Museum not found")
-        if (run.credentialId != null && run.credentialId !in site.credentials.map { it.id }) error("Credential not found")
-        dataStore.updateData { prefs ->
-            val current = prefs.toAppConfig()
-            val updatedRuns = (current.scheduledRuns + run).toMutableList()
-            val updated = current.copy(scheduledRuns = updatedRuns)
-            prefs.withConfig(updated)
-        }
+suspend fun addScheduledRun(run: ScheduledRun) {
+    // Validate all fields
+    if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
+    if (run.museumSlug.isBlank()) throw IllegalArgumentException("Museum slug cannot be blank")
+    if (run.dropTimeMillis <= System.currentTimeMillis()) throw IllegalArgumentException("Drop time must be in the future")
+    if (run.mode !in listOf("alert", "booking")) throw IllegalArgumentException("Mode must be 'alert' or 'booking'")
+    if (run.timezone.isBlank()) throw IllegalArgumentException("Timezone cannot be blank")
+    
+    // Validate site/museum/credential existence
+    val config = configFlow.first()
+    val site = config.admin.sites[run.siteKey] ?: error("Site not found")
+    if (run.museumSlug !in site.museums) error("Museum not found")
+    if (run.credentialId != null && run.credentialId !in site.credentials.map { it.id }) error("Credential not found")
+    
+    // Now save
+    dataStore.updateData { prefs ->
+        val current = prefs.toAppConfig()
+        val updatedRuns = (current.scheduledRuns + run).toMutableList()
+        val updated = current.copy(scheduledRuns = updatedRuns)
+        prefs.withConfig(updated)
     }
+}
 
     suspend fun removeScheduledRun(runId: String) {
         dataStore.updateData { prefs ->
@@ -381,6 +423,18 @@ fun Preferences.withConfig(config: AppConfig): Preferences {
     return toMutablePreferences().apply { this[CONFIG_KEY] = json }.toPreferences()
 }
 ```
+#### 4.2.1 Validation in `addScheduledRun`
+
+All runs must be validated before saving. The following checks must be performed:
+
+- `siteKey` not blank
+- `museumSlug` not blank
+- `dropTimeMillis` > current time
+- `mode` is `"alert"` or `"booking"`
+- `timezone` not blank
+- The site, museum, and credential (if specified) exist in the current configuration.
+
+If validation fails, an `IllegalArgumentException` is thrown, and the run is not saved. The caller (e.g., ScheduleScreen) must catch this exception and show a user‑friendly message.`
 
 ---
 
