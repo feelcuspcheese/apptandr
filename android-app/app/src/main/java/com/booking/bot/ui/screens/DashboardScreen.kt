@@ -12,10 +12,8 @@ import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
 import com.booking.bot.scheduler.AlarmScheduler
 import com.booking.bot.service.BookingForegroundService
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
@@ -27,10 +25,6 @@ fun DashboardScreen(
     val config by configManager.configFlow.collectAsState(initial = null)
     val isRunning by BookingForegroundService.isRunning.collectAsState()
     val scope = rememberCoroutineScope()
-
-    var isStarting by remember { mutableStateOf(false) }
-    var countdown by remember { mutableStateOf(0) }
-    val countdownJobState = remember { mutableStateOf<Job?>(null) }
 
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -46,14 +40,6 @@ fun DashboardScreen(
     LaunchedEffect(isRunning) {
         actionFeedback = null
     }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            countdownJobState.value?.cancel()
-        }
-    }
-
-    val countdownDisplayText = if (isStarting) "Agent starts in ${countdown}s" else null
 
     Column(
         modifier = modifier
@@ -87,15 +73,7 @@ fun DashboardScreen(
                 ) {
                     Button(
                         onClick = {
-                            isStarting = true
-                            countdown = 30
-                            
-                            countdownJobState.value = scope.launch {
-                                while (countdown > 0) {
-                                    delay(1000)
-                                    countdown--
-                                }
-                                
+                            scope.launch {
                                 try {
                                     val currentConfig = config ?: return@launch
                                     val siteKey = currentConfig.admin.activeSite
@@ -106,7 +84,6 @@ fun DashboardScreen(
                                     if (museumSlug.isEmpty()) {
                                         actionFeedback = "No museum configured. Please configure in Admin Config."
                                         actionSuccess = false
-                                        isStarting = false
                                         return@launch
                                     }
 
@@ -126,42 +103,22 @@ fun DashboardScreen(
 
                                     LogManager.addLog("INFO", "Start Now run created: id=${run.id}, dropTime in 30 seconds")
 
+                                    // Add the run to DataStore; the Next Run tile will automatically pick it up
                                     configManager.addScheduledRun(run)
+                                    // Let AlarmScheduler handle starting the service exactly as it does for regular schedules
                                     AlarmScheduler(context).scheduleRun(run)
 
-                                    BookingForegroundService.start(context, run)
-
-                                    actionFeedback = "Agent started successfully"
+                                    actionFeedback = "Agent scheduled to start in 30s"
                                     actionSuccess = true
                                 } catch (e: Exception) {
-                                    actionFeedback = "Failed to start: ${e.message}"
+                                    actionFeedback = "Failed to schedule: ${e.message}"
                                     actionSuccess = false
-                                } finally {
-                                    isStarting = false
                                 }
                             }
                         },
-                        enabled = !isStarting && !isRunning
+                        enabled = !isRunning
                     ) {
-                        if (isStarting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Starting...")
-                        } else {
-                            Text("Start Now")
-                        }
-                    }
-
-                    if (countdownDisplayText != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = countdownDisplayText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Text("Start Now")
                     }
 
                     Button(
@@ -171,8 +128,6 @@ fun DashboardScreen(
                                     BookingForegroundService.stop(context)
                                     actionFeedback = "Stopping agent..."
                                     actionSuccess = true
-                                    countdownJobState.value?.cancel()
-                                    isStarting = false
                                 } catch (e: Exception) {
                                     actionFeedback = "Failed to stop: ${e.message}"
                                     actionSuccess = false
