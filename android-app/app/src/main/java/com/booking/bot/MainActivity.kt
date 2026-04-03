@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,15 +32,10 @@ import com.booking.bot.ui.screens.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/**
- * Main Activity - entry point for the app.
- * Updated to handle Deep Doze requirements:
- * - Battery Optimization whitelisting prompt
- * - Exact Alarm permission check (Android 12+)
- */
 class MainActivity : ComponentActivity() {
 
-    private val requestPermissionLauncher = registerForActivityResult(
+    // Permission Launcher for Notifications (Android 13+)
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
@@ -47,29 +43,16 @@ class MainActivity : ComponentActivity() {
         } else {
             LogManager.addLog("WARN", "Notification permission denied")
         }
+        // Move to the next check in the gauntlet
+        checkExactAlarmPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         LogManager.addLog("INFO", "App started")
 
-        val configManager = ConfigManager.getInstance(applicationContext)
-        lifecycleScope.launch {
-            val config = configManager.configFlow.first()
-            val activeSite = config.admin.activeSite
-            LogManager.addLog("INFO", "Config loaded: activeSite=$activeSite")
-        }
-
-        // 1. Request notification permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-
-        // 2. Exact Alarm Check (Android 12+)
-        checkExactAlarmPermission()
+        // Start the permission gauntlet
+        startPermissionGauntlet()
 
         setContent {
             MaterialTheme {
@@ -78,20 +61,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Sequence: 
+     * 1. Notifications -> 
+     * 2. Exact Alarms -> 
+     * 3. Battery Optimizations
+     */
+    private fun startPermissionGauntlet() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                checkExactAlarmPermission()
+            }
+        } else {
+            checkExactAlarmPermission()
+        }
+    }
+
     private fun checkExactAlarmPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
-                LogManager.addLog("WARN", "Exact Alarm permission missing - redirecting to settings")
-                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                startActivity(intent)
+                LogManager.addLog("WARN", "Exact Alarm permission missing - redirecting")
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                } catch (e: Exception) {
+                    // Fallback to general settings if specific action fails
+                    startActivity(Intent(Settings.ACTION_ALARM_READY_LIST))
+                }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Prompt for battery optimization whitelisting if not already done
+        // Final step: Battery check
         promptBatteryOptimization()
     }
 
@@ -99,11 +100,20 @@ class MainActivity : ComponentActivity() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                LogManager.addLog("INFO", "Prompting user to disable battery optimization")
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:$packageName")
+                LogManager.addLog("INFO", "Prompting for Battery Optimization whitelist")
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    // Fallback to the settings list if the direct prompt fails
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (e2: Exception) {
+                        Toast.makeText(this, "Please disable battery optimization for this app in settings.", Toast.LENGTH_LONG).show()
+                    }
                 }
-                startActivity(intent)
             }
         }
     }
@@ -120,8 +130,7 @@ fun BookingBotApp() {
     var wizardCheckComplete by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
-        val completed = configManager.isWizardCompleted()
-        showWizard = !completed
+        showWizard = !configManager.isWizardCompleted()
         wizardCheckComplete = true
     }
     
@@ -151,9 +160,7 @@ fun BookingBotApp() {
                             onClick = {
                                 selectedTab = index
                                 navController.navigate(item.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -163,14 +170,10 @@ fun BookingBotApp() {
                 }
             }
         ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = "dashboard",
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                composable("dashboard") { DashboardScreen(configManager = configManager) }
-                composable("config") { ConfigScreen(configManager = configManager) }
-                composable("schedule") { ScheduleScreen(configManager = configManager) }
+            NavHost(navController, "dashboard", Modifier.padding(innerPadding)) {
+                composable("dashboard") { DashboardScreen(configManager) }
+                composable("config") { ConfigScreen(configManager) }
+                composable("schedule") { ScheduleScreen(configManager) }
                 composable("logs") { LogsScreen() }
             }
         }
