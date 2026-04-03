@@ -189,6 +189,8 @@ class BookingForegroundService : LifecycleService() {
 
     private fun stopAgent() {
         serviceScope.launch {
+            // Optimistically update state so the UI reacts instantly
+            _isRunning.value = false
             try {
                 mobileAgent?.stop()
                 mobileAgent = null
@@ -196,7 +198,6 @@ class BookingForegroundService : LifecycleService() {
             } catch (e: Exception) {
                 LogManager.addLog("ERROR", "Error stopping agent: ${e.message}")
             } finally {
-                _isRunning.value = false
                 currentRun?.let { run ->
                     ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
                     LogManager.addLog("INFO", "Run ${run.id} removed from schedule (manual stop)")
