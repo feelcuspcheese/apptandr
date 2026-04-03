@@ -18,16 +18,6 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
- *
- * Features:
- * - Status Card showing "Running" or "Idle"
- * - Next Run Countdown from sorted scheduledRuns
- * - Start Now Button (creates run with +30s delay) with countdown timer (DB-10)
- * - Stop Button (calls BookingForegroundService.stop())
- * - Quick Stats: Active Site, Mode, Preferred Museum (by name)
- */
 @Composable
 fun DashboardScreen(
     configManager: ConfigManager,
@@ -38,9 +28,11 @@ fun DashboardScreen(
     val isRunning by BookingForegroundService.isRunning.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // FIX (Bug 4): currentTime state that ticks every second for countdown recomposition
+    var isStarting by remember { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf(0) }
+    val countdownJobState = remember { mutableStateOf<Job?>(null) }
+
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
-    
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
@@ -48,29 +40,19 @@ fun DashboardScreen(
         }
     }
 
-    // Start Now countdown state (DB-10)
-    var isStarting by remember { mutableStateOf(false) }
-    var countdown by remember { mutableStateOf(0) }
-    // FIX (Bug 4): Use mutableStateOf for Job so it survives recomposition
-    val countdownJobState = remember { mutableStateOf<Job?>(null) }
-
-    // Action feedback state
     var actionFeedback by remember { mutableStateOf<String?>(null) }
     var actionSuccess by remember { mutableStateOf(false) }
 
-    // Clear feedback when running state changes
     LaunchedEffect(isRunning) {
         actionFeedback = null
     }
 
-    // Cleanup countdown job on dispose
     DisposableEffect(Unit) {
         onDispose {
             countdownJobState.value?.cancel()
         }
     }
 
-    // Separate countdown display text for "Agent starts in Xs"
     val countdownDisplayText = if (isStarting) "Agent starts in ${countdown}s" else null
 
     Column(
@@ -79,7 +61,6 @@ fun DashboardScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Status Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -101,24 +82,20 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Start/Stop Buttons (section 5.1, DB-10)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Button(
                         onClick = {
-                            // Start countdown and then start the agent (DB-10)
                             isStarting = true
                             countdown = 30
                             
                             countdownJobState.value = scope.launch {
-                                // Countdown loop
                                 while (countdown > 0) {
                                     delay(1000)
                                     countdown--
                                 }
                                 
-                                // Actually start the agent after countdown
                                 try {
                                     val currentConfig = config ?: return@launch
                                     val siteKey = currentConfig.admin.activeSite
@@ -134,7 +111,7 @@ fun DashboardScreen(
                                     }
 
                                     val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
-                                    val dropTimeMillis = System.currentTimeMillis() + 30_000 // 30 seconds
+                                    val dropTimeMillis = System.currentTimeMillis() + 30_000
                                     val timezone = java.util.TimeZone.getDefault().id
 
                                     val run = ScheduledRun(
@@ -147,13 +124,11 @@ fun DashboardScreen(
                                         timezone = timezone
                                     )
 
-                                    // [7.4.4]: Log Start Now run created
                                     LogManager.addLog("INFO", "Start Now run created: id=${run.id}, dropTime in 30 seconds")
 
                                     configManager.addScheduledRun(run)
                                     AlarmScheduler(context).scheduleRun(run)
 
-                                    // [FIX (BUG-005)]: Immediately start the foreground service so that logs appear instantly
                                     BookingForegroundService.start(context, run)
 
                                     actionFeedback = "Agent started successfully"
@@ -180,7 +155,6 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Countdown display text (section 5.1 - DB-10)
                     if (countdownDisplayText != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -197,7 +171,6 @@ fun DashboardScreen(
                                     BookingForegroundService.stop(context)
                                     actionFeedback = "Stopping agent..."
                                     actionSuccess = true
-                                    // Cancel countdown if stopping
                                     countdownJobState.value?.cancel()
                                     isStarting = false
                                 } catch (e: Exception) {
@@ -215,7 +188,6 @@ fun DashboardScreen(
                     }
                 }
 
-                // Action feedback
                 if (actionFeedback != null) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Card(
@@ -247,7 +219,6 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Next Run Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -267,11 +238,14 @@ fun DashboardScreen(
                         .minByOrNull { it.dropTimeMillis }
 
                     if (nextRun != null) {
-                        // FIX (Bug 4): Use currentTime instead of System.currentTimeMillis() for recomposition
                         val timeUntil = nextRun.dropTimeMillis - currentTime
-                        val minutes = timeUntil / 60000
-                        val seconds = (timeUntil % 60000) / 1000
-                        Text("In ${minutes}m ${seconds}s")
+                        if (timeUntil > 0) {
+                            val minutes = timeUntil / 60000
+                            val seconds = (timeUntil % 60000) / 1000
+                            Text("In ${minutes}m ${seconds}s")
+                        } else {
+                            Text("Running or pending...")
+                        }
 
                         val site = cfg.admin.sites[nextRun.siteKey]
                         val museum = site?.museums?.get(nextRun.museumSlug)
@@ -289,7 +263,6 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Quick Stats Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
