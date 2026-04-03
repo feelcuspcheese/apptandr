@@ -84,7 +84,7 @@ func (a *Agent) Start(runID string) error {
         return fmt.Errorf("scheduled run %s not found", runID)
     }
 
-    // Create a per‑run done channel
+    // Create a per-run done channel
     doneCh := make(chan struct{})
     ctx, cancel := context.WithCancel(context.Background())
     a.cancelFunc = cancel
@@ -162,35 +162,38 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
     )
     scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
-    // Wait until pre‑warm time (dropTime - preWarmOffset)
+    // Wait until pre-warm time (dropTime - preWarmOffset)
     now := time.Now()
     preWarmTime := run.DropTime.Add(-a.config.PreWarmOffset)
     if preWarmTime.After(now) {
         wait := preWarmTime.Sub(now)
-        a.log("Waiting %v until pre‑warm time", wait)
+        a.log("Waiting %v until pre-warm time", wait)
         select {
         case <-time.After(wait):
         case <-ctx.Done():
-            a.log("Agent stopped before pre‑warm")
+            a.log("Agent stopped before pre-warm")
             return
         }
     }
 
-    // Pre‑warm now (close to drop time)
-    a.log("Pre‑warming...")
+    // Pre-warm now (close to drop time)
+    a.log("Pre-warming...")
     if site.BaseURL == "" {
-        a.log("BaseURL empty, skipping pre‑warm")
+        a.log("BaseURL empty, skipping pre-warm")
     } else {
         if err := a.preWarm(client, site.BaseURL); err != nil {
-            a.log("Pre‑warm failed: %v", err)
+            a.log("Pre-warm failed: %v", err)
         } else {
-            a.log("Pre‑warm completed")
+            a.log("Pre-warm completed")
         }
     }
 
     // Wait until exact drop time with microsecond precision
     a.log("Waiting until drop time with high precision")
-    waitUntil(run.DropTime)
+    if err := waitUntil(ctx, run.DropTime); err != nil {
+        a.log("Agent stopped before drop time")
+        return
+    }
 
     // Start check window
     deadline := time.Now().Add(a.config.CheckWindow)
@@ -208,19 +211,19 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
             break
         }
 
-        // Perform availability check (scraper applies jitter; first check is jitter‑free because we use waitUntil)
+        // Perform availability check (scraper applies jitter; first check is jitter-free because we use waitUntil)
         stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, run.DropTime, run.Mode)
         if err != nil {
             a.log("Check error: %v", err)
         }
         if stop {
             if run.Mode == "alert" {
-            a.log("Alert sent, stopping checks")
+                a.log("Alert sent, stopping checks")
             } else {
-            a.log("Booking successful, stopping checks")
+                a.log("Booking successful, stopping checks")
+            }
+            break
         }
-    break
-    }
 
         // Increment counter for rest cycle (only if window is long)
         if restEnabled {
@@ -283,7 +286,12 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         }
         allAvails = append(allAvails, avails...)
         if i < months-1 && a.config.RequestJitter > 0 {
-            time.Sleep(time.Duration(rand.Int63n(int64(a.config.RequestJitter))))
+            jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
+            select {
+            case <-time.After(jitter):
+            case <-ctx.Done():
+                return false, ctx.Err()
+            }
         }
     }
 
@@ -311,23 +319,23 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
         return false, nil
     }
 
-if mode == "alert" {
-    notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
-    for i, av := range newAvails {
-        notifyAvails[i] = notifier.AvailabilityWithLink{
-            Date:       av.Date,
-            BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
+    if mode == "alert" {
+        notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
+        for i, av := range newAvails {
+            notifyAvails[i] = notifier.AvailabilityWithLink{
+                Date:       av.Date,
+                BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
+            }
         }
-    }
-    title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
-    err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
-    if err != nil {
-        a.log("Failed to send notification: %v", err)
-    } else {
-        a.log("Notification sent for %d dates", len(newAvails))
-    }
-    return true, nil // <-- Stop after alert
-} else if mode == "booking" {
+        title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
+        err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
+        if err != nil {
+            a.log("Failed to send notification: %v", err)
+        } else {
+            a.log("Notification sent for %d dates", len(newAvails))
+        }
+        return true, nil // <-- Stop after alert
+    } else if mode == "booking" {
         bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
         for _, av := range newAvails {
             for _, prefDay := range a.config.PreferredDays {
@@ -427,19 +435,32 @@ func isDayOfWeek(dateStr, dayName string) bool {
     return t.Weekday().String() == dayName
 }
 
-// waitUntil blocks until the given time, using a spin‑loop for the last few milliseconds.
-func waitUntil(t time.Time) {
+// waitUntil blocks until the given time, using a context-aware spin-loop for the last few milliseconds.
+func waitUntil(ctx context.Context, t time.Time) error {
     now := time.Now()
     if t.Before(now) {
-        return
+        return nil
     }
     delta := t.Sub(now)
+    
     // Sleep most of the time, leaving a small window for spin
     if delta > 5*time.Millisecond {
-        time.Sleep(delta - 5*time.Millisecond)
+        sleepTime := delta - 5*time.Millisecond
+        select {
+        case <-time.After(sleepTime):
+        case <-ctx.Done():
+            return ctx.Err()
+        }
     }
-    // Busy‑wait for the remainder (sub‑millisecond precision)
+    
+    // Busy-wait for the remainder (sub-millisecond precision)
     for time.Now().Before(t) {
-        // no operation – just spin
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+            // spin
+        }
     }
+    return nil
 }
