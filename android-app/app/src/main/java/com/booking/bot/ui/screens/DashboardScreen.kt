@@ -59,6 +59,9 @@ fun DashboardScreen(
         }
     }
 
+    // Separate countdown display text for "Agent starts in Xs"
+    val countdownDisplayText = if (isStarting) "Agent starts in ${countdown}s" else null
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -160,10 +163,20 @@ fun DashboardScreen(
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Starting in ${countdown}s")
+                            Text("Starting...")
                         } else {
                             Text("Start Now")
                         }
+                    }
+
+                    // Countdown display text (section 5.1 - DB-10)
+                    if (countdownDisplayText != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = countdownDisplayText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
 
                     Button(
