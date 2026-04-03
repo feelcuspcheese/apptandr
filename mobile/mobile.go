@@ -83,12 +83,18 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		return false
 	}
 
+	// parseDur gracefully handles duration strings and auto-appends "s" if the Android app sent a raw number
 	parseDur := func(s string, def time.Duration) time.Duration {
 		if s == "" {
 			return def
 		}
 		d, err := time.ParseDuration(s)
 		if err != nil {
+			// Fallback: If it failed because of missing unit (e.g. "60"), append "s" and try again
+			d2, err2 := time.ParseDuration(s + "s")
+			if err2 == nil {
+				return d2
+			}
 			return def
 		}
 		return d
