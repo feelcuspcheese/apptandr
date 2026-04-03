@@ -45,10 +45,14 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
     if s.jitter > 0 {
         jitter := time.Duration(rand.Int63n(int64(s.jitter)))
         s.logger.WithField("jitter", jitter).Debug("Applying jitter before request")
-        time.Sleep(jitter)
+        select {
+        case <-time.After(jitter):
+        case <-ctx.Done():
+            return nil, "", ctx.Err()
+        }
     }
 
-    s.logger.WithField("url", endpoint).Info("Requesting availability") // <-- NEW
+    s.logger.WithField("url", endpoint).Info("Requesting availability")
 
     req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
     if err != nil {
