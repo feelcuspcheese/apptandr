@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager // Added
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.booking.bot.data.ConfigManager
@@ -26,8 +27,8 @@ import mobile.MobileAgent
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
- *
- * Provides StateFlow<Boolean> for isRunning state that UI can observe.
+ * 
+ * Updated with explicit WakeLock management to prevent CPU sleep during Strike.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -35,6 +36,7 @@ class BookingForegroundService : LifecycleService() {
         private const val NOTIFICATION_CHANNEL_ID = "booking_service"
         private const val NOTIFICATION_ID = 1001
         private const val STOP_ACTION = "com.booking.bot.STOP_AGENT"
+        private const val WAKE_LOCK_TAG = "BookingBot::ExecutionWakeLock"
 
         // CG-05: Timeout constant - 10 minutes max run time
         private const val RUN_TIMEOUT_MS = 10 * 60 * 1000L
@@ -68,9 +70,9 @@ class BookingForegroundService : LifecycleService() {
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
     private var mobileAgent: MobileAgent? = null
     private var currentRun: ScheduledRun? = null
+    private var wakeLock: PowerManager.WakeLock? = null // Explicit WakeLock
 
     private fun onGoLog(jsonLog: String) {
         try {
@@ -92,6 +94,9 @@ class BookingForegroundService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        // Initialize WakeLock
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,6 +122,9 @@ class BookingForegroundService : LifecycleService() {
                 return START_NOT_STICKY
             }
 
+            // Acquire WakeLock to ensure CPU doesn't sleep during high-precision spin
+            wakeLock?.acquire(RUN_TIMEOUT_MS) 
+            
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
             currentRun = run
@@ -183,13 +191,13 @@ class BookingForegroundService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        if (wakeLock?.isHeld == true) wakeLock?.release()
         super.onDestroy()
         stopAgent()
     }
 
     private fun stopAgent() {
         serviceScope.launch {
-            // Optimistically update state so the UI reacts instantly
             _isRunning.value = false
             try {
                 mobileAgent?.stop()
@@ -198,6 +206,7 @@ class BookingForegroundService : LifecycleService() {
             } catch (e: Exception) {
                 LogManager.addLog("ERROR", "Error stopping agent: ${e.message}")
             } finally {
+                if (wakeLock?.isHeld == true) wakeLock?.release()
                 currentRun?.let { run ->
                     ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
                     LogManager.addLog("INFO", "Run ${run.id} removed from schedule (manual stop)")
@@ -211,6 +220,7 @@ class BookingForegroundService : LifecycleService() {
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
         mobileAgent = null
+        if (wakeLock?.isHeld == true) wakeLock?.release()
 
         LogManager.addLog("INFO", "Foreground service stopped for run $runId")
 
