@@ -13,15 +13,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.booking.bot.data.*
 import com.booking.bot.ui.components.MuseumEditDialog
 import com.booking.bot.ui.components.CredentialEditDialog
 import com.booking.bot.ui.components.BulkImportDialog
+import com.booking.bot.ui.components.SiteEditDialog
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.delay
 
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
@@ -128,33 +127,13 @@ private fun GeneralTab(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // -------------------------------------------------------------------------
-    // FIX (Bug 2 — root cause): Settings always reset to defaults on screen open.
-    //
-    // The original code initialised every local state variable with:
-    //   remember { mutableStateOf(config?.general?.field ?: Default) }
-    //
-    // `remember { }` only runs its initialiser ONCE — on the first composition.
-    // At that moment config is ALWAYS null (collectAsState(initial = null)).
-    // So every field gets its hardcoded default. Milliseconds later DataStore
-    // emits the real config, GeneralTab recomposes with a non-null config
-    // parameter, but `remember` ignores the changed parameter — it holds the
-    // values from the first composition (defaults).
-    //
-    // Fix: initialise state from defaults and then add LaunchedEffect(config)
-    // which re-syncs ALL local state whenever config changes (null→loaded,
-    // or loaded→saved). The effect runs on the first non-null emission and
-    // on every subsequent emission (e.g., after Save completes), keeping the
-    // UI consistent with the DataStore source of truth.
-    // -------------------------------------------------------------------------
-
     var mode by remember { mutableStateOf("alert") }
     var strikeTime by remember { mutableStateOf("09:00") }
     var showTimePicker by remember { mutableStateOf(false) }
     var ntfyTopic by remember { mutableStateOf("myappointments") }
     var preferredMuseumSlug by remember { mutableStateOf("") }
 
-    // Performance tuning
+    // Performance tuning - initialized to defaults, populated via LaunchedEffect
     var checkWindow     by remember { mutableStateOf(Defaults.CHECK_WINDOW) }
     var checkInterval   by remember { mutableStateOf(Defaults.CHECK_INTERVAL) }
     var requestJitter   by remember { mutableStateOf(Defaults.REQUEST_JITTER) }
@@ -170,13 +149,9 @@ private fun GeneralTab(
 
     // Museum dropdown state
     var museumExpanded by remember { mutableStateOf(false) }
+    var saveFeedback by remember { mutableStateOf<String?>(null) }
 
     // Sync all local state from DataStore whenever config changes.
-    // This covers two cases:
-    //   1. Initial load: config transitions null → AppConfig; fields populate
-    //      with saved values instead of hardcoded defaults.
-    //   2. Post-save: config re-emits after updateGeneral(); fields reflect
-    //      exactly what was persisted (e.g., validation may have clamped a value).
     LaunchedEffect(config) {
         config?.general?.let { g ->
             mode              = g.mode
@@ -195,20 +170,6 @@ private fun GeneralTab(
         }
     }
 
-    // -------------------------------------------------------------------------
-    // FIX (Bug 2b): TimePicker infinite-dialog loop.
-    // The original code called android.app.TimePickerDialog(...).show() DIRECTLY
-    // inside the composable body (inside `if (showTimePicker)`). This is a side
-    // effect executed during composition — it fires on every recomposition while
-    // the flag is true, which creates a new dialog on every frame. Additionally,
-    // showTimePicker was never reset to false after the dialog opened, so it
-    // stayed true across all subsequent recompositions, spawning an endless chain
-    // of overlapping dialogs.
-    //
-    // Fix: move the dialog creation into LaunchedEffect(showTimePicker) so it
-    // fires exactly ONCE per flag change. The dialog's dismiss listener resets
-    // the flag to false, breaking the loop.
-    // -------------------------------------------------------------------------
     LaunchedEffect(showTimePicker) {
         if (showTimePicker) {
             val parts = strikeTime.split(":")
@@ -231,13 +192,12 @@ private fun GeneralTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Mode Selection - using SegmentedButton as per spec section 5.2.1
+        // Mode Selection
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Mode", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    // Using Row with ToggleButtons as fallback for older Compose versions
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         FilterChip(
                             selected = mode == "alert",
@@ -370,10 +330,11 @@ private fun GeneralTab(
                     Text("Performance Tuning", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     
+                    // Fixed duration fields: allows letters (s, m, h) and decimals
                     OutlinedTextField(
                         value = checkWindow,
-                        onValueChange = { checkWindow = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("Check Window") },
+                        onValueChange = { checkWindow = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
+                        label = { Text("Check Window (e.g. 60s, 1.5m)") },
                         placeholder = { Text("60s") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -381,8 +342,8 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = checkInterval,
-                        onValueChange = { checkInterval = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("Check Interval") },
+                        onValueChange = { checkInterval = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
+                        label = { Text("Check Interval (e.g. 0.81s)") },
                         placeholder = { Text("0.81s") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -390,13 +351,14 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = requestJitter,
-                        onValueChange = { requestJitter = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("Request Jitter") },
+                        onValueChange = { requestJitter = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
+                        label = { Text("Request Jitter (e.g. 0.18s, 800ms)") },
                         placeholder = { Text("0.18s") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
+                    // Integer fields remain digits only
                     OutlinedTextField(
                         value = monthsToCheck,
                         onValueChange = { monthsToCheck = it.filter { char -> char.isDigit() } },
@@ -408,8 +370,8 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = preWarmOffset,
-                        onValueChange = { preWarmOffset = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("Pre-Warm Offset") },
+                        onValueChange = { preWarmOffset = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
+                        label = { Text("Pre-Warm Offset (e.g. 30s)") },
                         placeholder = { Text("30s") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -435,8 +397,8 @@ private fun GeneralTab(
                     
                     OutlinedTextField(
                         value = restCycleDuration,
-                        onValueChange = { restCycleDuration = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("Rest Cycle Duration") },
+                        onValueChange = { restCycleDuration = it.filter { char -> char.isLetterOrDigit() || char == '.' } },
+                        label = { Text("Rest Cycle Duration (e.g. 3s)") },
                         placeholder = { Text("3s") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -449,40 +411,51 @@ private fun GeneralTab(
             Button(
                 onClick = {
                     scope.launch {
-                        // Validate numeric fields - ensure positive values only (GEN-08)
-                        val checkWindowVal = checkWindow.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.CHECK_WINDOW
-                        val checkIntervalVal = checkInterval.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.CHECK_INTERVAL
-                        val requestJitterVal = requestJitter.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.REQUEST_JITTER
-                        val preWarmOffsetVal = preWarmOffset.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.PRE_WARM_OFFSET
-                        val restCycleDurationVal = restCycleDuration.toDoubleOrNull()?.takeIf { it > 0 }?.toString() ?: Defaults.REST_CYCLE_DURATION
-                        
+                        // Helper to ensure durations always have a unit suffix (fallback to 's' if user just types a number)
+                        fun formatDuration(input: String, default: String): String {
+                            val trimmed = input.trim()
+                            if (trimmed.isEmpty()) return default
+                            if (trimmed.matches(Regex("^[0-9]+(\\.[0-9]+)?$"))) return "${trimmed}s"
+                            return trimmed
+                        }
+
                         val newGeneral = GeneralSettings(
                             mode = mode,
                             strikeTime = strikeTime,
                             preferredDays = selectedDays.toList(),
                             ntfyTopic = ntfyTopic,
                             preferredMuseumSlug = preferredMuseumSlug,
-                            checkWindow = checkWindowVal,
-                            checkInterval = checkIntervalVal,
-                            requestJitter = requestJitterVal,
+                            // Apply flexible formatting for durations
+                            checkWindow = formatDuration(checkWindow, Defaults.CHECK_WINDOW),
+                            checkInterval = formatDuration(checkInterval, Defaults.CHECK_INTERVAL),
+                            requestJitter = formatDuration(requestJitter, Defaults.REQUEST_JITTER),
                             monthsToCheck = monthsToCheck.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MONTHS_TO_CHECK,
-                            preWarmOffset = preWarmOffsetVal,
+                            preWarmOffset = formatDuration(preWarmOffset, Defaults.PRE_WARM_OFFSET),
                             maxWorkers = maxWorkers.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.MAX_WORKERS,
                             restCycleChecks = restCycleChecks.toIntOrNull()?.takeIf { it > 0 } ?: Defaults.REST_CYCLE_CHECKS,
-                            restCycleDuration = restCycleDurationVal
+                            restCycleDuration = formatDuration(restCycleDuration, Defaults.REST_CYCLE_DURATION)
                         )
+                        
                         configManager.updateGeneral(newGeneral)
+                        saveFeedback = "Settings saved successfully!"
+                        delay(2000)
+                        saveFeedback = null
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Save General Settings")
             }
+            
+            if (saveFeedback != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Text(saveFeedback!!, modifier = Modifier.padding(12.dp))
+                }
+            }
         }
     }
-    
 }
-// Note: TimePicker is now launched from LaunchedEffect(showTimePicker) above — no inline .show() here.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -492,12 +465,10 @@ private fun SitesTab(
 ) {
     val scope = rememberCoroutineScope()
     
-    // Handle nullable config with safe calls
     val activeSite = config?.admin?.activeSite ?: "spl"
     var selectedSiteKey by remember { mutableStateOf(activeSite) }
     var siteExpanded by remember { mutableStateOf(false) }
     
-    // Dialog states for museums and credentials
     var showMuseumDialog by remember { mutableStateOf(false) }
     var showCredentialDialog by remember { mutableStateOf(false) }
     var showBulkImportDialog by remember { mutableStateOf(false) }
@@ -505,6 +476,7 @@ private fun SitesTab(
     var editingCredential by remember { mutableStateOf<CredentialSet?>(null) }
     var showMuseumDeleteConfirmation by remember { mutableStateOf<Museum?>(null) }
     var showCredentialDeleteConfirmation by remember { mutableStateOf<CredentialSet?>(null) }
+    var saveFeedback by remember { mutableStateOf<String?>(null) }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -557,7 +529,6 @@ private fun SitesTab(
             if (site != null) {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        // Visual cue for site being edited (SITE-02)
                         Text("Editing ${site.name} Settings", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
                         
@@ -570,7 +541,6 @@ private fun SitesTab(
                         var physical by remember { mutableStateOf(site.physical) }
                         var location by remember { mutableStateOf(site.location) }
                         
-                        // [FIX (BUG-002)]: Reset form fields when selectedSiteKey changes using LaunchedEffect
                         LaunchedEffect(selectedSiteKey) {
                             baseUrl = site.baseUrl
                             availabilityEndpoint = site.availabilityEndpoint
@@ -633,11 +603,21 @@ private fun SitesTab(
                                     )
                                     val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
                                     configManager.updateAdmin(updatedAdmin)
+                                    saveFeedback = "Site configuration saved successfully!"
+                                    delay(2000)
+                                    saveFeedback = null
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Save Site Configuration")
+                        }
+                        
+                        if (saveFeedback != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                                Text(saveFeedback!!, modifier = Modifier.padding(12.dp))
+                            }
                         }
                     }
                 }
@@ -655,11 +635,9 @@ private fun SitesTab(
                     ) {
                         Text("Museums", style = MaterialTheme.typography.titleMedium)
                         Row {
-                            // Bulk Import Button
                             IconButton(onClick = { showBulkImportDialog = true }) {
                                 Icon(Icons.Default.ImportExport, contentDescription = "Bulk Import")
                             }
-                            // Add Museum FloatingActionButton (small)
                             FloatingActionButton(
                                 onClick = { editingMuseum = null; showMuseumDialog = true },
                                 modifier = Modifier.size(40.dp),
@@ -694,9 +672,6 @@ private fun SitesTab(
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
-                                            // Show confirmation dialog before deleting museum (SITE-06)
-                                            // we'll create an inline AlertDialog using a var
-                                            // For simplicity, we'll use a direct deletion with confirmation via a separate composable
                                             showMuseumDeleteConfirmation = museum
                                         }
                                     }) {
@@ -720,7 +695,6 @@ private fun SitesTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Credentials", style = MaterialTheme.typography.titleMedium)
-                        // Add Credential FloatingActionButton (small)
                         FloatingActionButton(
                             onClick = { editingCredential = null; showCredentialDialog = true },
                             modifier = Modifier.size(40.dp),
@@ -772,7 +746,6 @@ private fun SitesTab(
                                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                                     }
                                     IconButton(onClick = {
-                                        // Show confirmation dialog before deleting credential (SITE-13)
                                         showCredentialDeleteConfirmation = cred
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")
@@ -786,7 +759,6 @@ private fun SitesTab(
         }
     }
 
-    // Museum Edit Dialog - Render dialog when showMuseumDialog is true (section 5.2.2)
     if (showMuseumDialog) {
         MuseumEditDialog(
             museum = editingMuseum,
@@ -811,7 +783,6 @@ private fun SitesTab(
         )
     }
 
-    // Credential Edit Dialog - Render dialog when showCredentialDialog is true (section 5.2.2)
     if (showCredentialDialog) {
         CredentialEditDialog(
             credential = editingCredential,
@@ -841,7 +812,6 @@ private fun SitesTab(
         )
     }
 
-    // Bulk Import Dialog - Render dialog when showBulkImportDialog is true (section 5.2.2)
     if (showBulkImportDialog) {
         BulkImportDialog(
             existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(),
@@ -866,7 +836,6 @@ private fun SitesTab(
         )
     }
     
-    // Museum Delete Confirmation Dialog (SITE-06)
     showMuseumDeleteConfirmation?.let { museum ->
         AlertDialog(
             onDismissRequest = { showMuseumDeleteConfirmation = null },
@@ -885,7 +854,6 @@ private fun SitesTab(
                             updatedSites[selectedSiteKey] = updatedSite
                             val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
                             
-                            // Referential integrity: clear preferredMuseumSlug if deleted museum was preferred
                             val fullConfig = configManager.configFlow.first()
                             val newGeneral = if (fullConfig.general.preferredMuseumSlug == museum.slug) {
                                 fullConfig.general.copy(preferredMuseumSlug = "")
@@ -896,7 +864,6 @@ private fun SitesTab(
                             if (newGeneral != fullConfig.general) {
                                 configManager.updateGeneral(newGeneral)
                             }
-                            // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
                             configManager.cleanupInvalidRuns()
                             showMuseumDeleteConfirmation = null
                         }
@@ -913,7 +880,6 @@ private fun SitesTab(
         )
     }
     
-    // Credential Delete Confirmation Dialog (SITE-13)
     showCredentialDeleteConfirmation?.let { credential ->
         AlertDialog(
             onDismissRequest = { showCredentialDeleteConfirmation = null },
@@ -931,7 +897,6 @@ private fun SitesTab(
                             val updatedSite = currentSite.copy(credentials = updatedCredentials)
                             updatedSites[selectedSiteKey] = updatedSite
                             
-                            // Referential integrity: clear defaultCredentialId if deleted credential was default
                             val newDefaultCredentialId = if (currentSite.defaultCredentialId == credential.id) {
                                 null
                             } else {
@@ -940,7 +905,6 @@ private fun SitesTab(
                             val finalSite = updatedSite.copy(defaultCredentialId = newDefaultCredentialId)
                             val finalAdmin = currentConfig.admin.copy(sites = updatedSites.toMutableMap() + (selectedSiteKey to finalSite))
                             configManager.updateAdmin(finalAdmin)
-                            // Proactive cleanup: remove invalid scheduled runs (PROP-02, EDGE-09, EDGE-10)
                             configManager.cleanupInvalidRuns()
                             showCredentialDeleteConfirmation = null
                         }
