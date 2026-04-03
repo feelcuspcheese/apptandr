@@ -23,6 +23,7 @@ type MobileAgent struct {
 	logCallback    LogCallback
 	statusCallback StatusCallback
 	mu             sync.RWMutex
+	mobileRunning  bool // FIX (Bug 1b): Track running state independently of agentInst.IsRunning()
 }
 
 // LogCallback matches setLogCallback((String) -> Unit)
@@ -35,6 +36,26 @@ type StatusCallback interface {
 	OnStatus(status string)
 }
 
+// intermediateConfig FIX (Bug 5): Duration fields as strings for JSON unmarshal
+type intermediateConfig struct {
+	ActiveSite         string   `json:"active_site"`
+	Mode               string   `json:"mode"`
+	StrikeTime         int      `json:"strike_time"`
+	PreferredDays      []string `json:"preferred_days"`
+	NtfyTopic          string   `json:"ntfy_topic"`
+	CheckWindow        string   `json:"check_window"`
+	CheckInterval      string   `json:"check_interval"`
+	RequestJitter      string   `json:"request_jitter"`
+	MonthsToCheck      int      `json:"months_to_check"`
+	PreWarmOffset      string   `json:"pre_warm_offset"`
+	MaxWorkers         int      `json:"max_workers"`
+	RestCycleChecks    int      `json:"rest_cycle_checks"`
+	RestCycleDuration  string   `json:"rest_cycle_duration"`
+	Sites              map[string]interface{} `json:"sites"`
+	Museums            map[string]interface{} `json:"museums"`
+	Credentials        map[string]interface{} `json:"credentials"`
+}
+
 func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
@@ -42,31 +63,60 @@ func NewMobileAgent() *MobileAgent {
 // Start matches spec: returns true if started successfully, false otherwise.
 func (m *MobileAgent) Start(configJSON string) bool {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.agentInst != nil && m.agentInst.IsRunning() {
 		m.fireLog("WARN", "Agent already running")
+		m.mu.Unlock()
 		return false
 	}
 
 	var req struct {
-		SiteKey    string           `json:"siteKey"`
-		MuseumSlug string           `json:"museumSlug"`
-		DropTime   string           `json:"dropTime"`
-		Mode       string           `json:"mode"`
-		Timezone   string           `json:"timezone"`
-		FullConfig config.AppConfig `json:"fullConfig"`
+		SiteKey      string            `json:"siteKey"`
+		MuseumSlug   string            `json:"museumSlug"`
+		DropTime     string            `json:"dropTime"`
+		Mode         string            `json:"mode"`
+		Timezone     string            `json:"timezone"`
+		FullConfig   intermediateConfig `json:"fullConfig"` // FIX (Bug 5): Use intermediate config
 	}
 
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
+		m.mu.Unlock()
 		return false
 	}
 
-	cfg := req.FullConfig
+	// FIX (Bug 5): Parse duration strings into time.Duration
+	parseDuration := func(s string, defaultVal time.Duration) time.Duration {
+		if s == "" {
+			return defaultVal
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return defaultVal
+		}
+		return d
+	}
+
+	cfg := config.AppConfig{
+		ActiveSite:         req.FullConfig.ActiveSite,
+		Mode:               req.FullConfig.Mode,
+		StrikeTime:         req.FullConfig.StrikeTime,
+		PreferredDays:      req.FullConfig.PreferredDays,
+		NtfyTopic:          req.FullConfig.NtfyTopic,
+		CheckWindow:        parseDuration(req.FullConfig.CheckWindow, 5*time.Second),
+		CheckInterval:      parseDuration(req.FullConfig.CheckInterval, 100*time.Millisecond),
+		RequestJitter:      parseDuration(req.FullConfig.RequestJitter, 50*time.Millisecond),
+		MonthsToCheck:      req.FullConfig.MonthsToCheck,
+		PreWarmOffset:      parseDuration(req.FullConfig.PreWarmOffset, 2*time.Minute),
+		MaxWorkers:         req.FullConfig.MaxWorkers,
+		RestCycleChecks:    req.FullConfig.RestCycleChecks,
+		RestCycleDuration:  parseDuration(req.FullConfig.RestCycleDuration, 1*time.Second),
+	}
+
 	dropTime, err := time.Parse(time.RFC3339, req.DropTime)
 	if err != nil {
 		m.fireLog("ERROR", fmt.Sprintf("Invalid dropTime format: %v", err))
+		m.mu.Unlock()
 		return false
 	}
 	runID := "run-" + time.Now().Format("150405")
@@ -85,12 +135,20 @@ func (m *MobileAgent) Start(configJSON string) bool {
 
 	m.agentInst = agent.NewAgent(&cfg, logger)
 
+	// FIX (Bug 1b): Set mobileRunning to true BEFORE launching goroutine
+	m.mobileRunning = true
+
 	go func() {
 		m.fireStatus("running")
 		_ = m.agentInst.Start(runID)
 		m.fireStatus("stopped")
+		// FIX (Bug 1b): Clear mobileRunning when goroutine finishes
+		m.mu.Lock()
+		m.mobileRunning = false
+		m.mu.Unlock()
 	}()
 
+	m.mu.Unlock()
 	return true
 }
 
@@ -105,7 +163,8 @@ func (m *MobileAgent) Stop() {
 func (m *MobileAgent) IsRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.agentInst != nil && m.agentInst.IsRunning()
+	// FIX (Bug 1b): Return mobileRunning which is guaranteed true from the moment Start() returns
+	return m.mobileRunning
 }
 
 func (m *MobileAgent) SetLogCallback(cb LogCallback) {

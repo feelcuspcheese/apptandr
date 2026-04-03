@@ -33,18 +33,30 @@ fun LogsScreen(
     // Observe logs reactively from LogManager.logFlow (section 5.4)
     val logs = remember { mutableStateListOf<LogEntry>() }
 
+    // FIX (Bug 3): Watermark to skip duplicates when loading buffer + subscribing to flow
+    var lastBufferedTs by remember { mutableStateOf(0L) }
+
     // Load existing logs on first composition (section 5.4 - LOG-21)
     LaunchedEffect(Unit) {
-        logs.addAll(LogManager.getCurrentLogs())
+        val bufferedLogs = LogManager.getCurrentLogs()
+        logs.addAll(bufferedLogs)
+        // Set watermark to the latest timestamp in the buffer
+        if (bufferedLogs.isNotEmpty()) {
+            lastBufferedTs = bufferedLogs.maxOf { it.timestamp }
+        }
     }
 
     // Collect new logs via logFlow (section 5.4)
+    // FIX (Bug 3): Skip entries with timestamps <= lastBufferedTs to avoid duplicates
     LaunchedEffect(Unit) {
         LogManager.logFlow.collect { entry ->
-            logs.add(entry)
-            // Keep buffer size manageable
-            if (logs.size > 500) {
-                logs.removeAt(0)
+            if (entry.timestamp > lastBufferedTs) {
+                logs.add(entry)
+                lastBufferedTs = entry.timestamp
+                // Keep buffer size manageable
+                if (logs.size > 500) {
+                    logs.removeAt(0)
+                }
             }
         }
     }

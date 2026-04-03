@@ -38,10 +38,21 @@ fun DashboardScreen(
     val isRunning by BookingForegroundService.isRunning.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // FIX (Bug 4): currentTime state that ticks every second for countdown recomposition
+    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            currentTime = System.currentTimeMillis()
+        }
+    }
+
     // Start Now countdown state (DB-10)
     var isStarting by remember { mutableStateOf(false) }
     var countdown by remember { mutableStateOf(0) }
-    var countdownJob: Job? = remember { null }
+    // FIX (Bug 4): Use mutableStateOf for Job so it survives recomposition
+    val countdownJobState = remember { mutableStateOf<Job?>(null) }
 
     // Action feedback state
     var actionFeedback by remember { mutableStateOf<String?>(null) }
@@ -55,7 +66,7 @@ fun DashboardScreen(
     // Cleanup countdown job on dispose
     DisposableEffect(Unit) {
         onDispose {
-            countdownJob?.cancel()
+            countdownJobState.value?.cancel()
         }
     }
 
@@ -100,7 +111,7 @@ fun DashboardScreen(
                             isStarting = true
                             countdown = 30
                             
-                            countdownJob = scope.launch {
+                            countdownJobState.value = scope.launch {
                                 // Countdown loop
                                 while (countdown > 0) {
                                     delay(1000)
@@ -187,7 +198,7 @@ fun DashboardScreen(
                                     actionFeedback = "Stopping agent..."
                                     actionSuccess = true
                                     // Cancel countdown if stopping
-                                    countdownJob?.cancel()
+                                    countdownJobState.value?.cancel()
                                     isStarting = false
                                 } catch (e: Exception) {
                                     actionFeedback = "Failed to stop: ${e.message}"
@@ -252,11 +263,12 @@ fun DashboardScreen(
 
                 config?.let { cfg ->
                     val nextRun = cfg.scheduledRuns
-                        .filter { it.dropTimeMillis > System.currentTimeMillis() }
+                        .filter { it.dropTimeMillis > currentTime }
                         .minByOrNull { it.dropTimeMillis }
 
                     if (nextRun != null) {
-                        val timeUntil = nextRun.dropTimeMillis - System.currentTimeMillis()
+                        // FIX (Bug 4): Use currentTime instead of System.currentTimeMillis() for recomposition
+                        val timeUntil = nextRun.dropTimeMillis - currentTime
                         val minutes = timeUntil / 60000
                         val seconds = (timeUntil % 60000) / 1000
                         Text("In ${minutes}m ${seconds}s")
