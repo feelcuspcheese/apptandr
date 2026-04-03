@@ -162,7 +162,7 @@ data class ScheduledRun(
 data class AppConfig(
     val general: GeneralSettings = GeneralSettings(),
     val admin: AdminConfig = AdminConfig(),
-    val scheduledRuns: MutableList<ScheduledRun> = mutableListOf()
+    val scheduledRuns: List<ScheduledRun> = emptyList()
 )
 
 /**
