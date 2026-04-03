@@ -23,6 +23,10 @@ import kotlinx.serialization.json.Json
  * automatically emits a new AppConfig, and all screens observing the flow will recompose.
  */
 
+// Reusable Json instances with proper configuration
+private val jsonDecoder = Json { ignoreUnknownKeys = true }
+private val jsonEncoder = Json { encodeDefaults = true }
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_config")
 
 class ConfigManager private constructor(private val context: Context) {
@@ -78,7 +82,7 @@ class ConfigManager private constructor(private val context: Context) {
                 AppConfig()
             } else {
                 try {
-                    val config = Json { ignoreUnknown = true }.decodeFromString<AppConfig>(json)
+                    val config = jsonDecoder.decodeFromString<AppConfig>(json)
                     // Filter out invalid scheduled runs (section 4.2)
                     val validRuns = config.scheduledRuns.filter { run ->
                         run.siteKey.isNotBlank() &&
@@ -306,7 +310,7 @@ class ConfigManager private constructor(private val context: Context) {
             "fullConfig" to fullConfig
         )
         
-        return Json { encodeDefaults = true }.encodeToString(request)
+        return jsonEncoder.encodeToString(request)
     }
 }
 
@@ -316,10 +320,10 @@ private val CONFIG_KEY = stringPreferencesKey("app_config")
 
 fun Preferences.toAppConfig(): AppConfig {
     val json = this[CONFIG_KEY] ?: return AppConfig()
-    return Json { ignoreUnknown = true }.decodeFromString(json)
+    return jsonDecoder.decodeFromString(json)
 }
 
 fun Preferences.withConfig(config: AppConfig): Preferences {
-    val json = Json { encodeDefaults = true }.encodeToString(config)
+    val json = jsonEncoder.encodeToString(config)
     return toMutablePreferences().apply { this[CONFIG_KEY] = json }.toPreferences()
 }
