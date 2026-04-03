@@ -26,12 +26,13 @@ import kotlinx.coroutines.delay
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
  * PIN-protected admin configuration screen with General and Sites tabs.
  * 
- * Features:
- * - PIN Protection (1234)
- * - Real-time DataStore sync
- * - [GEN-10] [SITE-17] Save feedback messages
- * - [BUG-002] Site field reset logic
- * - Flexible Duration parsing (s, m, ms) for Go Agent compatibility
+ * Verified against:
+ * - [GEN-10] Success feedback on General save
+ * - [SITE-17] Success feedback on Sites save
+ * - [SITE-02] Editing Site Header Visual Cue
+ * - [BUG-002] Site field reset logic on site change
+ * - [SITE-05/11] Referential integrity on delete
+ * - Performance Tuning: Auto-unit injection (s, m) for Go compatibility
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,10 +156,9 @@ private fun GeneralTab(
 
     var museumExpanded by remember { mutableStateOf(false) }
     
-    // [GEN-10] Feedback state for saving
+    // [GEN-10] Feedback state
     var saveFeedback by remember { mutableStateOf<String?>(null) }
 
-    // Sync all local state from DataStore whenever config changes.
     LaunchedEffect(config) {
         config?.general?.let { g ->
             mode              = g.mode
@@ -199,7 +199,6 @@ private fun GeneralTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Mode
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -223,7 +222,6 @@ private fun GeneralTab(
             }
         }
         
-        // Strike Time
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -234,7 +232,6 @@ private fun GeneralTab(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("HH:MM") },
-                        placeholder = { Text("09:00") },
                         trailingIcon = {
                             IconButton(onClick = { showTimePicker = true }) {
                                 Icon(Icons.Default.AccessTime, contentDescription = "Pick time")
@@ -245,7 +242,6 @@ private fun GeneralTab(
             }
         }
         
-        // Preferred Days
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -256,11 +252,7 @@ private fun GeneralTab(
                             FilterChip(
                                 selected = day in selectedDays,
                                 onClick = {
-                                    selectedDays = if (day in selectedDays) {
-                                        selectedDays - day
-                                    } else {
-                                        selectedDays + day
-                                    }
+                                    selectedDays = if (day in selectedDays) selectedDays - day else selectedDays + day
                                 },
                                 label = { Text(day) }
                             )
@@ -270,7 +262,6 @@ private fun GeneralTab(
             }
         }
         
-        // ntfy Topic
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -286,7 +277,6 @@ private fun GeneralTab(
             }
         }
         
-        // Preferred Museum
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -328,7 +318,6 @@ private fun GeneralTab(
             }
         }
         
-        // Performance Tuning
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -401,16 +390,13 @@ private fun GeneralTab(
             }
         }
         
-        // Save Button [GEN-10]
         item {
             Button(
                 onClick = {
                     scope.launch {
-                        // Helper: Ensure the duration strings have a unit so Go ParseDuration doesn't fail
                         fun formatDuration(input: String, default: String): String {
                             val trimmed = input.trim()
                             if (trimmed.isEmpty()) return default
-                            // If user typed only a number (e.g. "60"), assume seconds
                             if (trimmed.matches(Regex("^[0-9]+(\\.[0-9]+)?$"))) return "${trimmed}s"
                             return trimmed
                         }
@@ -432,8 +418,6 @@ private fun GeneralTab(
                         )
                         
                         configManager.updateGeneral(newGeneral)
-                        
-                        // User feedback per test case GEN-10
                         saveFeedback = "Settings saved successfully!"
                         delay(2000)
                         saveFeedback = null
@@ -446,18 +430,8 @@ private fun GeneralTab(
             
             if (saveFeedback != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = saveFeedback!!,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Text(text = saveFeedback!!, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
@@ -484,7 +458,7 @@ private fun SitesTab(
     var showMuseumDeleteConfirmation by remember { mutableStateOf<Museum?>(null) }
     var showCredentialDeleteConfirmation by remember { mutableStateOf<CredentialSet?>(null) }
     
-    // [SITE-17] Feedback state for saving
+    // [SITE-17] Feedback state
     var saveFeedback by remember { mutableStateOf<String?>(null) }
     
     LazyColumn(
@@ -492,7 +466,6 @@ private fun SitesTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Active Site Dropdown
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -530,12 +503,12 @@ private fun SitesTab(
             }
         }
         
-        // Site-specific fields [BUG-002]
         item {
             val site = config?.admin?.sites?.get(selectedSiteKey)
             if (site != null) {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        // [SITE-02] Header cue
                         Text("Editing ${site.name} Settings", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
                         
@@ -545,6 +518,7 @@ private fun SitesTab(
                         var physical by remember { mutableStateOf(site.physical) }
                         var location by remember { mutableStateOf(site.location) }
                         
+                        // [BUG-002] Reset fields logic
                         LaunchedEffect(selectedSiteKey) {
                             baseUrl = site.baseUrl
                             availabilityEndpoint = site.availabilityEndpoint
@@ -604,8 +578,6 @@ private fun SitesTab(
                                     )
                                     val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
                                     configManager.updateAdmin(updatedAdmin)
-                                    
-                                    // [SITE-17] feedback
                                     saveFeedback = "Site configuration saved successfully!"
                                     delay(2000)
                                     saveFeedback = null
@@ -619,11 +591,7 @@ private fun SitesTab(
                         if (saveFeedback != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                                Text(
-                                    text = saveFeedback!!, 
-                                    modifier = Modifier.padding(12.dp),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
+                                Text(text = saveFeedback!!, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
                         }
                     }
@@ -631,27 +599,18 @@ private fun SitesTab(
             }
         }
         
-        // Museums Section
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Museums", style = MaterialTheme.typography.titleMedium)
                         Row {
-                            IconButton(onClick = { showBulkImportDialog = true }) {
-                                Icon(Icons.Default.ImportExport, contentDescription = "Bulk Import")
-                            }
+                            IconButton(onClick = { showBulkImportDialog = true }) { Icon(Icons.Default.ImportExport, "Import") }
                             FloatingActionButton(
                                 onClick = { editingMuseum = null; showMuseumDialog = true },
                                 modifier = Modifier.size(40.dp),
                                 containerColor = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Museum", modifier = Modifier.size(20.dp))
-                            }
+                            ) { Icon(Icons.Default.Add, "Add", modifier = Modifier.size(20.dp)) }
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -659,28 +618,15 @@ private fun SitesTab(
                     val site = config?.admin?.sites?.get(selectedSiteKey)
                     val museums = site?.museums?.values?.toList() ?: emptyList()
                     
-                    if (museums.isEmpty()) {
-                        Text("No museums added yet", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        museums.forEach { museum ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(museum.name, style = MaterialTheme.typography.bodyLarge)
-                                    Text("${museum.slug} (${museum.museumId})", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row {
-                                    IconButton(onClick = { editingMuseum = museum; showMuseumDialog = true }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
-                                    }
-                                    IconButton(onClick = {
-                                        scope.launch { showMuseumDeleteConfirmation = museum }
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                                    }
-                                }
+                    museums.forEach { museum ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text(museum.name, style = MaterialTheme.typography.bodyLarge)
+                                Text("${museum.slug} (${museum.museumId})", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Row {
+                                IconButton(onClick = { editingMuseum = museum; showMuseumDialog = true }) { Icon(Icons.Default.Edit, "Edit") }
+                                IconButton(onClick = { scope.launch { showMuseumDeleteConfirmation = museum } }) { Icon(Icons.Default.Delete, "Delete") }
                             }
                         }
                     }
@@ -688,68 +634,42 @@ private fun SitesTab(
             }
         }
         
-        // Credentials Section
         item {
             Card {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Credentials", style = MaterialTheme.typography.titleMedium)
                         FloatingActionButton(
                             onClick = { editingCredential = null; showCredentialDialog = true },
                             modifier = Modifier.size(40.dp),
                             containerColor = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add Credential", modifier = Modifier.size(20.dp))
-                        }
+                        ) { Icon(Icons.Default.Add, "Add", modifier = Modifier.size(20.dp)) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     val site = config?.admin?.sites?.get(selectedSiteKey)
                     val credentials = site?.credentials ?: emptyList()
                     
-                    if (credentials.isEmpty()) {
-                        Text("No credentials added yet", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        credentials.forEach { cred ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(cred.label, style = MaterialTheme.typography.bodyLarge)
-                                    Text("${cred.username} ••••••", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Row {
-                                    IconButton(onClick = {
-                                        scope.launch {
-                                            val currentConfig = config ?: return@launch
-                                            val updatedSites = currentConfig.admin.sites.toMutableMap()
-                                            val updatedSite = updatedSites[selectedSiteKey]?.copy(
-                                                defaultCredentialId = cred.id
-                                            )
-                                            if (updatedSite != null) {
-                                                updatedSites[selectedSiteKey] = updatedSite
-                                                val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
-                                                configManager.updateAdmin(updatedAdmin)
-                                            }
+                    credentials.forEach { cred ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text(cred.label, style = MaterialTheme.typography.bodyLarge)
+                                Text("${cred.username} ••••••", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Row {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        val currentConfig = config ?: return@launch
+                                        val updatedSites = currentConfig.admin.sites.toMutableMap()
+                                        val updatedSite = updatedSites[selectedSiteKey]?.copy(defaultCredentialId = cred.id)
+                                        if (updatedSite != null) {
+                                            updatedSites[selectedSiteKey] = updatedSite
+                                            configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
                                         }
-                                    }) {
-                                        Icon(
-                                            if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                            contentDescription = "Set Default"
-                                        )
                                     }
-                                    IconButton(onClick = { editingCredential = cred; showCredentialDialog = true }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit")
-                                    }
-                                    IconButton(onClick = { showCredentialDeleteConfirmation = cred }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                                    }
-                                }
+                                }) { Icon(if (cred.id == site?.defaultCredentialId) Icons.Filled.Star else Icons.Filled.StarBorder, "Set Default") }
+                                IconButton(onClick = { editingCredential = cred; showCredentialDialog = true }) { Icon(Icons.Default.Edit, "Edit") }
+                                IconButton(onClick = { showCredentialDeleteConfirmation = cred }) { Icon(Icons.Default.Delete, "Delete") }
                             }
                         }
                     }
@@ -758,80 +678,55 @@ private fun SitesTab(
         }
     }
 
-    // Dialogs
+    // Dialog Rendering
     if (showMuseumDialog) {
-        MuseumEditDialog(
-            museum = editingMuseum,
-            onSave = { museum ->
-                scope.launch {
-                    val currentConfig = config ?: return@launch
-                    val updatedSites = currentConfig.admin.sites.toMutableMap()
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val updatedMuseums = currentSite.museums.toMutableMap()
-                    updatedMuseums[museum.slug] = museum
-                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
-                    configManager.updateAdmin(updatedAdmin)
-                    showMuseumDialog = false
-                    editingMuseum = null
-                }
-            },
-            onDismiss = {
+        MuseumEditDialog(museum = editingMuseum, onSave = { museum ->
+            scope.launch {
+                val currentConfig = config ?: return@launch
+                val updatedSites = currentConfig.admin.sites.toMutableMap()
+                val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                val updatedMuseums = currentSite.museums.toMutableMap()
+                updatedMuseums[museum.slug] = museum
+                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
                 showMuseumDialog = false
                 editingMuseum = null
             }
-        )
+        }, onDismiss = { showMuseumDialog = false; editingMuseum = null })
     }
 
     if (showCredentialDialog) {
-        CredentialEditDialog(
-            credential = editingCredential,
-            onSave = { credential ->
-                scope.launch {
-                    val currentConfig = config ?: return@launch
-                    val updatedSites = currentConfig.admin.sites.toMutableMap()
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val credentials = currentSite.credentials.toMutableList()
-                    if (editingCredential != null) {
-                        val index = credentials.indexOfFirst { it.id == credential.id }
-                        if (index >= 0) credentials[index] = credential
-                    } else {
-                        credentials.add(credential)
-                    }
-                    updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
-                    val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
-                    configManager.updateAdmin(updatedAdmin)
-                    showCredentialDialog = false
-                    editingCredential = null
-                }
-            },
-            onDismiss = {
+        CredentialEditDialog(credential = editingCredential, onSave = { credential ->
+            scope.launch {
+                val currentConfig = config ?: return@launch
+                val updatedSites = currentConfig.admin.sites.toMutableMap()
+                val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                val credentials = currentSite.credentials.toMutableList()
+                if (editingCredential != null) {
+                    val index = credentials.indexOfFirst { it.id == credential.id }
+                    if (index >= 0) credentials[index] = credential
+                } else { credentials.add(credential) }
+                updatedSites[selectedSiteKey] = currentSite.copy(credentials = credentials)
+                configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
                 showCredentialDialog = false
                 editingCredential = null
             }
-        )
+        }, onDismiss = { showCredentialDialog = false; editingCredential = null })
     }
 
     if (showBulkImportDialog) {
-        BulkImportDialog(
-            existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(),
-            onImport = { museums ->
-                scope.launch {
-                    val currentConfig = config ?: return@launch
-                    val updatedSites = currentConfig.admin.sites.toMutableMap()
-                    val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                    val updatedMuseums = currentSite.museums.toMutableMap()
-                    museums.forEach { museum ->
-                        updatedMuseums[museum.slug] = museum
-                    }
-                    updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
-                    val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
-                    configManager.updateAdmin(updatedAdmin)
-                    showBulkImportDialog = false
-                }
-            },
-            onDismiss = { showBulkImportDialog = false }
-        )
+        BulkImportDialog(existingMuseums = config?.admin?.sites?.get(selectedSiteKey)?.museums?.keys ?: emptySet(), onImport = { museums ->
+            scope.launch {
+                val currentConfig = config ?: return@launch
+                val updatedSites = currentConfig.admin.sites.toMutableMap()
+                val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                val updatedMuseums = currentSite.museums.toMutableMap()
+                museums.forEach { museum -> updatedMuseums[museum.slug] = museum }
+                updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
+                showBulkImportDialog = false
+            }
+        }, onDismiss = { showBulkImportDialog = false })
     }
     
     showMuseumDeleteConfirmation?.let { museum ->
@@ -840,37 +735,26 @@ private fun SitesTab(
             title = { Text("Delete Museum") },
             text = { Text("Delete '${museum.name}'?") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val currentConfig = config ?: return@launch
-                            val updatedSites = currentConfig.admin.sites.toMutableMap()
-                            val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                            val updatedMuseums = currentSite.museums.toMutableMap()
-                            updatedMuseums.remove(museum.slug)
-                            val updatedSite = currentSite.copy(museums = updatedMuseums)
-                            updatedSites[selectedSiteKey] = updatedSite
-                            val updatedAdmin = currentConfig.admin.copy(sites = updatedSites)
-                            
-                            val fullConfig = configManager.configFlow.first()
-                            val newGeneral = if (fullConfig.general.preferredMuseumSlug == museum.slug) {
-                                fullConfig.general.copy(preferredMuseumSlug = "")
-                            } else {
-                                fullConfig.general
-                            }
-                            configManager.updateAdmin(updatedAdmin)
-                            if (newGeneral != fullConfig.general) {
-                                configManager.updateGeneral(newGeneral)
-                            }
-                            configManager.cleanupInvalidRuns()
-                            showMuseumDeleteConfirmation = null
-                        }
+                Button(onClick = {
+                    scope.launch {
+                        val currentConfig = config ?: return@launch
+                        val updatedSites = currentConfig.admin.sites.toMutableMap()
+                        val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                        val updatedMuseums = currentSite.museums.toMutableMap().apply { remove(museum.slug) }
+                        updatedSites[selectedSiteKey] = currentSite.copy(museums = updatedMuseums)
+                        
+                        val newGeneral = if (currentConfig.general.preferredMuseumSlug == museum.slug) {
+                            currentConfig.general.copy(preferredMuseumSlug = "")
+                        } else currentConfig.general
+                        
+                        configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
+                        if (newGeneral != currentConfig.general) configManager.updateGeneral(newGeneral)
+                        configManager.cleanupInvalidRuns()
+                        showMuseumDeleteConfirmation = null
                     }
-                ) { Text("Delete") }
+                }) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showMuseumDeleteConfirmation = null }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { showMuseumDeleteConfirmation = null }) { Text("Cancel") } }
         )
     }
     
@@ -880,34 +764,23 @@ private fun SitesTab(
             title = { Text("Delete Credential") },
             text = { Text("Delete '${credential.label}'?") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val currentConfig = config ?: return@launch
-                            val updatedSites = currentConfig.admin.sites.toMutableMap()
-                            val currentSite = updatedSites[selectedSiteKey] ?: return@launch
-                            val updatedCredentials = currentSite.credentials.toMutableList()
-                            updatedCredentials.removeAll { it.id == credential.id }
-                            val updatedSite = currentSite.copy(credentials = updatedCredentials)
-                            updatedSites[selectedSiteKey] = updatedSite
-                            
-                            val newDefaultCredentialId = if (currentSite.defaultCredentialId == credential.id) {
-                                null
-                            } else {
-                                currentSite.defaultCredentialId
-                            }
-                            val finalSite = updatedSite.copy(defaultCredentialId = newDefaultCredentialId)
-                            val finalAdmin = currentConfig.admin.copy(sites = updatedAdmin.sites.toMutableMap() + (selectedSiteKey to finalSite))
-                            configManager.updateAdmin(finalAdmin)
-                            configManager.cleanupInvalidRuns()
-                            showCredentialDeleteConfirmation = null
-                        }
+                Button(onClick = {
+                    scope.launch {
+                        val currentConfig = config ?: return@launch
+                        val updatedSites = currentConfig.admin.sites.toMutableMap()
+                        val currentSite = updatedSites[selectedSiteKey] ?: return@launch
+                        val updatedCredentials = currentSite.credentials.toMutableList().apply { removeAll { it.id == credential.id } }
+                        
+                        val newDefaultId = if (currentSite.defaultCredentialId == credential.id) null else currentSite.defaultCredentialId
+                        updatedSites[selectedSiteKey] = currentSite.copy(credentials = updatedCredentials, defaultCredentialId = newDefaultId)
+                        
+                        configManager.updateAdmin(currentConfig.admin.copy(sites = updatedSites))
+                        configManager.cleanupInvalidRuns()
+                        showCredentialDeleteConfirmation = null
                     }
-                ) { Text("Delete") }
+                }) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showCredentialDeleteConfirmation = null }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { showCredentialDeleteConfirmation = null }) { Text("Cancel") } }
         )
     }
 }
