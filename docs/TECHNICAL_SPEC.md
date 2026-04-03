@@ -692,17 +692,86 @@ Column(
     // Timezone Dropdown, Date/Time Picker, Schedule Button, Scheduled Runs List
 }
 ```
+### Schedule Screen Components
 
 *   **Site Dropdown:** Uses `siteEntries` (key to name) to display names. When changed, reset museum and credential selections.
-*   **Museum Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.museums?.values`. Displays names; stores slug.
-*   **Credential Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.credentials`. Adds an extra option "Use default" (`credentialId = null`). Pre‑select the site’s `defaultCredentialId` if it exists, otherwise "Use default".
-*   **Mode Dropdown:** "Alert" / "Booking". Pre‑selected from `selectedMode`.
-*   **Timezone Dropdown:** Uses a list of common timezones with display names (e.g., "America/Los_Angeles" -> "PST/PDT (Los Angeles)"). Selected value stored as IANA string.
-*   **Date/Time Picker:** Use `DatePickerDialog` and `TimePickerDialog` (or a combined library) to select a future timestamp. Store as Long (milliseconds). Show selected date/time in a TextField with read‑only.
-*   **Schedule Button:** Validates that a future date/time is selected. Creates a `ScheduledRun` with the current selections and calls `configManager.addScheduledRun(run)` and `AlarmScheduler.scheduleRun(run)`.
-*   **Scheduled Runs List:** LazyColumn of `config.scheduledRuns` sorted by `dropTimeMillis`. Each item shows site (display name), museum name, mode, formatted date/time, and a delete icon. Deleting calls `configManager.removeScheduledRun(id)` and `AlarmScheduler.cancelRun(id)` with a confirmation dialog.
+*   **Museum Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.museums?.values`. Displays names and stores the unique `slug`.
+*   **Credential Dropdown:** Populated from `config.admin.sites[selectedSiteKey]?.credentials`. Adds an extra option **"Use default"** (`credentialId = null`). Pre‑selects the site’s `defaultCredentialId` if it exists; otherwise, defaults to "Use default".
+*   **Mode Dropdown:** Options: **"Alert"** / **"Booking"**. Pre‑selected based on the `selectedMode` state.
+*   **Timezone Dropdown:** Uses a list of common timezones with display names (e.g., `"America/Los_Angeles"` -> `"PST/PDT (Los Angeles)"`). The selected value is stored as an IANA string.
+*   **Date/Time Picker:** Utilizes `DatePickerDialog` and `TimePickerDialog` (or a combined library) to select a future timestamp. The value is stored as a `Long` (milliseconds). The selected date/time is shown in a read-only `TextField`.
 
-*Implementation details for timezone dropdown:*
+---
+
+### Schedule Button – Error Handling & Crash Recovery
+
+The Schedule Button must validate user input and handle exceptions gracefully. If validation fails or an error occurs during scheduling, a toast message is displayed and the error is logged. **The app must not crash.**
+
+The safe deserialization logic in `ConfigManager.configFlow` automatically removes any corrupted runs when the app restarts, ensuring the app can recover from a state that might have left invalid data.
+
+#### Implementation Example:
+
+```kotlin
+Button(
+    onClick = {
+        try {
+            // Validate date/time selection
+            if (selectedDateTime == null) {
+                Toast.makeText(context, "Please select a date and time", Toast.LENGTH_SHORT).show()
+                return@Button
+            }
+            if (selectedDateTime!! <= System.currentTimeMillis()) {
+                Toast.makeText(context, "Please select a future time", Toast.LENGTH_SHORT).show()
+                return@Button
+            }
+            
+            // Create the run object
+            val run = ScheduledRun(
+                id = UUID.randomUUID().toString(),
+                siteKey = selectedSiteKey,
+                museumSlug = selectedMuseumSlug,
+                credentialId = selectedCredentialId,
+                dropTimeMillis = convertToUtcMillis(selectedDateTime!!, selectedTimezone),
+                mode = selectedMode,
+                timezone = selectedTimezone
+            )
+            
+            // Attempt to save and schedule
+            viewModel.scheduleRun(run)  // calls ConfigManager.addScheduledRun
+            Toast.makeText(context, "Run scheduled successfully", Toast.LENGTH_SHORT).show()
+            
+        } catch (e: IllegalArgumentException) {
+            // Validation error (e.g., blank fields, past time)
+            Toast.makeText(context, e.message, Toast.LENGTH_LONG).show()
+            LogManager.addLog("ERROR", "Schedule validation failed: ${e.message}")
+        } catch (e: Exception) {
+            // Unexpected error
+            Toast.makeText(context, "Unexpected error: ${e.message}", Toast.LENGTH_LONG).show()
+            LogManager.addLog("ERROR", "Schedule failed: ${e.message}")
+        }
+    }
+) { Text("Schedule") }
+```
+
+**Recovery from crashes:** If the app crashes after an invalid run is saved, the safe deserialization in `ConfigManager.configFlow` will filter out any invalid `ScheduledRun` entries upon restart. The user will see a warning in the logs, and the app will load successfully without crashing.
+
+---
+
+### Scheduled Runs List
+
+A `LazyColumn` of `config.scheduledRuns` sorted by `dropTimeMillis`. Each item displays:
+*   Site (display name)
+*   Museum name
+*   Execution mode
+*   Formatted local date/time
+*   Delete icon
+
+Tapping the delete icon triggers a confirmation dialog; upon confirmation, it calls `configManager.removeScheduledRun(id)` and `AlarmScheduler.cancelRun(id)`.
+
+---
+
+### Implementation Details: Timezone Dropdown
+
 ```kotlin
 val timezones = listOf(
     "America/Los_Angeles" to "PST/PDT (Los Angeles)",
@@ -712,7 +781,9 @@ val timezones = listOf(
     "UTC" to "UTC",
     "Asia/Kolkata" to "IST (Kolkata)"
 )
+
 var expandedTz by remember { mutableStateOf(false) }
+
 ExposedDropdownMenuBox(
     expanded = expandedTz,
     onExpandedChange = { expandedTz = it }
@@ -722,7 +793,8 @@ ExposedDropdownMenuBox(
         onValueChange = {},
         readOnly = true,
         label = { Text("Timezone") },
-        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedTz) }
+        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedTz) },
+        modifier = Modifier.menuAnchor()
     )
     ExposedDropdownMenu(
         expanded = expandedTz,
@@ -739,6 +811,7 @@ ExposedDropdownMenuBox(
         }
     }
 }
+
 ```
 
 ### 5.4 LogsScreen
@@ -1422,6 +1495,10 @@ Make it executable: `chmod +x scripts/build-go.sh`. Run before building the Andr
 | **LOG‑20** | Logs survive rotation | Rotate device while on LogsScreen – all logs remain visible. |
 | **LOG‑21** | Logs show buffer on open | Before opening LogsScreen, generate several logs. Then open LogsScreen – all those logs appear immediately. |
 | **DB‑10** | Start Now – countdown and feedback | After clicking Start Now, the button is disabled and shows a progress indicator with a countdown (e.g., “Starting in 30s”). The countdown decreases every second. After 30 seconds, the agent starts and logs appear. |
+| **CRASH‑01** | Schedule run with empty site | Toast error, no crash, run not added. |
+| **CRASH‑02** | Schedule run with past date/time | Toast error, no crash. |
+| **CRASH‑03** | Manually corrupt DataStore file | App loads default config, logs error, does not crash. |
+| **CRASH‑04** | After crash, restart app and navigate to ScheduleScreen | App loads normally; no crash. |
 
 *All other existing test cases (CONF‑01 to CONF‑07, DB‑01 to DB‑08, GEN‑01 to GEN‑09, SITE‑01 to SITE‑16, SCH‑01 to SCH‑13, RUN‑01 to RUN‑11, JSON‑01 to JSON‑07, LOG‑01 to LOG‑07, WIZ‑01 to WIZ‑08, EDGE‑01 to EDGE‑12, INT‑01 to INT‑07, REL‑01 to REL‑06, PERF‑01 to PERF‑05, RT‑01 to RT‑05) remain valid.*
 
