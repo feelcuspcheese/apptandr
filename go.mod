@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.18.2
+	github.com/refraction-networking/utls v1.6.7
 	golang.org/x/mobile v0.0.0-20260312152759-81488f6aeb60
 )
 
