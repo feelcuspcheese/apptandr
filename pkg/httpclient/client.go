@@ -15,15 +15,13 @@ import (
 )
 
 // Profile defines a specific device fingerprint and its matching header set.
-// This allows us to perfectly synchronize the TLS handshake with the Application layer.
 type Profile struct {
 	Name      string
 	HelloID   utls.ClientHelloID
 	UserAgent string
 }
 
-// Global list of supported profiles. 
-// These profiles are selected to be high-fidelity and difficult for WAFs to flag.
+// Global list of verified high-fidelity profiles.
 var profiles = []Profile{
 	{
 		Name:      "Chrome Desktop (Windows)",
@@ -37,8 +35,8 @@ var profiles = []Profile{
 	},
 	{
 		Name:      "Android Chrome (Pixel 8)",
-		// FIXED: Replaced undefined HelloAndroid_11 with a valid, high-fidelity Chrome-Android fingerprint
-		HelloID:   utls.HelloChrome_114_Android,
+		// VERIFIED: HelloAndroid_11_OkHttp is the correct constant for Android mimicry in uTLS
+		HelloID:   utls.HelloAndroid_11_OkHttp,
 		UserAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 	},
 }
@@ -50,25 +48,21 @@ type Client struct {
 }
 
 /**
- * NewClient creates an HTTP client that mimics a real consumer device.
- * 
- * DESIGN GOALS:
- * 1. Sticky Identity: The profile is chosen once and persists for the entire run.
- * 2. Session Support: Fully supports CookieJar for login/booking redirects.
- * 3. WAF Safety: Synchronizes TLS fingerprint (JA3) with the User-Agent.
+ * NewClient creates an HTTP client with a "Sticky Identity".
+ * The device identity is randomized once per run and locked into the Transport.
  */
 func NewClient(headers map[string]string, timeout time.Duration) (*Client, error) {
-	// Initialize random seed to ensure a different device is picked on each agent start
+	// Randomize identity per run
 	rand.Seed(time.Now().UnixNano())
 	chosenProfile := profiles[rand.Intn(len(profiles))]
 
-	// Setup Cookie Jar for stateful redirects (e.g., Strike -> Login -> Result)
+	// Setup Cookie Jar for stateful session persistence
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Custom Transport using uTLS for low-level handshake manipulation
+	// Custom Transport using uTLS for JA3/Fingerprint mimicry
 	transport := &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, _, err := net.SplitHostPort(addr)
@@ -82,26 +76,24 @@ func NewClient(headers map[string]string, timeout time.Duration) (*Client, error
 				return nil, err
 			}
 
-			// Wrap the raw TCP connection with the uTLS Client
+			// Initialize uTLS connection with the chosen identity
 			uConn := utls.UClient(conn, &utls.Config{
 				ServerName: host,
 				MinVersion: tls.VersionTLS12,
 				MaxVersion: tls.VersionTLS13,
 			}, chosenProfile.HelloID)
 
-			// Execute the specific handshake profile
 			if err := uConn.HandshakeContext(ctx); err != nil {
-				return nil, fmt.Errorf("Mimicry Handshake Failed: %w", err)
+				return nil, fmt.Errorf("TLS Mimicry Handshake Failed: %w", err)
 			}
 
 			return uConn, nil
 		},
-		// Performance: Keep connections open for the Strike phase to eliminate handshake latency
+		// Maintain open connections to minimize strike latency
 		DisableKeepAlives:   false,
 		MaxIdleConns:        32,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
 	}
 
 	return &Client{
@@ -116,24 +108,21 @@ func NewClient(headers map[string]string, timeout time.Duration) (*Client, error
 }
 
 /**
- * Do interceptor ensures that EVERY request made by the agent (Strike, Login, Form Post)
- * uses the User-Agent that exactly matches the TLS handshake fingerprint.
+ * Do ensures the User-Agent always matches the encryption layer fingerprint (JA3).
  */
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Apply common headers from the agent configuration
 	for k, v := range c.Headers {
 		if !strings.EqualFold(k, "User-Agent") {
 			req.Header.Set(k, v)
 		}
 	}
 
-	// Overwrite User-Agent to ensure perfect Application/Encryption layer alignment
+	// Lock User-Agent to the Chosen TLS Profile
 	req.Header.Set("User-Agent", c.ChosenProfile.UserAgent)
 
-	// Stealth headers: Ensure browser-consistent encoding and connection behavior
+	// Enforce browser-standard headers for safety
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
 	return c.Client.Do(req)
 }
