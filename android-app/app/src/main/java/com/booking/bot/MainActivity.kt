@@ -36,9 +36,10 @@ import kotlinx.coroutines.launch
  * Main Activity - Entry point for the Booking Bot application.
  * 
  * Audit Fixes:
- * 1. Implements a safe, non-recursive permission gauntlet.
- * 2. Handles Notification -> Exact Alarm -> Battery Optimization sequentially.
- * 3. Prevents ActivityNotFoundException on restricted OEM devices.
+ * 1. Resolved build error by removing invalid ACTION_ALARM_READY_LIST reference.
+ * 2. Implements a safe, non-recursive permission gauntlet.
+ * 3. Handles Notification -> Exact Alarm -> Battery Optimization sequentially.
+ * 4. Prevents ActivityNotFoundException on restricted OEM devices.
  */
 class MainActivity : ComponentActivity() {
 
@@ -51,7 +52,7 @@ class MainActivity : ComponentActivity() {
         } else {
             LogManager.addLog("WARN", "Notification permission denied")
         }
-        // Proceed to next step in gauntlet
+        // Proceed to next step in gauntlet immediately after user interaction
         checkExactAlarmPermission()
     }
 
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Step 1: Notifications
+     * Checks for POST_NOTIFICATIONS permission on Android 13+.
      */
     private fun initPermissionGauntlet() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -94,31 +96,40 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Step 2: Exact Alarms (Android 12+)
+     * WAF Safety and Precise Strike depend on exact timing.
      */
     private fun checkExactAlarmPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
-                LogManager.addLog("WARN", "Exact Alarm permission missing")
+                LogManager.addLog("WARN", "Exact Alarm permission missing - redirecting user")
                 try {
-                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    // Try direct prompt for exact alarm
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
                     startActivity(intent)
                 } catch (e: Exception) {
-                    // Fallback for some device variants
+                    // Fallback: Open Application Details if direct intent fails
                     try {
-                        startActivity(Intent(Settings.ACTION_ALARM_READY_LIST))
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                        Toast.makeText(this, "Enable 'Alarms & Reminders' in settings", Toast.LENGTH_LONG).show()
                     } catch (e2: Exception) {
-                        LogManager.addLog("ERROR", "Could not open Exact Alarm settings")
+                        LogManager.addLog("ERROR", "Could not open settings for Exact Alarm")
                     }
                 }
             }
         }
-        // Proceed to next step
+        // Proceed to final step in gauntlet
         checkBatteryOptimizations()
     }
 
     /**
      * Step 3: Battery Optimization (Deep Doze Protection)
+     * Ensures the Go agent is not killed by Android's power management.
      */
     private fun checkBatteryOptimizations() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -132,7 +143,7 @@ class MainActivity : ComponentActivity() {
                     startActivity(intent)
                 } catch (e: Exception) {
                     try {
-                        // Fallback to the general list if direct request is blocked by OEM
+                        // Fallback to general Battery Optimization settings if direct request is blocked
                         startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     } catch (e2: Exception) {
                         Toast.makeText(this, "Please disable battery optimization for this app manually", Toast.LENGTH_LONG).show()
@@ -153,6 +164,7 @@ fun BookingBotApp() {
     var showWizard by remember { mutableStateOf(false) }
     var wizardCheckComplete by remember { mutableStateOf(false) }
     
+    // Check if configuration wizard is required
     LaunchedEffect(Unit) {
         val completed = configManager.isWizardCompleted()
         showWizard = !completed
