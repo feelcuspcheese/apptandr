@@ -100,7 +100,7 @@ func (a *Agent) Start(runID string) error {
 		a.mu.Unlock()
 	}()
 
-	// Wait for completion
+	// Wait for completion or stop signal
 	select {
 	case <-doneCh:
 		return nil
@@ -118,7 +118,7 @@ func (a *Agent) Stop() {
 
 func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 	defer func() {
-		// Remove the run from config when finished
+		// Clean up the run from the scheduled list on finish
 		a.removeRun(run.ID)
 	}()
 
@@ -135,24 +135,23 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 		return
 	}
 
-	// 1. Create the Perfect Mimic HTTP client
-	// We only provide "Intent" headers here. The "Identity" (TLS + User-Agent) 
-	// is handled automatically by the client based on the randomized profile.
+	// 1. Create Identity-Sticky Mimic Client
+	// This client randomly picks a device (iOS/Android/Chrome) and STICKS to it.
 	headers := map[string]string{
 		"Accept":           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
 		"Accept-Language": "en-US,en;q=0.9",
 		"Referer":         site.BaseURL + "/passes/" + museum.Slug,
-		"X-Requested-With": "XMLHttpRequest", // Only used for AJAX Strike phase
+		"X-Requested-With": "XMLHttpRequest", // Necessary for AJAX Strike
 	}
 	
 	client, err := httpclient.NewClient(headers, 30*time.Second)
 	if err != nil {
-		a.log("Failed to create Mimic HTTP client: %v", err)
+		a.log("Failed to initialize mimicry stack: %v", err)
 		return
 	}
 
-	// Log the identity for the user
-	a.log("Network Identity Locked: %s", client.ChosenProfile.Name)
+	// Log the identity for debugging and WAF verification
+	a.log("Run Identity Locked: %s", client.ChosenProfile.Name)
 
 	// Build availability endpoint template
 	endpointTemplate := fmt.Sprintf("%s%s?museum=%s&date={date}&digital=%t&physical=%t&location=%s",
@@ -165,75 +164,72 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 	)
 	scraperInst := scraper.NewScraper(client, endpointTemplate, a.config.RequestJitter, a.logger)
 
-	// Wait until pre-warm time (dropTime - preWarmOffset)
+	// Pre-warm window
 	now := time.Now()
 	preWarmTime := run.DropTime.Add(-a.config.PreWarmOffset)
 	if preWarmTime.After(now) {
 		wait := preWarmTime.Sub(now)
-		a.log("Waiting %v until pre-warm time", wait)
+		a.log("Waiting %v until pre-warm offset", wait)
 		select {
 		case <-time.After(wait):
 		case <-ctx.Done():
-			a.log("Agent stopped before pre-warm")
+			a.log("Agent stopped during pre-warm wait")
 			return
 		}
 	}
 
-	// Pre-warm now (close to drop time)
-	a.log("Pre-warming identity session...")
-	if site.BaseURL == "" {
-		a.log("BaseURL empty, skipping pre-warm")
-	} else {
+	// Pre-warm current session identity
+	a.log("Pre-warming identity session on %s...", site.BaseURL)
+	if site.BaseURL != "" {
 		if err := a.preWarm(client, site.BaseURL); err != nil {
-			a.log("Pre-warm failed: %v", err)
+			a.log("Pre-warm connection failed: %v", err)
 		} else {
-			a.log("Pre-warm completed")
+			a.log("Session pre-warmed successfully")
 		}
 	}
 
-	// Wait until exact drop time with microsecond precision
-	a.log("Waiting until drop time with high precision")
+	// High-Precision Strike Wait
+	a.log("Standby: Final microsecond countdown started")
 	if err := waitUntil(ctx, run.DropTime); err != nil {
-		a.log("Agent stopped before drop time")
+		a.log("Agent cancelled before strike time")
 		return
 	}
 
-	// Start check window
+	// Strike Window Start
 	deadline := time.Now().Add(a.config.CheckWindow)
-	a.log("Check window started, deadline: %v", deadline)
+	a.log("STRIKE INITIATED. Window ends: %v", deadline)
 
 	ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 
-	// Rest cycle: only apply if check window > 1 minute
+	// Rest cycle management for long check windows
 	restEnabled := a.config.CheckWindow > 1*time.Minute
 	checksCount := 0
 
 	for {
 		if time.Now().After(deadline) {
-			a.log("Check window expired")
+			a.log("Strike window expired. No slots found.")
 			break
 		}
 
 		// Perform availability check
 		stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, run.DropTime, run.Mode)
 		if err != nil {
-			a.log("Check error: %v", err)
+			a.log("Check Warning: %v", err)
 		}
 		if stop {
 			if run.Mode == "alert" {
-				a.log("Alert sent, stopping checks")
+				a.log("Alert successfully dispatched. Ending run.")
 			} else {
-				a.log("Booking successful, stopping checks")
+				a.log("Booking flow completed. Ending run.")
 			}
 			break
 		}
 
-		// Increment counter for rest cycle
 		if restEnabled {
 			checksCount++
 		}
 
-		// Wait for next interval (with jitter)
+		// Next Interval Calculation with Jitter
 		interval := a.config.CheckInterval
 		if a.config.RequestJitter > 0 {
 			interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
@@ -243,13 +239,13 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 		select {
 		case <-time.After(interval):
 		case <-ctx.Done():
-			a.log("Agent stopped during wait")
+			a.log("Agent stopped during interval delay")
 			return
 		}
 
-		// Rest cycle logic
+		// Human Mimicry Rest Cycle
 		if restEnabled && checksCount >= a.config.RestCycleChecks {
-			a.log("Resting for %v (human mimic)", a.config.RestCycleDuration)
+			a.log("Resting for %v (WAF evasion rest cycle)", a.config.RestCycleDuration)
 			select {
 			case <-time.After(a.config.RestCycleDuration):
 				checksCount = 0
@@ -258,15 +254,13 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 			}
 		}
 	}
-	a.log("Agent finished run %s", run.ID)
+	a.log("Run %s finished", run.ID)
 }
 
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
 	startDate := dropTime
 	months := a.config.MonthsToCheck
-	if months < 1 {
-		months = 1
-	}
+	if months < 1 { months = 1 }
 
 	allAvails := []parser.Availability{}
 	for i := 0; i < months; i++ {
@@ -277,19 +271,21 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 			targetMonth := startDate.AddDate(0, i, 0)
 			targetDate = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
 		}
+		
 		dateStr := targetDate.Format("2006-01-02")
-		a.log("Fetching availability for month starting %s (date param: %s)", targetDate.Format("2006-01"), dateStr)
+		a.log("Scanning %s - Month %d...", site.Name, i+1)
 
 		avails, _, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
 		if err != nil {
-			a.log("Error fetching availability for %s: %v", dateStr, err)
+			a.log("Fetch Error [%s]: %v", dateStr, err)
 			continue
 		}
 		if len(avails) == 0 {
 			a.log("No availabilities found for %s", dateStr)
 		}
-		allAvails = append(allAvails, avails...)
+	allAvails = append(allAvails, avails...)
 		
+		// Internal jitter between months to look more human
 		if i < months-1 && a.config.RequestJitter > 0 {
 			jitter := time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
 			select {
@@ -305,13 +301,12 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		return false, nil
 	}
 
+	// Filter for previously unseen dates
 	newAvails := []parser.Availability{}
 	for _, av := range allAvails {
 		fullDate, err := extractDateFromURL(av.BookingURL)
-		if err != nil {
-			a.log("Failed to extract date from URL %s: %v", av.BookingURL, err)
-			continue
-		}
+		if err != nil { continue }
+		
 		if !a.stateManager.IsSeen(fullDate) {
 			a.stateManager.MarkSeen(fullDate)
 			av.Date = fullDate
@@ -335,9 +330,9 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
 		err := ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
 		if err != nil {
-			a.log("Failed to send notification: %v", err)
+			a.log("Alert Failed: %v", err)
 		} else {
-			a.log("Notification sent for %d dates", len(newAvails))
+			a.log("ALERT SENT for %d slots", len(newAvails))
 		}
 		return true, nil 
 	} else if mode == "booking" {
@@ -345,9 +340,9 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		for _, av := range newAvails {
 			for _, prefDay := range a.config.PreferredDays {
 				if isDayOfWeek(av.Date, prefDay) {
-					a.log("Attempting to book %s", av.Date)
+					a.log("PREFERENCE MATCH: Attempting to book %s", av.Date)
 					if err := bookerInst.Book(ctx, av); err != nil {
-						a.log("Booking failed for %s: %v", av.Date, err)
+						a.log("BOOKING FAILED: %v", err)
 						_ = ntfy.SendNotification(
 							fmt.Sprintf("%s - %s - Booking Failed", site.Name, museum.Name),
 							fmt.Sprintf("Failed to book %s: %v", av.Date, err),
@@ -356,9 +351,9 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 						)
 						return false, nil
 					} else {
-						a.log("Booking successful for %s", av.Date)
+						a.log("SUCCESS! Appointment booked for %s", av.Date)
 						_ = ntfy.SendNotification(
-							fmt.Sprintf("%s - %s - Booking Successful", site.Name, museum.Name),
+							fmt.Sprintf("%s - %s - Booking SUCCESS!", site.Name, museum.Name),
 							fmt.Sprintf("Successfully booked %s", av.Date),
 							notifier.PriorityUrgent,
 							nil,
@@ -368,7 +363,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 				}
 			}
 		}
-		a.log("No preferred day found among new availabilities")
+		a.log("No available slots matched your preferred days.")
 		return false, nil
 	}
 	return false, nil
@@ -376,15 +371,10 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
 func (a *Agent) preWarm(client *httpclient.Client, baseURL string) error {
 	req, err := http.NewRequest("GET", baseURL, nil)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
+	if err == nil { resp.Body.Close() }
+	return err
 }
 
 func (a *Agent) log(format string, args ...interface{}) {
@@ -404,19 +394,14 @@ func (a *Agent) removeRun(runID string) {
 		}
 	}
 	a.config.ScheduledRuns = newRuns
-	if err := config.SaveConfig("configs/config.yaml", a.config); err != nil {
-		a.log("Failed to remove run from config: %v", err)
-	}
+	_ = config.SaveConfig("configs/config.yaml", a.config)
 }
 
 func ensureAbsoluteURL(rawURL, baseURL string) string {
 	if strings.HasPrefix(rawURL, "http") {
 		return rawURL
 	}
-	if strings.HasPrefix(rawURL, "/") {
-		return baseURL + rawURL
-	}
-	return baseURL + "/" + rawURL
+	return baseURL + "/" + strings.TrimPrefix(rawURL, "/")
 }
 
 func extractDateFromURL(rawURL string) (string, error) {
@@ -424,29 +409,25 @@ func extractDateFromURL(rawURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	q := u.Query()
-	date := q.Get("date")
+	date := u.Query().Get("date")
 	if date == "" {
-		return "", fmt.Errorf("no date parameter in URL")
+		return "", fmt.Errorf("no date in URL")
 	}
 	return date, nil
 }
 
 func isDayOfWeek(dateStr, dayName string) bool {
 	t, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return false
-	}
+	if err != nil { return false }
 	return t.Weekday().String() == dayName
 }
 
 func waitUntil(ctx context.Context, t time.Time) error {
 	now := time.Now()
-	if t.Before(now) {
-		return nil
-	}
+	if t.Before(now) { return nil }
 	delta := t.Sub(now)
 	
+	// Sleep for the majority of the time
 	if delta > 5*time.Millisecond {
 		sleepTime := delta - 5*time.Millisecond
 		select {
@@ -456,12 +437,13 @@ func waitUntil(ctx context.Context, t time.Time) error {
 		}
 	}
 	
+	// High-precision spin for the last 5ms
 	for time.Now().Before(t) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// high precision spin
+			// keep spinning
 		}
 	}
 	return nil
