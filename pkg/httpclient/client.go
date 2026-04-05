@@ -23,7 +23,9 @@ type Profile struct {
 	UserAgent string
 }
 
-var profiles = []Profile{
+// v2.0.9: WAF Identity Synchronization
+// Ensuring User-Agents strictly match the underlying utls JA3 fingerprints
+var profiles =[]Profile{
 	{
 		Name:      "Chrome Desktop (Windows)",
 		HelloID:   utls.HelloChrome_120,
@@ -32,11 +34,14 @@ var profiles = []Profile{
 	{
 		Name:      "iOS Safari (iPhone)",
 		HelloID:   utls.HelloIOS_14, 
-		UserAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+		// FIXED: User-Agent downgraded to 14.8 to perfectly match the iOS 14 TLS signature
+		UserAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1",
 	},
 	{
 		Name:      "Android Chrome (Mobile)",
-		HelloID:   utls.HelloAndroid_11_OkHttp,
+		// FIXED: Changed from OkHttp to Chrome_120. Android Chrome uses BoringSSL (same as desktop).
+		// This prevents "Spoofed Browser" WAF flags and properly negotiates HTTP/2.
+		HelloID:   utls.HelloChrome_120,
 		UserAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 	},
 }
@@ -85,7 +90,7 @@ func (s *stickyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		uConn := utls.UClient(rawConn, &utls.Config{
 			ServerName: req.URL.Hostname(),
-			NextProtos: []string{"h2", "http/1.1"},
+			NextProtos:[]string{"h2", "http/1.1"},
 			MinVersion: tls.VersionTLS12,
 			MaxVersion: tls.VersionTLS13,
 		}, s.profile.HelloID)
@@ -95,7 +100,7 @@ func (s *stickyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, fmt.Errorf("utls handshake: %w", err)
 		}
 
-		// 2. Check ALPN Result
+		// 2. Check ALPN Result (This path isolates HTTP/2 perfectly)
 		if uConn.ConnectionState().NegotiatedProtocol == "h2" {
 			h2Conn, err := s.h2.NewClientConn(uConn)
 			if err != nil {
@@ -109,16 +114,15 @@ func (s *stickyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		// 3. Fallback to HTTP/1.1 if H2 not negotiated
-		// This is tricky because http.Transport expects to do the dialing itself.
-		// We use a temporary transport for this specific one-off connection.
+		// Uses DialTLSContext so http.Transport knows TLS is already established.
 		h1 := s.h1.Clone()
-		h1.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		h1.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return uConn, nil
 		}
 		return h1.RoundTrip(req)
 	}
 
-	// 4. Default to standard H1 for non-HTTPS (unlikely in this project)
+	// 4. Default to standard H1 for non-HTTPS
 	return s.h1.RoundTrip(req)
 }
 
@@ -165,6 +169,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			req.Header.Set(k, v)
 		}
 	}
+	// Inject the strictly aligned User-Agent for this session
 	req.Header.Set("User-Agent", c.ChosenProfile.UserAgent)
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 	req.Header.Set("Connection", "keep-alive")
