@@ -27,7 +27,7 @@ type Agent struct {
 	cancelFunc   context.CancelFunc
 	running      bool
 	logCh        chan string
-	notifyFunc   func(title, message string)
+	notifyFunc   func(title, message string) // NEW: Bridge to Android Native Notifications
 	wg           sync.WaitGroup
 	mu           sync.RWMutex
 	currentRunID string
@@ -42,6 +42,7 @@ func NewAgent(cfg *config.AppConfig, logger *logrus.Logger) *Agent {
 	}
 }
 
+// SetNotifyFunc is used by the mobile bridge to inject the Android Push logic
 func (a *Agent) SetNotifyFunc(f func(title, message string)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -50,6 +51,7 @@ func (a *Agent) SetNotifyFunc(f func(title, message string)) {
 
 func (a *Agent) LogChannel() <-chan string { return a.logCh }
 func (a *Agent) IsRunning() bool           { a.mu.RLock(); defer a.mu.RUnlock(); return a.running }
+func (a *Agent) GetCurrentRunID() string   { a.mu.RLock(); defer a.mu.RUnlock(); return a.currentRunID }
 
 func (a *Agent) Start(runID string) error {
 	a.mu.Lock()
@@ -197,7 +199,7 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 			}
 		}
 	}
-	a.log("Agent finished run %s", run.ID)
+	a.log("Run %s finished", run.ID)
 }
 
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
@@ -207,8 +209,8 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
 	allAvails := []parser.Availability{}
 	for i := 0; i < months; i++ {
-		targetDate := startDate
-		if i > 0 {
+		var targetDate time.Time
+		if i == 0 { targetDate = startDate } else {
 			targetMonth := startDate.AddDate(0, i, 0)
 			targetDate = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
 		}
@@ -238,7 +240,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
 	newAvails := []parser.Availability{}
 	for _, av := range allAvails {
-		fullDate, _ := extractDateFromURL(av.BookingURL)
+		fullDate, err := extractDateFromURL(av.BookingURL)
 		if !a.stateManager.IsSeen(fullDate) {
 			a.stateManager.MarkSeen(fullDate)
 			av.Date = fullDate
@@ -252,13 +254,16 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
 		for i, av := range newAvails {
 			notifyAvails[i] = notifier.AvailabilityWithLink{
-				Date: av.Date,
+				Date:       av.Date,
 				BookingURL: ensureAbsoluteURL(av.BookingURL, site.BaseURL),
 			}
 		}
 		title, msg, actions := notifier.BuildNotification(notifyAvails, site.Name, museum.Name)
+		
+		// 1. Dual Notification (ntfy + Native Android)
 		_ = ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
 		if a.notifyFunc != nil { a.notifyFunc(title, msg) }
+		
 		a.log("Notification sent for %d dates", len(newAvails))
 		return true, nil
 	} else if mode == "booking" {
@@ -270,29 +275,30 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 					if err := bookerInst.Book(ctx, av); err != nil {
 						errMsg := err.Error()
 						
-						/**
-						 * HANDLING FATAL FAILURES
-						 * If the booker returns a fatal error, we notify and return stop=true
-						 */
 						if strings.Contains(errMsg, "FATAL") {
-							a.log("CRITICAL FAILURE DETECTED: %v. Shutting down.", errMsg)
+							a.log("CRITICAL FAILURE: %v. Shutting down.", errMsg)
 							title := fmt.Sprintf("%s - %s - AGENT STOPPED", site.Name, museum.Name)
+							
+							// Dual Notification for Fatal Error
 							_ = ntfy.SendNotification(title, errMsg, notifier.PriorityHigh, nil)
 							if a.notifyFunc != nil { a.notifyFunc(title, errMsg) }
-							return true, err // stop=true, error=err
+							
+							return true, err 
 						}
 
-						// Transient error: Log and keep checking other availabilities
-						a.log("Booking error for %s: %v", av.Date, err)
+						a.log("Transient booking error for %s: %v", av.Date, err)
 						continue
 					}
 					
 					// Success path
 					successTitle := fmt.Sprintf("%s - Booking SUCCESS", site.Name)
-					successMsg := "Booked " + av.Date
+					successMsg := fmt.Sprintf("Confirmed for %s (%s)", av.Date, museum.Name)
+					
+					// Dual Notification for Success
 					_ = ntfy.SendNotification(successTitle, successMsg, notifier.PriorityUrgent, nil)
 					if a.notifyFunc != nil { a.notifyFunc(successTitle, successMsg) }
-					return true, nil // stop=true (success)
+					
+					return true, nil 
 				}
 			}
 		}
