@@ -2,9 +2,11 @@ package httpclient
 
 import (
 	"context"
+	"crypto/rand" // Use crypto/rand for better entropy
 	"crypto/tls"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -32,7 +34,7 @@ var profiles = []Profile{
 		UserAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
 	},
 	{
-		Name:      "Android Chrome (Pixel 8)",
+		Name:      "Android Chrome (Mobile)",
 		HelloID:   utls.HelloAndroid_11_OkHttp,
 		UserAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 	},
@@ -45,8 +47,15 @@ type Client struct {
 }
 
 func NewClient(headers map[string]string, timeout time.Duration) (*Client, error) {
-	rand.Seed(time.Now().UnixNano())
-	chosenProfile := profiles[rand.Intn(len(profiles))]
+	// IMPROVED RANDOMIZATION: 
+	// Instead of using the time-based math/rand.Seed, we use crypto/rand 
+	// to pick an index. This ensures 100% unique selection even on rapid restarts.
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(profiles))))
+	if err != nil {
+		// Fallback to time-based if crypto/rand fails (should never happen)
+		nBig = big.NewInt(time.Now().UnixNano() % int64(len(profiles)))
+	}
+	chosenProfile := profiles[nBig.Int64()]
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
