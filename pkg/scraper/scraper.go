@@ -53,12 +53,16 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
 
 	rawBody, _ := io.ReadAll(resp.Body)
 	
-	// Handle Gzip manually for perfect mimicry
+	// Manual decompression handles the identity-specific encoding
 	var bodyBytes []byte
 	if len(rawBody) >= 2 && rawBody[0] == 0x1f && rawBody[1] == 0x8b {
-		gzReader, _ := gzip.NewReader(bytes.NewReader(rawBody))
-		bodyBytes, _ = io.ReadAll(gzReader)
-		gzReader.Close()
+		gzReader, err := gzip.NewReader(bytes.NewReader(rawBody))
+		if err == nil {
+			bodyBytes, _ = io.ReadAll(gzReader)
+			gzReader.Close()
+		} else {
+			bodyBytes = rawBody
+		}
 	} else {
 		bodyBytes = rawBody
 	}
