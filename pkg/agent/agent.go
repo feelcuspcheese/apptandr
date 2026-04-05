@@ -50,7 +50,6 @@ func (a *Agent) SetNotifyFunc(f func(title, message string)) {
 
 func (a *Agent) LogChannel() <-chan string { return a.logCh }
 func (a *Agent) IsRunning() bool           { a.mu.RLock(); defer a.mu.RUnlock(); return a.running }
-func (a *Agent) GetCurrentRunID() string   { a.mu.RLock(); defer a.mu.RUnlock(); return a.currentRunID }
 
 func (a *Agent) Start(runID string) error {
 	a.mu.Lock()
@@ -143,68 +142,53 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 	now := time.Now()
 	preWarmTime := run.DropTime.Add(-a.config.PreWarmOffset)
 	if preWarmTime.After(now) {
-		wait := preWarmTime.Sub(now)
-		a.log("Waiting %v until pre-warm time", wait)
 		select {
-		case <-time.After(wait):
+		case <-time.After(preWarmTime.Sub(now)):
 		case <-ctx.Done():
-			a.log("Agent stopped before pre-warm")
 			return
 		}
 	}
 
 	a.log("Pre-warming identity session on %s...", site.BaseURL)
 	if site.BaseURL != "" {
-		if err := a.preWarm(client, site.BaseURL); err != nil {
-			a.log("Pre-warm failed: %v", err)
-		} else {
-			a.log("Pre-warm completed")
-		}
+		_ = a.preWarm(client, site.BaseURL)
 	}
 
-	a.log("Waiting until drop time with high precision")
 	if err := waitUntil(ctx, run.DropTime); err != nil {
-		a.log("Agent stopped before drop time")
 		return
 	}
 
 	deadline := time.Now().Add(a.config.CheckWindow)
-	a.log("Check window started, deadline: %v", deadline)
-
 	ntfy := notifier.NewNtfy(a.config.NtfyTopic)
-	restEnabled := a.config.CheckWindow > 1*time.Minute
 	checksCount := 0
 
 	for {
 		if time.Now().After(deadline) {
-			a.log("Check window expired")
+			a.log("Strike window expired. No slots found.")
 			break
 		}
 
 		stop, err := a.checkAvailability(ctx, scraperInst, ntfy, site, museum, client, run.DropTime, run.Mode)
-		if err != nil { a.log("Check error: %v", err) }
+		if err != nil {
+			a.log("Execution Notice: %v", err)
+		}
 		if stop {
-			if run.Mode == "alert" { a.log("Alert sent, stopping checks") } else { a.log("Booking successful, stopping checks") }
 			break
 		}
 
-		if restEnabled { checksCount++ }
-
+		checksCount++
 		interval := a.config.CheckInterval
 		if a.config.RequestJitter > 0 {
 			interval += time.Duration(rand.Int63n(int64(a.config.RequestJitter)))
 		}
 		
-		a.log("Waiting %v before next check", interval)
 		select {
 		case <-time.After(interval):
 		case <-ctx.Done():
-			a.log("Agent stopped during wait")
 			return
 		}
 
-		if restEnabled && checksCount >= a.config.RestCycleChecks {
-			a.log("Resting for %v (human mimic)", a.config.RestCycleDuration)
+		if a.config.CheckWindow > 1*time.Minute && checksCount >= a.config.RestCycleChecks {
 			select {
 			case <-time.After(a.config.RestCycleDuration):
 				checksCount = 0
@@ -223,8 +207,8 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
 	allAvails := []parser.Availability{}
 	for i := 0; i < months; i++ {
-		var targetDate time.Time
-		if i == 0 { targetDate = startDate } else {
+		targetDate := startDate
+		if i > 0 {
 			targetMonth := startDate.AddDate(0, i, 0)
 			targetDate = time.Date(targetMonth.Year(), targetMonth.Month(), 1, 0, 0, 0, 0, targetMonth.Location())
 		}
@@ -234,10 +218,10 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 
 		avails, _, err := scraperInst.FetchForDateWithBody(ctx, dateStr)
 		if err != nil {
-			a.log("Error fetching %s: %v", dateStr, err)
+			a.log("Fetch Warning: %v", err)
 			continue
 		}
-		if len(avails) == 0 { a.log("No availabilities found for %s", dateStr) }
+		if len(avails) == 0 { a.log("No availabilities for %s", dateStr) }
 		allAvails = append(allAvails, avails...)
 		
 		if i < months-1 && a.config.RequestJitter > 0 {
@@ -250,13 +234,11 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		}
 	}
 
-	a.log("Total availabilities found: %d", len(allAvails))
 	if len(allAvails) == 0 { return false, nil }
 
 	newAvails := []parser.Availability{}
 	for _, av := range allAvails {
-		fullDate, err := extractDateFromURL(av.BookingURL)
-		if err != nil { continue }
+		fullDate, _ := extractDateFromURL(av.BookingURL)
 		if !a.stateManager.IsSeen(fullDate) {
 			a.stateManager.MarkSeen(fullDate)
 			av.Date = fullDate
@@ -264,7 +246,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		}
 	}
 
-	if len(newAvails) == 0 { a.log("No new availabilities"); return false, nil }
+	if len(newAvails) == 0 { return false, nil }
 
 	if mode == "alert" {
 		notifyAvails := make([]notifier.AvailabilityWithLink, len(newAvails))
@@ -278,7 +260,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		_ = ntfy.SendNotification(title, msg, notifier.PriorityHigh, actions)
 		if a.notifyFunc != nil { a.notifyFunc(title, msg) }
 		a.log("Notification sent for %d dates", len(newAvails))
-		return true, nil 
+		return true, nil
 	} else if mode == "booking" {
 		bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
 		for _, av := range newAvails {
@@ -286,22 +268,34 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 				if isDayOfWeek(av.Date, prefDay) {
 					a.log("Attempting to book %s", av.Date)
 					if err := bookerInst.Book(ctx, av); err != nil {
-						failTitle := fmt.Sprintf("%s - Booking Failed", site.Name)
-						a.log("Booking failed for %s: %v", av.Date, err)
-						_ = ntfy.SendNotification(failTitle, err.Error(), notifier.PriorityHigh, nil)
-						if a.notifyFunc != nil { a.notifyFunc(failTitle, err.Error()) }
-						return false, nil
-					} else {
-						successTitle := fmt.Sprintf("%s - Booking SUCCESS!", site.Name)
-						a.log("Booking successful for %s", av.Date)
-						_ = ntfy.SendNotification(successTitle, "Booked "+av.Date, notifier.PriorityUrgent, nil)
-						if a.notifyFunc != nil { a.notifyFunc(successTitle, "Booked "+av.Date) }
-						return true, nil
+						errMsg := err.Error()
+						
+						/**
+						 * HANDLING FATAL FAILURES
+						 * If the booker returns a fatal error, we notify and return stop=true
+						 */
+						if strings.Contains(errMsg, "FATAL") {
+							a.log("CRITICAL FAILURE DETECTED: %v. Shutting down.", errMsg)
+							title := fmt.Sprintf("%s - %s - AGENT STOPPED", site.Name, museum.Name)
+							_ = ntfy.SendNotification(title, errMsg, notifier.PriorityHigh, nil)
+							if a.notifyFunc != nil { a.notifyFunc(title, errMsg) }
+							return true, err // stop=true, error=err
+						}
+
+						// Transient error: Log and keep checking other availabilities
+						a.log("Booking error for %s: %v", av.Date, err)
+						continue
 					}
+					
+					// Success path
+					successTitle := fmt.Sprintf("%s - Booking SUCCESS", site.Name)
+					successMsg := "Booked " + av.Date
+					_ = ntfy.SendNotification(successTitle, successMsg, notifier.PriorityUrgent, nil)
+					if a.notifyFunc != nil { a.notifyFunc(successTitle, successMsg) }
+					return true, nil // stop=true (success)
 				}
 			}
 		}
-		a.log("No preferred day found among availabilities")
 	}
 	return false, nil
 }
