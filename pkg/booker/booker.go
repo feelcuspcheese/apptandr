@@ -37,9 +37,8 @@ func NewBooker(client *httpclient.Client, site config.Site, museum config.Museum
 }
 
 /**
- * decompressBody ensures that the Booker can read optimized server responses.
- * Since we manually set "Accept-Encoding: gzip, deflate, br" in client.go for mimicry,
- * Go's automatic decompression is disabled. We must handle it here manually.
+ * decompressBody handles the manual unzipping required because of the
+ * mimicry headers used in client.go.
  */
 func decompressBody(body []byte) ([]byte, error) {
 	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
@@ -53,7 +52,6 @@ func decompressBody(body []byte) ([]byte, error) {
 	return body, nil
 }
 
-// Book executes the full booking flow for a given availability.
 func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	if !b.state.StartProcessing(avail.Date) {
 		b.logger.WithField("date", avail.Date).Info("Already processing this date")
@@ -61,7 +59,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	}
 	defer b.state.StopProcessing(avail.Date)
 
-	// Build full booking URL
 	bookingURL := avail.BookingURL
 	if !strings.HasPrefix(bookingURL, "http") {
 		bookingURL = b.siteConfig.BaseURL + bookingURL
@@ -74,7 +71,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		return err
 	}
 
-	// PRISTINE MIMICRY: Delete machine-like AJAX header during human page navigation
 	req.Header.Del("X-Requested-With")
 	req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.museum.Slug)
 
@@ -94,22 +90,22 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	}
 	bodyStr := string(bodyBytes)
 
-	b.logger.WithField("final_url", resp.Request.URL.String()).Info("After initial request (including redirects)")
-
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(bodyStr))
 	if err != nil {
 		return err
 	}
 
+	// --- STEP: Authentication ---
 	loginForm := doc.Find("form[action*='form_login']")
 	var finalResp *http.Response
 	var finalBody []byte
+
 	if loginForm.Length() > 0 {
 		b.logger.Info("Login required, performing login")
 		authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
 		loginURLField := loginForm.Find("input[name='login_url']").AttrOr("value", "")
 		if authID == "" || loginURLField == "" {
-			return fmt.Errorf("could not extract auth_id or login_url from login form")
+			return fmt.Errorf("could not extract session tokens")
 		}
 
 		loginData := url.Values{}
@@ -120,15 +116,8 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
 		loginAction := loginForm.AttrOr("action", "")
 		if strings.HasPrefix(loginAction, "/") {
-			u, _ := url.Parse(loginAction)
-			if u.Host == "" {
-				loginAction = "https://" + resp.Request.URL.Host + loginAction
-			}
-		} else if !strings.HasPrefix(loginAction, "http") {
-			loginAction = "https://" + resp.Request.URL.Host + "/" + loginAction
+			loginAction = "https://" + resp.Request.URL.Host + loginAction
 		}
-
-		b.logger.WithField("login_action", loginAction).Info("POST to login")
 
 		loginReq, err := http.NewRequestWithContext(ctx, "POST", loginAction, strings.NewReader(loginData.Encode()))
 		if err != nil {
@@ -136,7 +125,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		}
 		loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		loginReq.Header.Set("Referer", resp.Request.URL.String())
-		loginReq.Header.Del("X-Requested-With") // Ensure no AJAX headers during login
+		loginReq.Header.Del("X-Requested-With")
 
 		loginResp, err := b.client.Do(loginReq)
 		if err != nil {
@@ -153,33 +142,37 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 			return err
 		}
 		finalResp = loginResp
-		b.logger.WithField("final_url", finalResp.Request.URL.String()).Info("After login (including redirects)")
+		
 		doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(finalBody)))
 		if err != nil {
 			return err
 		}
+
+		/**
+		 * SCENARIO 2: INVALID CREDENTIALS
+		 * Deep Audit: Check for the specific alert-danger div with the message.
+		 */
+		errMsg := doc.Find("#s-libapps-public-message.alert.alert-danger").Text()
+		if strings.Contains(errMsg, "Your credentials are not working") {
+			return fmt.Errorf("FATAL: credentials are not working")
+		}
+
 	} else {
 		finalBody = bodyBytes
 		finalResp = resp
 		b.logger.Info("No login form found – assuming already logged in")
 	}
 
+	// --- STEP: Form Extraction ---
 	bookingForm := doc.Find("form#s-lc-bform")
 	if bookingForm.Length() == 0 {
-		snippet := string(finalBody)
-		if len(snippet) > 1000 {
-			snippet = snippet[:1000] + "..."
+		// Detect limit exceeded even before submission if possible
+		if strings.Contains(doc.Text(), "monthly booking limit") {
+			return fmt.Errorf("FATAL: booking limit exceeded")
 		}
-		b.logger.WithFields(logrus.Fields{
-			"url":     finalResp.Request.URL.String(),
-			"snippet": snippet,
-		}).Error("Booking form not found")
-
-		if strings.Contains(doc.Text(), "Sorry, this would exceed the monthly booking limit") {
-			return fmt.Errorf("booking limit exceeded")
-		}
+		
 		if strings.Contains(finalResp.Request.URL.String(), "unavailable") {
-			return fmt.Errorf("spot already taken (unavailable in URL)")
+			return fmt.Errorf("spot already taken")
 		}
 		return fmt.Errorf("booking form not found")
 	}
@@ -192,20 +185,13 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 			formData.Set(name, value)
 		}
 	})
-	email := b.siteConfig.BookingForm.EmailField
-	if email == "" {
-		email = "email"
-	}
-	formData.Set(email, b.siteConfig.LoginForm.Email)
+	emailKey := b.siteConfig.BookingForm.EmailField
+	if emailKey == "" { emailKey = "email" }
+	formData.Set(emailKey, b.siteConfig.LoginForm.Email)
 
 	action := bookingForm.AttrOr("action", "")
 	if strings.HasPrefix(action, "/") {
-		u, _ := url.Parse(action)
-		if u.Host == "" {
-			action = "https://" + finalResp.Request.URL.Host + action
-		}
-	} else if !strings.HasPrefix(action, "http") {
-		action = "https://" + finalResp.Request.URL.Host + "/" + action
+		action = "https://" + finalResp.Request.URL.Host + action
 	}
 
 	b.logger.WithField("action", action).Info("Submitting booking form")
@@ -216,7 +202,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	}
 	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	submitReq.Header.Set("Referer", finalResp.Request.URL.String())
-	submitReq.Header.Del("X-Requested-With") // Maintain header purity during final submission
+	submitReq.Header.Del("X-Requested-With")
 
 	submitResp, err := b.client.Do(submitReq)
 	if err != nil {
@@ -234,23 +220,22 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	}
 	resultStr := string(resultDecompressed)
 
-	if !(strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:")) {
-		snippet := resultStr
-		if len(snippet) > 500 {
-			snippet = snippet[:500] + "..."
-		}
-		b.logger.WithField("snippet", snippet).Warn("Unexpected final response")
-	}
-
+	// Check for Success
 	if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
 		b.logger.Info("Booking successful")
 		b.state.MarkSeen(avail.Date)
 		return nil
 	}
 
-	if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") {
-		return fmt.Errorf("booking limit exceeded")
+	/**
+	 * SCENARIO 1: BOOKING LIMIT EXCEEDED
+	 * Check final result page for limit messages.
+	 */
+	if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") || 
+	   strings.Contains(resultStr, "limit reached") {
+		return fmt.Errorf("FATAL: booking limit exceeded")
 	}
+
 	if strings.Contains(resultStr, "unavailable") || strings.Contains(resultStr, "not available") {
 		return fmt.Errorf("spot no longer available")
 	}
