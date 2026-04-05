@@ -9,18 +9,19 @@ import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
+import com.booking.bot.MainActivity
 import com.booking.bot.data.ConfigManager
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 import mobile.MobileAgent
 
@@ -29,14 +30,16 @@ import mobile.MobileAgent
  * Runs the Go agent as a foreground service with persistent notification.
  * 
  * Deep Audit Enhancements:
- * - Explicit WakeLock to prevent CPU throttling during precision "Strike".
- * - Full JSON parsing of Go logs.
- * - Comprehensive cleanup and DataStore run removal.
+ * 1. WakeLock: Prevents CPU sleep during the high-precision Strike phase.
+ * 2. Native Alerts: Pushes high-priority notifications to the Android drawer.
+ * 3. Polling Loop: Monitors agent life and handles cleanup on finish or stop.
+ * 4. Coroutine Safety: Uses explicit Dispatchers and SupervisorJob for stability.
  */
 class BookingForegroundService : LifecycleService() {
 
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "booking_service"
+        private const val ALERT_CHANNEL_ID = "booking_alerts" 
         private const val NOTIFICATION_ID = 1001
         private const val STOP_ACTION = "com.booking.bot.STOP_AGENT"
         private const val WAKE_LOCK_TAG = "BookingBot::ExecutionWakeLock"
@@ -78,6 +81,7 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
+    // Required imports used here: CoroutineScope, Dispatchers, SupervisorJob
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var mobileAgent: MobileAgent? = null
@@ -108,17 +112,43 @@ class BookingForegroundService : LifecycleService() {
         updateNotification(status)
     }
 
+    /**
+     * Triggers a native system notification for matches or fatal errors.
+     * Required import: MainActivity
+     */
+    private fun showNativeAlert(title: String, message: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true) 
+            .setOngoing(false)   
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .build()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(System.currentTimeMillis().toInt(), notification)
+    }
+
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
 
-        // Initialize the WakeLock to keep CPU active during strike window
+        // PowerManager used for WakeLock management (Deep Doze protection)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // LifecycleService requires call to super
         super.onStartCommand(intent, flags, startId)
 
         intent?.let {
@@ -139,16 +169,17 @@ class BookingForegroundService : LifecycleService() {
 
             // Concurrency Check (CG-04)
             if (mobileAgent?.isRunning() == true) {
-                LogManager.addLog("WARN", "Run ${run.id} ignored – agent busy")
+                LogManager.addLog("WARN", "Run ${run.id} ignored – agent already busy")
                 return START_NOT_STICKY
             }
 
-            // High-Priority Execution Start
+            // High-Priority Execution Start: Acquire WakeLock
             wakeLock?.acquire(RUN_TIMEOUT_MS)
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
             currentRun = run
 
+            // Required import: launch
             serviceScope.launch {
                 try {
                     LogManager.addLog("INFO", "Foreground service started for run ${run.id}")
@@ -159,7 +190,7 @@ class BookingForegroundService : LifecycleService() {
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
 
                     if (agentConfigJson == null) {
-                        LogManager.addLog("ERROR", "Failed to build agent config for run ${run.id}")
+                        LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
                         cleanupAndStop(run.id)
                         return@launch
                     }
@@ -172,36 +203,41 @@ class BookingForegroundService : LifecycleService() {
                     mobileAgent?.setStatusCallback { status: String ->
                         onGoStatus(status)
                     }
+                    // Setup the bridge for native alerts
+                    mobileAgent?.setNotifyCallback { title: String, message: String ->
+                        showNativeAlert(title, message)
+                    }
 
-                    LogManager.addLog("INFO", "Attempting to start Go agent for run ${run.id}")
+                    LogManager.addLog("INFO", "Attempting to start Go agent")
                     val started = mobileAgent?.start(agentConfigJson) ?: false
                     
                     if (!started) {
-                        LogManager.addLog("ERROR", "Failed to start Go agent")
+                        LogManager.addLog("ERROR", "Go agent rejected the start command")
                         cleanupAndStop(run.id)
                         return@launch
                     }
 
-                    LogManager.addLog("INFO", "Go agent started successfully")
+                    LogManager.addLog("INFO", "Go agent is now active")
                     updateNotification("Running...")
 
                     // Polling loop for agent completion (CG-02)
+                    // Required imports: delay
                     val startTime = System.currentTimeMillis()
                     while (mobileAgent?.isRunning() == true) {
                         delay(1000)
                         val elapsed = System.currentTimeMillis() - startTime
                         if (elapsed > RUN_TIMEOUT_MS) {
-                            LogManager.addLog("WARN", "Run timed out – forcing cleanup")
+                            LogManager.addLog("WARN", "Run timed out after 10m – forcing cleanup")
                             mobileAgent?.stop()
                             break
                         }
                     }
 
-                    LogManager.addLog("INFO", "Run ${run.id} completed naturally")
+                    LogManager.addLog("INFO", "Run ${run.id} finished")
                     cleanupAndStop(run.id)
 
                 } catch (e: Exception) {
-                    LogManager.addLog("ERROR", "Service Error: ${e.message}")
+                    LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")
                     cleanupAndStop(run.id)
                 }
             }
@@ -217,7 +253,7 @@ class BookingForegroundService : LifecycleService() {
     }
 
     /**
-     * Manual stop triggered by user.
+     * Manual stop triggered by user from Dashboard or Notification.
      */
     private fun stopAgent() {
         serviceScope.launch {
@@ -225,14 +261,14 @@ class BookingForegroundService : LifecycleService() {
             try {
                 mobileAgent?.stop()
                 mobileAgent = null
-                LogManager.addLog("INFO", "Agent stopped manually")
+                LogManager.addLog("INFO", "Agent stopped manually by user")
             } catch (e: Exception) {
-                LogManager.addLog("ERROR", "Stop Error: ${e.message}")
+                LogManager.addLog("ERROR", "Error during manual stop: ${e.message}")
             } finally {
                 if (wakeLock?.isHeld == true) wakeLock?.release()
                 currentRun?.let { run ->
                     ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
-                    LogManager.addLog("INFO", "Run ${run.id} purged (manual stop)")
+                    LogManager.addLog("INFO", "Run ${run.id} purged from schedule")
                 }
                 currentRun = null
                 stopSelf()
@@ -251,28 +287,43 @@ class BookingForegroundService : LifecycleService() {
             wakeLock?.release()
         }
 
-        LogManager.addLog("INFO", "Service Cleanup for run $runId")
+        LogManager.addLog("INFO", "Performing final cleanup for run $runId")
 
         try {
             val configManager = ConfigManager.getInstance(this@BookingForegroundService)
             configManager.removeScheduledRun(runId)
         } catch (e: Exception) {
-            LogManager.addLog("ERROR", "DataStore Removal Error: ${e.message}")
+            LogManager.addLog("ERROR", "Failed to remove run from DataStore: ${e.message}")
         } finally {
             currentRun = null
             stopSelf()
         }
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "Booking Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Status monitoring for Booking Agent" }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            
+            // 1. Channel for ongoing service status
+            val serviceChannel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "Booking Agent Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Status monitoring for active runs" }
+            nm.createNotificationChannel(serviceChannel)
+
+            // 2. Channel for high-priority alerts
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Booking Agent Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for found slots and booking results"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            nm.createNotificationChannel(alertChannel)
         }
     }
 
