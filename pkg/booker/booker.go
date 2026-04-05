@@ -38,8 +38,8 @@ func NewBooker(client *httpclient.Client, site config.Site, museum config.Museum
 
 /**
  * decompressBody ensures that the Booker can read optimized server responses.
- * Since we manually set "Accept-Encoding: gzip" in client.go for mimicry,
- * Go's automatic decompression is disabled. We must handle it here.
+ * Since we manually set "Accept-Encoding: gzip, deflate, br" in client.go for mimicry,
+ * Go's automatic decompression is disabled. We must handle it here manually.
  */
 func decompressBody(body []byte) ([]byte, error) {
 	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
@@ -55,14 +55,13 @@ func decompressBody(body []byte) ([]byte, error) {
 
 // Book executes the full booking flow for a given availability.
 func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
-	// 1. Concurrency/Duplicate Guard
 	if !b.state.StartProcessing(avail.Date) {
 		b.logger.WithField("date", avail.Date).Info("Already processing this date")
 		return nil
 	}
 	defer b.state.StopProcessing(avail.Date)
 
-	// 2. Build absolute Booking URL
+	// Build full booking URL
 	bookingURL := avail.BookingURL
 	if !strings.HasPrefix(bookingURL, "http") {
 		bookingURL = b.siteConfig.BaseURL + bookingURL
@@ -70,13 +69,12 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
 	b.logger.WithField("url", bookingURL).Info("Starting booking flow")
 
-	// 3. Initial Request (Identity Sticky)
 	req, err := http.NewRequestWithContext(ctx, "GET", bookingURL, nil)
 	if err != nil {
 		return err
 	}
 
-	// PRISTINE MIMICRY: Ensure AJAX header is NOT present during human page navigation
+	// PRISTINE MIMICRY: Delete machine-like AJAX header during human page navigation
 	req.Header.Del("X-Requested-With")
 	req.Header.Set("Referer", b.siteConfig.BaseURL+"/passes/"+b.museum.Slug)
 
@@ -103,11 +101,9 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		return err
 	}
 
-	// 4. Handle Login Form Detection & Submission
 	loginForm := doc.Find("form[action*='form_login']")
 	var finalResp *http.Response
 	var finalBody []byte
-
 	if loginForm.Length() > 0 {
 		b.logger.Info("Login required, performing login")
 		authID := loginForm.Find("input[name='auth_id']").AttrOr("value", "")
@@ -140,7 +136,7 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		}
 		loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		loginReq.Header.Set("Referer", resp.Request.URL.String())
-		loginReq.Header.Del("X-Requested-With") // Ensure no AJAX headers
+		loginReq.Header.Del("X-Requested-With") // Ensure no AJAX headers during login
 
 		loginResp, err := b.client.Do(loginReq)
 		if err != nil {
@@ -158,7 +154,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		}
 		finalResp = loginResp
 		b.logger.WithField("final_url", finalResp.Request.URL.String()).Info("After login (including redirects)")
-		
 		doc, err = goquery.NewDocumentFromReader(strings.NewReader(string(finalBody)))
 		if err != nil {
 			return err
@@ -169,7 +164,6 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 		b.logger.Info("No login form found – assuming already logged in")
 	}
 
-	// 5. Booking Form Extraction (CSRF tokens and fields)
 	bookingForm := doc.Find("form#s-lc-bform")
 	if bookingForm.Length() == 0 {
 		snippet := string(finalBody)
@@ -198,12 +192,11 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 			formData.Set(name, value)
 		}
 	})
-	
-	emailKey := b.siteConfig.BookingForm.EmailField
-	if emailKey == "" {
-		emailKey = "email"
+	email := b.siteConfig.BookingForm.EmailField
+	if email == "" {
+		email = "email"
 	}
-	formData.Set(emailKey, b.siteConfig.LoginForm.Email)
+	formData.Set(email, b.siteConfig.LoginForm.Email)
 
 	action := bookingForm.AttrOr("action", "")
 	if strings.HasPrefix(action, "/") {
@@ -217,14 +210,13 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 
 	b.logger.WithField("action", action).Info("Submitting booking form")
 
-	// 6. Final Booking Submission
 	submitReq, err := http.NewRequestWithContext(ctx, "POST", action, strings.NewReader(formData.Encode()))
 	if err != nil {
 		return err
 	}
 	submitReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	submitReq.Header.Set("Referer", finalResp.Request.URL.String())
-	submitReq.Header.Del("X-Requested-With") // Maintain header purity
+	submitReq.Header.Del("X-Requested-With") // Maintain header purity during final submission
 
 	submitResp, err := b.client.Do(submitReq)
 	if err != nil {
@@ -242,20 +234,18 @@ func (b *Booker) Book(ctx context.Context, avail parser.Availability) error {
 	}
 	resultStr := string(resultDecompressed)
 
-	// 7. Verify Result based on Technical Spec indicators
-	if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
-		b.logger.Info("Booking successful")
-		b.state.MarkSeen(avail.Date)
-		return nil
-	}
-
-	// 8. Handle Failures based on your Logic
 	if !(strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:")) {
 		snippet := resultStr
 		if len(snippet) > 500 {
 			snippet = snippet[:500] + "..."
 		}
 		b.logger.WithField("snippet", snippet).Warn("Unexpected final response")
+	}
+
+	if strings.Contains(resultStr, "Thank you!") || strings.Contains(resultStr, "The following Digital Pass reservation was made:") {
+		b.logger.Info("Booking successful")
+		b.state.MarkSeen(avail.Date)
+		return nil
 	}
 
 	if strings.Contains(resultStr, "Sorry, this would exceed the monthly booking limit") {
