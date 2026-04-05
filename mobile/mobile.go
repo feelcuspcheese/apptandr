@@ -2,7 +2,6 @@ package mobile
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -16,31 +15,40 @@ import (
 	_ "golang.org/x/mobile/bind"
 )
 
-// MobileAgent matches TECHNICAL_SPEC.md Section 8
-// gomobile will generate a class named "MobileAgent"
+// MobileAgent matches TECHNICAL_SPEC.md Section 8.
+// This class is exposed to Kotlin via gomobile.
 type MobileAgent struct {
 	agentInst      *agent.Agent
 	logCallback    LogCallback
 	statusCallback StatusCallback
+	notifyCallback NotifyCallback // Bridge for Native Android Alerts
 	mu             sync.RWMutex
 	mobileRunning  bool
 }
 
-// LogCallback matches setLogCallback((String) -> Unit)
+// LogCallback matches the Android LogManager interface
 type LogCallback interface {
 	Log(message string)
 }
 
-// StatusCallback matches setStatusCallback((String) -> Unit)
+// StatusCallback allows the UI to see "running" or "stopped" states
 type StatusCallback interface {
 	OnStatus(status string)
+}
+
+// NotifyCallback allows Go to trigger high-priority Android System Notifications
+type NotifyCallback interface {
+	OnNotify(title, message string)
 }
 
 func NewMobileAgent() *MobileAgent {
 	return &MobileAgent{}
 }
 
-// Start matches spec: returns true if started successfully, false otherwise.
+/**
+ * Start initializes the Go Agent from the Android Foreground Service.
+ * It handles the transition from JSON configuration to a running Sticky-Identity agent.
+ */
 func (m *MobileAgent) Start(configJSON string) bool {
 	m.mu.Lock()
 	if m.mobileRunning {
@@ -49,7 +57,7 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		return false
 	}
 
-	// Intermediate struct to handle duration strings correctly during unmarshal
+	// Intermediate struct to handle duration strings (e.g., "0.81s") correctly
 	type AppConfigStr struct {
 		Sites             map[string]config.Site `json:"sites"`
 		ActiveSite        string                 `json:"active_site"`
@@ -79,18 +87,18 @@ func (m *MobileAgent) Start(configJSON string) bool {
 
 	if err := json.Unmarshal([]byte(configJSON), &req); err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Go Bind Unmarshal Error: %v", err))
+		m.fireLog("ERROR", "Go Bind: Unmarshal Error")
 		return false
 	}
 
-	// parseDur gracefully handles duration strings and auto-appends "s" if the Android app sent a raw number
+	// Helper to ensure units are present, preventing time.ParseDuration failures
 	parseDur := func(s string, def time.Duration) time.Duration {
 		if s == "" {
 			return def
 		}
 		d, err := time.ParseDuration(s)
 		if err != nil {
-			// Fallback: If it failed because of missing unit (e.g. "60"), append "s" and try again
+			// Fallback: If missing unit, append "s" and try again
 			d2, err2 := time.ParseDuration(s + "s")
 			if err2 == nil {
 				return d2
@@ -118,10 +126,11 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		RestCycleDuration: parseDur(req.FullConfig.RestCycleDuration, 3*time.Second),
 	}
 
+	// Standardize DropTime
 	dropTime, err := time.Parse(time.RFC3339, req.DropTime)
 	if err != nil {
 		m.mu.Unlock()
-		m.fireLog("ERROR", fmt.Sprintf("Invalid dropTime format: %v", err))
+		m.fireLog("ERROR", "Go Bind: Invalid dropTime format")
 		return false
 	}
 	runID := "run-" + time.Now().Format("150405")
@@ -135,13 +144,21 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		Timezone:   req.Timezone,
 	}}
 
+	// Initialize Logger with the Android Hook
 	logger := logrus.New()
 	logger.AddHook(&androidHook{m: m})
 
 	m.mobileRunning = true
 	m.agentInst = agent.NewAgent(&cfg, logger)
+
+	// Wire the Notification bridge into the Agent
+	m.agentInst.SetNotifyFunc(func(title, message string) {
+		m.fireNotify(title, message)
+	})
+
 	m.mu.Unlock()
 
+	// Launch Agent in a dedicated goroutine
 	go func() {
 		m.fireStatus("running")
 		_ = m.agentInst.Start(runID)
@@ -169,6 +186,8 @@ func (m *MobileAgent) IsRunning() bool {
 	return m.mobileRunning
 }
 
+// Callback Registration Methods
+
 func (m *MobileAgent) SetLogCallback(cb LogCallback) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -181,7 +200,14 @@ func (m *MobileAgent) SetStatusCallback(cb StatusCallback) {
 	m.statusCallback = cb
 }
 
-// fireLog sends a JSON log entry with timestamp (per spec)
+func (m *MobileAgent) SetNotifyCallback(cb NotifyCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.notifyCallback = cb
+}
+
+// Internal Event Firers
+
 func (m *MobileAgent) fireLog(level, msg string) {
 	m.mu.RLock()
 	cb := m.logCallback
@@ -205,6 +231,16 @@ func (m *MobileAgent) fireStatus(status string) {
 	}
 }
 
+func (m *MobileAgent) fireNotify(title, message string) {
+	m.mu.RLock()
+	cb := m.notifyCallback
+	m.mu.RUnlock()
+	if cb != nil {
+		cb.OnNotify(title, message)
+	}
+}
+
+// androidHook bridges logrus entries into the fireLog method
 type androidHook struct{ m *MobileAgent }
 
 func (h *androidHook) Levels() []logrus.Level { return logrus.AllLevels }
