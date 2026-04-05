@@ -44,7 +44,6 @@ func (s *Scraper) FetchForDateWithBody(ctx context.Context, date string) ([]pars
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil { return nil, "", err }
 
-	// PRISTINE MIMICRY: Inject AJAX header ONLY for the strike phase
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := s.client.Do(req)
