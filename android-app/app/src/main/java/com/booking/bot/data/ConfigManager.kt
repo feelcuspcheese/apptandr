@@ -1,6 +1,8 @@
 package com.booking.bot.data
 
 import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -8,6 +10,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -18,17 +21,21 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val jsonDecoder = Json { ignoreUnknownKeys = true }
 private val jsonEncoder = Json { encodeDefaults = true }
+private val jsonBackupEncoder = Json { encodeDefaults = true; prettyPrint = true }
+
+// FIXED: Declared at the file-level so both the class and extension functions have access.
+private val CONFIG_KEY = stringPreferencesKey("app_config")
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_config")
 
 class ConfigManager private constructor(private val context: Context) {
     
     companion object {
-        private val CONFIG_KEY = stringPreferencesKey("app_config")
         private val WIZARD_COMPLETED_KEY = booleanPreferencesKey("wizard_completed")
         private val configLoadedOnce = AtomicBoolean(false)
         
@@ -181,6 +188,59 @@ class ConfigManager private constructor(private val context: Context) {
         }
         return removedRunIds
     }
+
+    /**
+     * Safely exports the current configuration as a pretty-printed JSON file for backups.
+     */
+    suspend fun exportConfig(context: Context): Uri {
+        val config = configFlow.first()
+        val jsonString = jsonBackupEncoder.encodeToString(config)
+        val exportFile = File(context.cacheDir, "booking_bot_backup_${System.currentTimeMillis()}.json")
+        exportFile.writeText(jsonString)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", exportFile)
+    }
+
+    /**
+     * Safely validates and imports a configuration from a JSON string.
+     * Clears active alarms, updates DataStore, and reschedules valid alarms.
+     */
+    suspend fun importConfig(context: Context, jsonString: String) {
+        // Parse the incoming config. If it fails, an exception is thrown here, leaving current state perfectly intact.
+        val importedConfig = jsonDecoder.decodeFromString<AppConfig>(jsonString)
+        
+        val currentConfig = configFlow.first()
+        val scheduler = AlarmScheduler(context)
+        
+        // Cancel all currently active alarms to avoid ghost/zombie triggers
+        currentConfig.scheduledRuns.forEach { run ->
+            scheduler.cancelRun(run.id)
+        }
+        
+        // Filter out any runs in the backup that are already in the past
+        val currentTime = System.currentTimeMillis()
+        val validRuns = importedConfig.scheduledRuns.filter { 
+            it.dropTimeMillis > currentTime &&
+            it.siteKey.isNotBlank() &&
+            it.museumSlug.isNotBlank() &&
+            it.mode in listOf("alert", "booking") &&
+            it.timezone.isNotBlank()
+        }
+        
+        val finalConfig = importedConfig.copy(scheduledRuns = validRuns)
+        
+        // Atomically update DataStore with the verified backup config
+        context.dataStore.updateData { prefs ->
+            prefs.withConfig(finalConfig)
+        }
+        
+        // Re-schedule the valid future runs
+        val offsetMillis = AlarmScheduler.parseDurationToMillis(finalConfig.general.preWarmOffset)
+        validRuns.forEach { run ->
+            scheduler.scheduleRun(run, offsetMillis)
+        }
+        
+        LogManager.addLog("INFO", "Configuration restored from backup. ${validRuns.size} future runs successfully rescheduled.")
+    }
     
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
@@ -259,8 +319,6 @@ class ConfigManager private constructor(private val context: Context) {
         return requestJson.toString()
     }
 }
-
-private val CONFIG_KEY = stringPreferencesKey("app_config")
 
 fun Preferences.toAppConfig(): AppConfig {
     val json = this[CONFIG_KEY] ?: return AppConfig()
