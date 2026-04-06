@@ -1,5 +1,8 @@
 package com.booking.bot.ui.screens
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,9 +33,10 @@ import kotlinx.coroutines.delay
  * - [GEN-10] Success feedback on General save
  * - [SITE-17] Success feedback on Sites save
  * - [SITE-02] Editing Site Header Visual Cue
- * - [BUG-002] Site field reset logic on site change
+ * -[BUG-002] Site field reset logic on site change
  * - [SITE-05/11] Referential integrity on delete
  * - Performance Tuning: Auto-unit injection (s, m) for Go compatibility
+ * - [NEW] Safe Backup Export/Import logic seamlessly integrated
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,8 +160,34 @@ private fun GeneralTab(
 
     var museumExpanded by remember { mutableStateOf(false) }
     
-    // [GEN-10] Feedback state
+    // Feedback state
     var saveFeedback by remember { mutableStateOf<String?>(null) }
+
+    // Backup Import Launcher
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                try {
+                    val jsonString = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader ->
+                        reader.readText()
+                    }
+                    if (!jsonString.isNullOrBlank()) {
+                        configManager.importConfig(context, jsonString)
+                        saveFeedback = "Backup restored successfully!"
+                    } else {
+                        saveFeedback = "Failed to read backup file (empty)."
+                    }
+                } catch (e: Exception) {
+                    saveFeedback = "Import failed: ${e.message}"
+                } finally {
+                    delay(4000)
+                    saveFeedback = null
+                }
+            }
+        }
+    }
 
     LaunchedEffect(config) {
         config?.general?.let { g ->
@@ -389,6 +419,62 @@ private fun GeneralTab(
                 }
             }
         }
+
+        item {
+            Card {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Backup & Restore", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Export your configuration to a JSON file, or restore from a previous backup. Your credentials will be exported in plain text, keep the file secure.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { importLauncher.launch("*/*") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileUpload, contentDescription = "Import", modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Import")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val uri = configManager.exportConfig(context)
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Save Backup"))
+                                        saveFeedback = "Export dialog opened."
+                                    } catch (e: Exception) {
+                                        saveFeedback = "Export failed: ${e.message}"
+                                    } finally {
+                                        delay(3000)
+                                        saveFeedback = null
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = "Export", modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Export")
+                        }
+                    }
+                }
+            }
+        }
         
         item {
             Button(
@@ -458,7 +544,6 @@ private fun SitesTab(
     var showMuseumDeleteConfirmation by remember { mutableStateOf<Museum?>(null) }
     var showCredentialDeleteConfirmation by remember { mutableStateOf<CredentialSet?>(null) }
     
-    // [SITE-17] Feedback state
     var saveFeedback by remember { mutableStateOf<String?>(null) }
     
     LazyColumn(
@@ -508,7 +593,6 @@ private fun SitesTab(
             if (site != null) {
                 Card {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        // [SITE-02] Header cue
                         Text("Editing ${site.name} Settings", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(8.dp))
                         
@@ -518,7 +602,6 @@ private fun SitesTab(
                         var physical by remember { mutableStateOf(site.physical) }
                         var location by remember { mutableStateOf(site.location) }
                         
-                        // [BUG-002] Reset fields logic
                         LaunchedEffect(selectedSiteKey) {
                             baseUrl = site.baseUrl
                             availabilityEndpoint = site.availabilityEndpoint
@@ -678,7 +761,6 @@ private fun SitesTab(
         }
     }
 
-    // Dialog Rendering
     if (showMuseumDialog) {
         MuseumEditDialog(museum = editingMuseum, onSave = { museum ->
             scope.launch {
