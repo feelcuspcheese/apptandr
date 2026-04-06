@@ -67,13 +67,6 @@ fun ScheduleScreen(
         configManager.cleanupInvalidRuns()
     }
 
-    // -------------------------------------------------------------------------
-    // FIX (Bug 1a): Wrap dialog .show() in LaunchedEffect side-effects instead
-    // of calling them directly in composition. Calling .show() inline causes it
-    // to fire on every recomposition while the flag is true, which can crash
-    // the fragment-transaction machinery on some API levels and produces
-    // duplicate dialogs on fast recompositions.
-    // -------------------------------------------------------------------------
     LaunchedEffect(showDatePicker) {
         if (showDatePicker) {
             val calendar = Calendar.getInstance().apply {
@@ -242,7 +235,7 @@ fun ScheduleScreen(
             }
         }
 
-        // Timezone Dropdown (section 5.3.5)
+        // Timezone Dropdown
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Select Timezone", style = MaterialTheme.typography.titleMedium)
@@ -318,7 +311,6 @@ fun ScheduleScreen(
                     else -> {
                         scope.launch {
                             try {
-                                // FIX (Bug 1b): Use corrected timezone-aware UTC conversion.
                                 val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
                                 val run = ScheduledRun(
                                     id = UUID.randomUUID().toString(),
@@ -330,7 +322,8 @@ fun ScheduleScreen(
                                     timezone = runTimezone
                                 )
                                 configManager.addScheduledRun(run)
-                                AlarmScheduler(context).scheduleRun(run)
+                                val offsetMillis = AlarmScheduler.parseDurationToMillis(config?.general?.preWarmOffset ?: "30s")
+                                AlarmScheduler(context).scheduleRun(run, offsetMillis)
                                 feedbackMessage = "Run scheduled successfully!"
                                 feedbackSuccess = true
                                 selectedDateTime = null
@@ -376,24 +369,6 @@ fun ScheduleScreen(
             if (sortedRuns.isEmpty()) {
                 Text("No scheduled runs", style = MaterialTheme.typography.bodyMedium)
             } else {
-                // -----------------------------------------------------------------
-                // FIX (Bug 1 — root cause): Replaced LazyColumn with Column+forEach.
-                //
-                // LazyColumn inside a verticalScroll parent is forbidden by Compose:
-                // the outer verticalScroll gives children UNBOUNDED height, but
-                // LazyColumn needs to measure its own bounded height to be lazy.
-                // This causes:
-                //   IllegalStateException: Vertically scrollable component was
-                //   measured with an infinity maximum height constraints, which
-                //   is disallowed.
-                //
-                // The crash was only visible once at least one run existed, because
-                // an empty LazyColumn emits no measurable children. That matches
-                // the reported symptom: "crashes after schedule is set."
-                //
-                // Since the outer Column already provides scrollability, a plain
-                // Column + forEach is the correct replacement.
-                // -----------------------------------------------------------------
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     sortedRuns.forEach { run ->
                         var showDeleteDialog by remember { mutableStateOf(false) }
@@ -427,31 +402,13 @@ fun ScheduleScreen(
     }
 }
 
-/**
- * FIX (Bug 1b): Correct wall-clock-to-UTC conversion.
- *
- * OLD (broken) implementation:
- *   Instant.ofEpochMilli(x).atZone(zone).toInstant().toEpochMilli()
- *   This is a mathematical no-op — it always returns x unchanged because
- *   Instant is timezone-agnostic; adding and then removing a zone offset
- *   is a round-trip that cancels out.
- *
- * NEW (correct) implementation:
- *   1. Extract raw wall-clock fields from Calendar (which uses device TZ).
- *   2. Reinterpret those fields as local time IN the selected timezone.
- *   3. Convert to UTC epoch millis.
- *
- * Example: device=PST, selected timezone=EST, user picks 09:00.
- *   Old: calendar produces 09:00 PST (17:00 UTC) — wrong offset, fire time off by 3 h.
- *   New: 09:00 interpreted as EST (14:00 UTC) — alarm fires at correct local time.
- */
 private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): Long {
     val deviceCalendar = Calendar.getInstance().apply {
         timeInMillis = localDateTimeMillis
     }
     val localDateTime = LocalDateTime.of(
         deviceCalendar.get(Calendar.YEAR),
-        deviceCalendar.get(Calendar.MONTH) + 1,  // Calendar months are 0-based
+        deviceCalendar.get(Calendar.MONTH) + 1,  
         deviceCalendar.get(Calendar.DAY_OF_MONTH),
         deviceCalendar.get(Calendar.HOUR_OF_DAY),
         deviceCalendar.get(Calendar.MINUTE),
