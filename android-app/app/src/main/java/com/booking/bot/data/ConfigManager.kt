@@ -28,12 +28,14 @@ private val jsonDecoder = Json { ignoreUnknownKeys = true }
 private val jsonEncoder = Json { encodeDefaults = true }
 private val jsonBackupEncoder = Json { encodeDefaults = true; prettyPrint = true }
 
+// FIXED: Declared at the file-level so both the class and extension functions have access.
+private val CONFIG_KEY = stringPreferencesKey("app_config")
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_config")
 
 class ConfigManager private constructor(private val context: Context) {
     
     companion object {
-        private val CONFIG_KEY = stringPreferencesKey("app_config")
         private val WIZARD_COMPLETED_KEY = booleanPreferencesKey("wizard_completed")
         private val configLoadedOnce = AtomicBoolean(false)
         
@@ -319,11 +321,11 @@ class ConfigManager private constructor(private val context: Context) {
 }
 
 fun Preferences.toAppConfig(): AppConfig {
-    val json = this[ConfigManager.Companion.CONFIG_KEY] ?: return AppConfig()
+    val json = this[CONFIG_KEY] ?: return AppConfig()
     return jsonDecoder.decodeFromString(json)
 }
 
 fun Preferences.withConfig(config: AppConfig): Preferences {
     val json = jsonEncoder.encodeToString(config)
-    return toMutablePreferences().apply { this[ConfigManager.Companion.CONFIG_KEY] = json }.toPreferences()
+    return toMutablePreferences().apply { this[CONFIG_KEY] = json }.toPreferences()
 }
