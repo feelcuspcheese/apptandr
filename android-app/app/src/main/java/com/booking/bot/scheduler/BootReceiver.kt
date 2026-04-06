@@ -30,8 +30,9 @@ class BootReceiver : BroadcastReceiver() {
                 
                 LogManager.addLog("INFO", "Restoring ${futureRuns.count()} scheduled runs after reboot")
                 
+                val offsetMillis = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
                 futureRuns.forEach { run: ScheduledRun ->
-                    scheduler.scheduleRun(run)
+                    scheduler.scheduleRun(run, offsetMillis)
                 }
             }
         }
