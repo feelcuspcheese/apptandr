@@ -105,8 +105,11 @@ fun DashboardScreen(
 
                                     // Add the run to DataStore; the Next Run tile will automatically pick it up
                                     configManager.addScheduledRun(run)
+                                    val offsetMillis = AlarmScheduler.parseDurationToMillis(currentConfig.general.preWarmOffset)
+                                    
                                     // Let AlarmScheduler handle starting the service exactly as it does for regular schedules
-                                    AlarmScheduler(context).scheduleRun(run)
+                                    // Passing the offset forces an immediate wakeup for precise background setup
+                                    AlarmScheduler(context).scheduleRun(run, offsetMillis)
 
                                     actionFeedback = "Agent scheduled to start in 30s"
                                     actionSuccess = true
