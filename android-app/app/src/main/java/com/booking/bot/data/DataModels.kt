@@ -1,4 +1,3 @@
-
 package com.booking.bot.data
 
 import kotlinx.serialization.Serializable
@@ -6,11 +5,17 @@ import java.util.UUID
 
 /**
  * Data models following TECHNICAL_SPEC.md section 3.
+ * All models use @Serializable for JSON persistence in DataStore.
  * 
  * Version 1.2 Enhancements:
- * - Added Recursion fields (isRecurring, occurrences, stopDate).
+ * - Added preferredDates to GeneralSettings.
+ * - Added preferredDays and preferredDates to ScheduledRun for per-run independence.
+ * - Added Recursion fields (isRecurring, remainingOccurrences, endDateMillis).
  */
 
+/**
+ * Museum data class (section 3.2)
+ */
 @Serializable
 data class Museum(
     val name: String,
@@ -18,6 +23,9 @@ data class Museum(
     val museumId: String
 )
 
+/**
+ * CredentialSet data class (section 3.3)
+ */
 @Serializable
 data class CredentialSet(
     val id: String = UUID.randomUUID().toString(),
@@ -27,6 +35,9 @@ data class CredentialSet(
     var email: String
 )
 
+/**
+ * SiteConfig data class (section 3.4)
+ */
 @Serializable
 data class SiteConfig(
     val name: String,
@@ -40,6 +51,9 @@ data class SiteConfig(
     var defaultCredentialId: String? = null
 )
 
+/**
+ * AdminConfig data class (section 3.5)
+ */
 @Serializable
 data class AdminConfig(
     var activeSite: String = "spl",
@@ -63,6 +77,9 @@ data class AdminConfig(
     )
 )
 
+/**
+ * GeneralSettings data class (section 3.6)
+ */
 @Serializable
 data class GeneralSettings(
     var mode: String = "alert",
@@ -82,10 +99,12 @@ data class GeneralSettings(
 )
 
 /**
- * ScheduledRun represents the Snapshotted configuration.
+ * ScheduledRun data class (section 3.7)
+ * Represents a snapshotted configuration locked to a point in time.
  * 
- * @param remainingOccurrences If > 0, the service will reschedule for tomorrow.
- * @param endDateMillis If set, recurring runs will stop after this absolute time.
+ * @param isRecurring If true, service will reschedule for tomorrow upon completion.
+ * @param remainingOccurrences Number of additional times to run (0 = no limit/controlled by end date).
+ * @param endDateMillis Hard stop date for recurring runs.
  */
 @Serializable
 data class ScheduledRun(
@@ -98,12 +117,15 @@ data class ScheduledRun(
     val preferredDays: List<String> = emptyList(),
     val preferredDates: List<String> = emptyList(),
     val timezone: String = java.util.TimeZone.getDefault().id,
-    // Recurring Fields
+    // v1.2 Recurring Support
     val isRecurring: Boolean = false,
-    val remainingOccurrences: Int = 0, // 0 means infinite or controlled by endDate
+    val remainingOccurrences: Int = 0,
     val endDateMillis: Long? = null
 )
 
+/**
+ * AppConfig data class (section 3.8)
+ */
 @Serializable
 data class AppConfig(
     val general: GeneralSettings = GeneralSettings(),
@@ -111,6 +133,9 @@ data class AppConfig(
     val scheduledRuns: List<ScheduledRun> = emptyList()
 )
 
+/**
+ * LogEntry data class (section 7)
+ */
 @Serializable
 data class LogEntry(
     val timestamp: Long,
