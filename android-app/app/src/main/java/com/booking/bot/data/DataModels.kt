@@ -1,3 +1,4 @@
+
 package com.booking.bot.data
 
 import kotlinx.serialization.Serializable
@@ -6,6 +7,10 @@ import java.util.UUID
 /**
  * Data models following TECHNICAL_SPEC.md section 3.
  * All models use @Serializable for JSON persistence in DataStore.
+ * 
+ * Version 1.1 Enhancements:
+ * - Added preferredDates to GeneralSettings.
+ * - Added preferredDays and preferredDates to ScheduledRun for per-run independence.
  */
 
 /**
@@ -101,22 +106,16 @@ data class AdminConfig(
  * @param mode "alert" or "booking"
  * @param strikeTime Time when appointments drop (HH:MM format)
  * @param preferredDays List of days to prefer (e.g., ["Monday", "Wednesday", "Friday"])
+ * @param preferredDates List of specific ISO dates to prefer (e.g., ["2024-12-25"])
  * @param ntfyTopic Topic name for ntfy.sh notifications
  * @param preferredMuseumSlug Slug of the preferred museum (stored, not displayed name)
- * @param checkWindow Duration to check for availability (e.g., "60s")
- * @param checkInterval Interval between checks (e.g., "0.81s")
- * @param requestJitter Jitter to add to requests (e.g., "0.18s")
- * @param monthsToCheck Number of months ahead to check
- * @param preWarmOffset Time before strike time to start pre-warming (e.g., "30s")
- * @param maxWorkers Maximum number of concurrent workers
- * @param restCycleChecks Number of checks before resting
- * @param restCycleDuration Duration of rest cycle (e.g., "3s")
  */
 @Serializable
 data class GeneralSettings(
     var mode: String = "alert",
     var strikeTime: String = "09:00",
     var preferredDays: List<String> = listOf("Monday", "Wednesday", "Friday"),
+    var preferredDates: List<String> = emptyList(),
     var ntfyTopic: String = "myappointments",
     var preferredMuseumSlug: String = "",
     var checkWindow: String = Defaults.CHECK_WINDOW,
@@ -132,13 +131,20 @@ data class GeneralSettings(
 /**
  * ScheduledRun data class (section 3.7)
  * Represents a scheduled booking run at a specific time.
+ * 
+ * independence update:
+ * Each run now stores its own preferredDays and preferredDates. 
+ * If these are provided, they override the global GeneralSettings at execution time.
+ * 
  * @param id UUID-based unique identifier
  * @param siteKey Key of the site in admin.sites
  * @param museumSlug Slug of the museum in that site's museums
  * @param credentialId ID of the credential to use (null = use site's default)
  * @param dropTimeMillis Absolute time in milliseconds since epoch (UTC)
  * @param mode "alert" or "booking"
- * @param timezone IANA timezone ID (e.g., "America/Los_Angeles") - section 3.7, 5.3.5
+ * @param preferredDays Specific days for this run (Locked Configuration)
+ * @param preferredDates Specific dates for this run (Locked Configuration)
+ * @param timezone IANA timezone ID (e.g., "America/Los_Angeles")
  */
 @Serializable
 data class ScheduledRun(
@@ -148,6 +154,8 @@ data class ScheduledRun(
     val credentialId: String?,
     val dropTimeMillis: Long,
     val mode: String,
+    val preferredDays: List<String> = emptyList(),
+    val preferredDates: List<String> = emptyList(),
     val timezone: String = java.util.TimeZone.getDefault().id
 )
 
