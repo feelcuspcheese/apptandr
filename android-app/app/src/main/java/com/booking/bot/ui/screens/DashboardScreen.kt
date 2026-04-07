@@ -1,3 +1,4 @@
+
 package com.booking.bot.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -12,10 +13,18 @@ import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
 import com.booking.bot.scheduler.AlarmScheduler
 import com.booking.bot.service.BookingForegroundService
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
 
+/**
+ * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
+ * 
+ * v1.1 Enhancements:
+ * - Leak-proof "Start Now" snapshotting.
+ * - 30-second countdown with progress feedback.
+ */
 @Composable
 fun DashboardScreen(
     configManager: ConfigManager,
@@ -34,11 +43,28 @@ fun DashboardScreen(
         }
     }
 
+    // Start Now countdown state (DB-10)
+    var isStarting by remember { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf(0) }
+    val countdownJobState = remember { mutableStateOf<Job?>(null) }
+
     var actionFeedback by remember { mutableStateOf<String?>(null) }
     var actionSuccess by remember { mutableStateOf(false) }
 
     LaunchedEffect(isRunning) {
+        if (!isRunning) {
+            isStarting = false
+            countdown = 0
+            countdownJobState.value?.cancel()
+        }
         actionFeedback = null
+    }
+
+    // Cleanup on dispose
+    DisposableEffect(Unit) {
+        onDispose {
+            countdownJobState.value?.cancel()
+        }
     }
 
     Column(
@@ -61,9 +87,9 @@ fun DashboardScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (isRunning) "Running" else "Idle",
+                    text = if (isRunning) "Running" else if (isStarting) "Starting..." else "Idle",
                     style = MaterialTheme.typography.headlineLarge,
-                    color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    color = if (isRunning || isStarting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -73,7 +99,10 @@ fun DashboardScreen(
                 ) {
                     Button(
                         onClick = {
-                            scope.launch {
+                            isStarting = true
+                            countdown = 30
+                            
+                            countdownJobState.value = scope.launch {
                                 try {
                                     val currentConfig = config ?: return@launch
                                     val siteKey = currentConfig.admin.activeSite
@@ -82,15 +111,25 @@ fun DashboardScreen(
                                     }
 
                                     if (museumSlug.isEmpty()) {
-                                        actionFeedback = "No museum configured. Please configure in Admin Config."
+                                        actionFeedback = "No museum configured."
                                         actionSuccess = false
+                                        isStarting = false
                                         return@launch
                                     }
 
+                                    // Countdown loop (DB-10)
+                                    while (countdown > 0) {
+                                        delay(1000)
+                                        if (isStarting) countdown-- else break
+                                    }
+
+                                    if (!isStarting) return@launch
+
                                     val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
-                                    val dropTimeMillis = System.currentTimeMillis() + 30_000
+                                    val dropTimeMillis = System.currentTimeMillis() + 1000 // Trigger almost immediately after countdown
                                     val timezone = java.util.TimeZone.getDefault().id
 
+                                    // LEAK-PROOF FIX: Explicitly snapshot global preferences into the run object
                                     val run = ScheduledRun(
                                         id = UUID.randomUUID().toString(),
                                         siteKey = siteKey,
@@ -98,46 +137,60 @@ fun DashboardScreen(
                                         credentialId = credentialId,
                                         dropTimeMillis = dropTimeMillis,
                                         mode = currentConfig.general.mode,
+                                        preferredDays = currentConfig.general.preferredDays,
+                                        preferredDates = currentConfig.general.preferredDates,
                                         timezone = timezone
                                     )
 
-                                    LogManager.addLog("INFO", "Start Now run created: id=${run.id}, dropTime in 30 seconds")
+                                    LogManager.addLog("INFO", "Start Now triggered: museum=$museumSlug, mode=${run.mode}")
 
-                                    // Add the run to DataStore; the Next Run tile will automatically pick it up
                                     configManager.addScheduledRun(run)
                                     val offsetMillis = AlarmScheduler.parseDurationToMillis(currentConfig.general.preWarmOffset)
                                     
-                                    // Let AlarmScheduler handle starting the service exactly as it does for regular schedules
-                                    // Passing the offset forces an immediate wakeup for precise background setup
+                                    // Forces immediate service start via alarm logic
                                     AlarmScheduler(context).scheduleRun(run, offsetMillis)
 
-                                    actionFeedback = "Agent scheduled to start in 30s"
+                                    actionFeedback = "Agent starting now..."
                                     actionSuccess = true
                                 } catch (e: Exception) {
-                                    actionFeedback = "Failed to schedule: ${e.message}"
+                                    actionFeedback = "Failed to start: ${e.message}"
                                     actionSuccess = false
+                                } finally {
+                                    isStarting = false
                                 }
                             }
                         },
-                        enabled = !isRunning
+                        enabled = !isStarting && !isRunning
                     ) {
-                        Text("Start Now")
+                        if (isStarting) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("${countdown}s")
+                        } else {
+                            Text("Start Now")
+                        }
                     }
 
                     Button(
                         onClick = {
                             scope.launch {
                                 try {
-                                    BookingForegroundService.stop(context)
-                                    actionFeedback = "Stopping agent..."
+                                    if (isStarting) {
+                                        isStarting = false
+                                        countdownJobState.value?.cancel()
+                                        actionFeedback = "Cancelled start."
+                                    } else {
+                                        BookingForegroundService.stop(context)
+                                        actionFeedback = "Stopping agent..."
+                                    }
                                     actionSuccess = true
                                 } catch (e: Exception) {
-                                    actionFeedback = "Failed to stop: ${e.message}"
+                                    actionFeedback = "Error: ${e.message}"
                                     actionSuccess = false
                                 }
                             }
                         },
-                        enabled = isRunning,
+                        enabled = isRunning || isStarting,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error
                         )
