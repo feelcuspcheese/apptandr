@@ -188,6 +188,19 @@ class ConfigManager private constructor(private val context: Context) {
             prefs.withConfig(updated)
         }
     }
+
+    /**
+     * ATOMIC RESCHEDULE (v1.3 Fix):
+     * Replaces the old run with the new one in a single transaction to prevent
+     * losing recurring schedules during app process death.
+     */
+    suspend fun rescheduleRecurringRun(oldId: String, updatedRun: ScheduledRun) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedRuns = current.scheduledRuns.filter { it.id != oldId } + updatedRun
+            prefs.withConfig(current.copy(scheduledRuns = updatedRuns))
+        }
+    }
     
     suspend fun cleanupInvalidRuns(): List<String> {
         val removedRunIds = mutableListOf<String>()
