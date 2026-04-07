@@ -1,4 +1,3 @@
-
 package com.booking.bot.service
 
 import android.app.NotificationChannel
@@ -23,8 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 import mobile.MobileAgent
 
@@ -32,13 +30,12 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * Deep Audit Enhancements:
- * 1. WakeLock: Prevents CPU sleep during the high-precision Strike phase.
- * 2. Native Alerts: Pushes high-priority notifications to the Android drawer.
- * 3. Polling Loop: Monitors agent life and handles cleanup on finish or stop.
- * 4. Coroutine Safety: Uses explicit Dispatchers and SupervisorJob for stability.
- * 5. Recursion Rescheduling (v1.2): Handles automatic daily repeating runs.
- * 6. Feature 1 & 4 (v1.3): History logging and live strike status updates.
+ * Gold Standard Audit Enhancements:
+ * 1. WakeLock: Deep Doze protection.
+ * 2. Native Alerts: System drawer feedback.
+ * 3. Polling Loop: Agent lifecycle management.
+ * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
+ * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -114,7 +111,6 @@ class BookingForegroundService : LifecycleService() {
                 LogManager.addLog(level, message)
 
                 // Outcome Detection for History (Feature 1)
-                // We check for both Booking Success AND Alert Success keywords
                 if (message.contains("Confirmed for", ignoreCase = true) || 
                     message.contains("Booking successful", ignoreCase = true) ||
                     message.contains("Notification sent", ignoreCase = true)) {
@@ -347,7 +343,13 @@ class BookingForegroundService : LifecycleService() {
 
                 // v1.2 Recurring Logic
                 if (run.isRecurring) {
-                    val nextDropTime = run.dropTimeMillis + (24 * 60 * 60 * 1000L) // Exact 24h cycle
+                    // DST-AWARE RESCHEDULING (v1.3 Fix):
+                    // Use Calendar arithmetic to add exactly 1 day instead of raw milliseconds.
+                    val calendar = Calendar.getInstance().apply {
+                        timeInMillis = run.dropTimeMillis
+                        add(Calendar.DAY_OF_YEAR, 1)
+                    }
+                    val nextDropTime = calendar.timeInMillis
                     
                     // Check stop conditions
                     val isExpiredByDate = run.endDateMillis?.let { nextDropTime > it } ?: false
@@ -363,8 +365,9 @@ class BookingForegroundService : LifecycleService() {
                             remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
                         )
                         
-                        configManager.removeScheduledRun(runId)
-                        configManager.addScheduledRun(updatedRun)
+                        // ATOMIC TRANSACTION (v1.3 Fix):
+                        // Single DataStore write to prevent schedule loss.
+                        configManager.rescheduleRecurringRun(runId, updatedRun)
                         
                         // Re-register system alarm
                         val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
