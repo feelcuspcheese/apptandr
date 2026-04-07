@@ -1,10 +1,10 @@
-
 package com.booking.bot.ui.screens
 
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.app.TimePickerDialog as AndroidTimePickerDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
@@ -30,6 +31,9 @@ import java.util.*
  * - Independent configuration locking (Preferred Days/Dates per run).
  * - Intuitive calendar date selection for specific overrides.
  * - Strict validation for booking mode consistency.
+ * 
+ * v1.2 Enhancement:
+ * - Recurring Schedule (Daily Loop) options.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -52,6 +56,12 @@ fun ScheduleScreen(
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     var runPreferredDays by remember { mutableStateOf(setOf<String>()) }
     var runPreferredDates by remember { mutableStateOf(setOf<String>()) }
+
+    // Recurring State (v1.2)
+    var isRecurring by remember { mutableStateOf(false) }
+    var occurrenceLimit by remember { mutableStateOf("") }
+    var stopDateMillis by remember { mutableStateOf<Long?>(null) }
+    var showStopDatePicker by remember { mutableStateOf(false) }
 
     var siteExpanded by remember { mutableStateOf(false) }
     var museumExpanded by remember { mutableStateOf(false) }
@@ -127,6 +137,24 @@ fun ScheduleScreen(
                 dialog.show()
             }
         }
+    }
+
+    // Stop Date Picker UI for Recurring runs
+    if (showStopDatePicker) {
+        val calendar = Calendar.getInstance()
+        AndroidDatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val cal = Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth, 23, 59)
+                }
+                stopDateMillis = cal.timeInMillis
+                showStopDatePicker = false
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
     }
 
     Column(
@@ -208,6 +236,51 @@ fun ScheduleScreen(
                                 text = { Text(mode.replaceFirstChar { it.uppercase() }) },
                                 onClick = { selectedMode = mode; modeExpanded = false }
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recurring Schedule Options (v1.2)
+        Card {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = isRecurring, onCheckedChange = { isRecurring = it })
+                    Text("Daily Recurring Schedule", style = MaterialTheme.typography.titleMedium)
+                }
+                if (isRecurring) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = occurrenceLimit,
+                        onValueChange = { occurrenceLimit = it.filter { char -> char.isDigit() } },
+                        label = { Text("Stop after X runs (Optional)") },
+                        placeholder = { Text("Leave empty for no run limit") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Stop after Date", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                text = stopDateMillis?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) } ?: "No end date",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        Row {
+                            TextButton(onClick = { showStopDatePicker = true }) {
+                                Text("Set")
+                            }
+                            if (stopDateMillis != null) {
+                                IconButton(onClick = { stopDateMillis = null }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear date")
+                                }
+                            }
                         }
                     }
                 }
@@ -363,6 +436,7 @@ fun ScheduleScreen(
                 val runMuseumSlug = selectedMuseumSlug
                 val runDateTime = selectedDateTime
                 val runTimezone = selectedTimezone
+                val limitCount = occurrenceLimit.toIntOrNull() ?: 0
                 
                 when {
                     runMuseumSlug.isNullOrEmpty() -> {
@@ -380,8 +454,7 @@ fun ScheduleScreen(
                         if (invalid.isNotEmpty()) {
                             feedbackMessage = "Contradiction: Date ${invalid.first()} is not a ${runPreferredDays.joinToString("/")}"; feedbackSuccess = false
                         } else {
-                            // Proceed to final check
-                            processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates) { msg, success ->
+                            processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates, isRecurring, limitCount, stopDateMillis) { msg, success ->
                                 feedbackMessage = msg; feedbackSuccess = success
                                 if (success) selectedDateTime = null
                             }
@@ -394,7 +467,7 @@ fun ScheduleScreen(
                         feedbackMessage = "Please select a future trigger time"; feedbackSuccess = false
                     }
                     else -> {
-                        processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates) { msg, success ->
+                        processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates, isRecurring, limitCount, stopDateMillis) { msg, success ->
                             feedbackMessage = msg; feedbackSuccess = success
                             if (success) selectedDateTime = null
                         }
@@ -476,6 +549,9 @@ private fun processScheduling(
     selectedMode: String,
     runPreferredDays: Set<String>,
     runPreferredDates: Set<String>,
+    isRecurring: Boolean,
+    limit: Int,
+    stopDate: Long?,
     onResult: (String, Boolean) -> Unit
 ) {
     if (runDateTime == null || runMuseumSlug == null) return
@@ -491,7 +567,10 @@ private fun processScheduling(
                 mode = selectedMode,
                 preferredDays = runPreferredDays.toList(),
                 preferredDates = runPreferredDates.toList(),
-                timezone = runTimezone
+                timezone = runTimezone,
+                isRecurring = isRecurring,
+                remainingOccurrences = if (isRecurring) limit else 0,
+                endDateMillis = stopDate
             )
             configManager.addScheduledRun(run)
             val offsetMillis = AlarmScheduler.parseDurationToMillis(config?.general?.preWarmOffset ?: "30s")
@@ -533,7 +612,7 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
             Column(modifier = Modifier.weight(1f)) {
                 Text(museum?.name ?: run.museumSlug, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "${run.siteKey.uppercase()} • ${run.mode.uppercase()}",
+                    "${run.siteKey.uppercase()} • ${run.mode.uppercase()}${if (run.isRecurring) " • Daily Loop" else ""}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -548,6 +627,13 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
                         "Pref: ${run.preferredDays.joinToString(", ")} ${run.preferredDates.joinToString(", ")}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (run.isRecurring && run.remainingOccurrences > 0) {
+                    Text(
+                        "Cycles left: ${run.remainingOccurrences}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
