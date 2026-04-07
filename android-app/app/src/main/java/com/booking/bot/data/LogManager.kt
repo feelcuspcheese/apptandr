@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -34,23 +35,8 @@ object LogManager {
 
     // -------------------------------------------------------------------------
     // FIX (Bug 1b): A single-thread-parallel IO scope serialises ALL file writes.
-    //
-    // Root cause that was fixed:
-    //   writeToFile() used logFile.appendText() — blocking disk I/O called
-    //   synchronously inside addLog(). addLog() is called from:
-    //     • the Android main thread  (service setup, configFlow map operator)
-    //     • Go goroutine threads     (onGoLog / onGoStatus JNI callbacks)
-    //     • DataStore internal thread (configFlow emissions)
-    //   Multiple threads writing to the same file concurrently with NO
-    //   synchronization caused:
-    //     1. Concurrent file corruption / interleaved log lines
-    //     2. IOExceptions silently swallowed → "no logs after crash"
-    //     3. Disk I/O on the main thread → ANR contributions
-    //
-    // The fix: queue entries into writeScope (limitedParallelism(1) = one
-    // coroutine at a time). Callers return immediately; the file write happens
-    // asynchronously and in strict FIFO order on the IO pool.
     // -------------------------------------------------------------------------
+    @OptIn(ExperimentalCoroutinesApi::class)
     private val writeScope = CoroutineScope(
         Dispatchers.IO.limitedParallelism(1) + SupervisorJob()
     )
