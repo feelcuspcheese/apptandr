@@ -9,21 +9,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.booking.bot.data.*
-import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
  * Shared dialog components for editing Museums, Credentials, and Bulk Import.
- * Used by both ConfigScreen and WizardScreen as per TECHNICAL_SPEC.md architecture.
  */
 
-/**
- * Dialog for editing a Museum
- */
 @Composable
 fun MuseumEditDialog(
     museum: Museum?,
@@ -79,9 +72,6 @@ fun MuseumEditDialog(
     )
 }
 
-/**
- * Dialog for editing a CredentialSet
- */
 @Composable
 fun CredentialEditDialog(
     credential: CredentialSet?,
@@ -157,9 +147,6 @@ fun CredentialEditDialog(
     )
 }
 
-/**
- * Dialog for bulk importing museums
- */
 @Composable
 fun BulkImportDialog(
     existingMuseums: Set<String>,
@@ -206,7 +193,6 @@ fun BulkImportDialog(
                                 } else null
                             }
                         previewMuseums = museums
-                        // Check for duplicates (SITE-09)
                         duplicateMuseums = museums.filter { it.slug in existingMuseums }
                         hasParsed = true
                     },
@@ -263,7 +249,7 @@ fun BulkImportDialog(
                 if (showOverwriteConfirmation) {
                     showOverwriteConfirmation = false
                 } else {
-                    onDismiss 
+                    onDismiss() // FIXED: Added parentheses to actually call the function
                 }
             }) {
                 Text("Cancel")
@@ -272,9 +258,6 @@ fun BulkImportDialog(
     )
 }
 
-/**
- * Dialog for editing Site configuration
- */
 @Composable
 fun SiteEditDialog(
     siteKey: String,
