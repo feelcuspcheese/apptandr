@@ -1,3 +1,4 @@
+
 package mobile
 
 import (
@@ -48,6 +49,8 @@ func NewMobileAgent() *MobileAgent {
 /**
  * Start initializes the Go Agent from the Android Foreground Service.
  * It handles the transition from JSON configuration to a running Sticky-Identity agent.
+ *
+ * v1.1 Update: Now unmarshals preferred_dates to support specific calendar matching.
  */
 func (m *MobileAgent) Start(configJSON string) bool {
 	m.mu.Lock()
@@ -63,6 +66,7 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		ActiveSite        string                 `json:"active_site"`
 		Mode              string                 `json:"mode"`
 		PreferredDays     []string               `json:"preferred_days"`
+		PreferredDates    []string               `json:"preferred_dates"` // Added for v1.1
 		StrikeTime        string                 `json:"strike_time"`
 		CheckWindow       string                 `json:"check_window"`
 		CheckInterval     string                 `json:"check_interval"`
@@ -113,6 +117,7 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		ActiveSite:        req.FullConfig.ActiveSite,
 		Mode:              req.FullConfig.Mode,
 		PreferredDays:     req.FullConfig.PreferredDays,
+		PreferredDates:    req.FullConfig.PreferredDates, // Mapped for v1.1
 		StrikeTime:        req.FullConfig.StrikeTime,
 		CheckWindow:       parseDur(req.FullConfig.CheckWindow, 60*time.Second),
 		CheckInterval:     parseDur(req.FullConfig.CheckInterval, 810*time.Millisecond),
