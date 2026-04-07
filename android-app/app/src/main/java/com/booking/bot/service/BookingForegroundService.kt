@@ -10,9 +10,8 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.booking.bot.MainActivity
-import com.booking.bot.data.ConfigManager
-import com.booking.bot.data.LogManager
-import com.booking.bot.data.ScheduledRun
+import com.booking.bot.data.*
+import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +21,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import java.text.SimpleDateFormat
+import java.util.*
 
 import mobile.MobileAgent
 
@@ -29,11 +30,12 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * Deep Audit Enhancements:
- * 1. WakeLock: Prevents CPU sleep during the high-precision Strike phase.
- * 2. Native Alerts: Pushes high-priority notifications to the Android drawer.
- * 3. Polling Loop: Monitors agent life and handles cleanup on finish or stop.
- * 4. Coroutine Safety: Uses explicit Dispatchers and SupervisorJob for stability.
+ * Gold Standard Audit Enhancements:
+ * 1. WakeLock: Deep Doze protection.
+ * 2. Native Alerts: System drawer feedback.
+ * 3. Polling Loop: Agent lifecycle management.
+ * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
+ * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -49,6 +51,10 @@ class BookingForegroundService : LifecycleService() {
 
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+        // v1.3 Feature 4: Live Status Flow for UI feedback
+        private val _goStatus = MutableStateFlow("Idle")
+        val goStatus: StateFlow<String> = _goStatus.asStateFlow()
 
         /**
          * Starts the service with the intent containing run details.
@@ -88,8 +94,13 @@ class BookingForegroundService : LifecycleService() {
     private var currentRun: ScheduledRun? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // v1.3 Feature 1 Tracking
+    private var lastRunOutcome = "MISSED"
+    private var lastRunMessage = "No slots found during the check window."
+
     /**
      * Parses JSON logs from the Go agent and routes them to LogManager.
+     * v1.3: Also detects success/failure for the History Feature.
      */
     private fun onGoLog(jsonLog: String) {
         try {
@@ -98,6 +109,19 @@ class BookingForegroundService : LifecycleService() {
             val message = json.optString("message", "")
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
+
+                // Outcome Detection for History (Feature 1)
+                if (message.contains("Confirmed for", ignoreCase = true) || 
+                    message.contains("Booking successful", ignoreCase = true) ||
+                    message.contains("Notification sent", ignoreCase = true)) {
+                    lastRunOutcome = "SUCCESS"
+                    lastRunMessage = message
+                } else if (message.contains("FATAL", ignoreCase = true) || 
+                           message.contains("Booking failed", ignoreCase = true) ||
+                           message.contains("Error sending ntfy", ignoreCase = true)) {
+                    lastRunOutcome = "FAILED"
+                    lastRunMessage = message
+                }
             }
         } catch (e: Exception) {
             // Fallback for non-JSON or malformed output
@@ -107,8 +131,10 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Updates the persistent notification with status from Go agent.
+     * v1.3: Also updates the live status flow for Dashboard pulse.
      */
     private fun onGoStatus(status: String) {
+        _goStatus.value = status
         updateNotification(status)
     }
 
@@ -157,35 +183,41 @@ class BookingForegroundService : LifecycleService() {
                 return START_NOT_STICKY
             }
 
-            val run = ScheduledRun(
-                id = it.getStringExtra("run_id") ?: return START_NOT_STICKY,
-                siteKey = it.getStringExtra("site_key") ?: return START_NOT_STICKY,
-                museumSlug = it.getStringExtra("museum_slug") ?: return START_NOT_STICKY,
-                credentialId = it.getStringExtra("credential_id"),
-                dropTimeMillis = it.getLongExtra("drop_time", 0),
-                mode = it.getStringExtra("mode") ?: "alert",
-                timezone = it.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
-            )
+            val runId = it.getStringExtra("run_id") ?: return START_NOT_STICKY
 
             // Concurrency Check (CG-04)
             if (mobileAgent?.isRunning() == true) {
-                LogManager.addLog("WARN", "Run ${run.id} ignored – agent already busy")
+                LogManager.addLog("WARN", "Run $runId ignored – agent already busy")
                 return START_NOT_STICKY
             }
+
+            // Reset outcome tracking for this specific run
+            lastRunOutcome = "MISSED"
+            lastRunMessage = "No slots found during the check window."
 
             // High-Priority Execution Start: Acquire WakeLock
             wakeLock?.acquire(RUN_TIMEOUT_MS)
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
-            currentRun = run
 
             // Required import: launch
             serviceScope.launch {
                 try {
-                    LogManager.addLog("INFO", "Foreground service started for run ${run.id}")
-
                     val configManager = ConfigManager.getInstance(this@BookingForegroundService)
                     val config = configManager.configFlow.first()
+                    
+                    // Retrieve full run object to access locked configurations and recursion settings
+                    val run = config.scheduledRuns.find { it.id == runId }
+
+                    if (run == null) {
+                        LogManager.addLog("ERROR", "Scheduled run $runId not found in DataStore")
+                        cleanupAndStop(runId)
+                        return@launch
+                    }
+
+                    currentRun = run
+                    _goStatus.value = "Starting"
+                    LogManager.addLog("INFO", "Foreground service active for run ${run.id}")
 
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
 
@@ -213,7 +245,7 @@ class BookingForegroundService : LifecycleService() {
                     
                     if (!started) {
                         LogManager.addLog("ERROR", "Go agent rejected the start command")
-                        cleanupAndStop(run.id)
+                        cleanupAndStop(runId)
                         return@launch
                     }
 
@@ -234,11 +266,11 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Run ${run.id} finished")
-                    cleanupAndStop(run.id)
+                    cleanupAndStop(runId)
 
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")
-                    cleanupAndStop(run.id)
+                    cleanupAndStop(runId)
                 }
             }
         }
@@ -258,6 +290,7 @@ class BookingForegroundService : LifecycleService() {
     private fun stopAgent() {
         serviceScope.launch {
             _isRunning.value = false
+            _goStatus.value = "Idle"
             try {
                 mobileAgent?.stop()
                 mobileAgent = null
@@ -277,23 +310,82 @@ class BookingForegroundService : LifecycleService() {
     }
 
     /**
-     * Final cleanup of WakeLocks, notification state, and DataStore.
+     * Final cleanup, Recursion handling (v1.2), and History Persistence (v1.3).
      */
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
+        _goStatus.value = "Idle"
         mobileAgent = null
         
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }
 
-        LogManager.addLog("INFO", "Performing final cleanup for run $runId")
-
         try {
             val configManager = ConfigManager.getInstance(this@BookingForegroundService)
-            configManager.removeScheduledRun(runId)
+            val config = configManager.configFlow.first()
+            val run = currentRun ?: config.scheduledRuns.find { it.id == runId }
+
+            if (run != null) {
+                // v1.3 Feature 1: Persistence to History
+                val site = config.admin.sites[run.siteKey]
+                val museum = site?.museums?.get(run.museumSlug)
+                
+                val result = RunResult(
+                    timestamp = System.currentTimeMillis(),
+                    siteName = site?.name ?: run.siteKey,
+                    museumName = museum?.name ?: run.museumSlug,
+                    mode = run.mode,
+                    status = lastRunOutcome,
+                    message = lastRunMessage
+                )
+                configManager.addRunResult(result)
+
+                // v1.2 Recurring Logic
+                if (run.isRecurring) {
+                    // DST-AWARE RESCHEDULING (v1.3 Fix):
+                    // Use Calendar arithmetic to add exactly 1 day instead of raw milliseconds.
+                    val calendar = Calendar.getInstance().apply {
+                        timeInMillis = run.dropTimeMillis
+                        add(Calendar.DAY_OF_YEAR, 1)
+                    }
+                    val nextDropTime = calendar.timeInMillis
+                    
+                    // Check stop conditions
+                    val isExpiredByDate = run.endDateMillis?.let { nextDropTime > it } ?: false
+                    val isExpiredByCount = run.remainingOccurrences == 1 // This run was the last one
+
+                    if (isExpiredByDate || isExpiredByCount) {
+                        configManager.removeScheduledRun(runId)
+                        LogManager.addLog("INFO", "Recurring run $runId limit reached. Purged from schedule.")
+                    } else {
+                        // Reschedule for tomorrow with same locked config
+                        val updatedRun = run.copy(
+                            dropTimeMillis = nextDropTime,
+                            remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
+                        )
+                        
+                        // ATOMIC TRANSACTION (v1.3 Fix):
+                        // Single DataStore write to prevent schedule loss.
+                        configManager.rescheduleRecurringRun(runId, updatedRun)
+                        
+                        // Re-register system alarm
+                        val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
+                        AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
+                        
+                        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
+                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
+                    }
+                } else {
+                    // One-time run cleanup
+                    configManager.removeScheduledRun(runId)
+                    LogManager.addLog("INFO", "Run $runId removed from schedule (one-time completion)")
+                }
+            } else {
+                configManager.removeScheduledRun(runId)
+            }
         } catch (e: Exception) {
-            LogManager.addLog("ERROR", "Failed to remove run from DataStore: ${e.message}")
+            LogManager.addLog("ERROR", "Failed cleanup/reschedule for $runId: ${e.message}")
         } finally {
             currentRun = null
             stopSelf()

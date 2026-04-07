@@ -1,5 +1,7 @@
+
 package com.booking.bot.ui.screens
 
+import android.app.DatePickerDialog
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,19 +26,17 @@ import com.booking.bot.ui.components.SiteEditDialog
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
 
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
  * PIN-protected admin configuration screen with General and Sites tabs.
  * 
- * Verified against:
- * - [GEN-10] Success feedback on General save
- * - [SITE-17] Success feedback on Sites save
- * - [SITE-02] Editing Site Header Visual Cue
- * -[BUG-002] Site field reset logic on site change
- * - [SITE-05/11] Referential integrity on delete
- * - Performance Tuning: Auto-unit injection (s, m) for Go compatibility
- * - [NEW] Safe Backup Export/Import logic seamlessly integrated
+ * v1.1 Enhancements:
+ * - Added Preferred Dates (Calendar selection).
+ * - Strict validation for Booking Mode (Contradiction check).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,12 +156,14 @@ private fun GeneralTab(
     var restCycleDuration by remember { mutableStateOf(Defaults.REST_CYCLE_DURATION) }
 
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    var selectedDays by remember { mutableStateOf(setOf("Monday", "Wednesday", "Friday")) }
+    var selectedDays by remember { mutableStateOf(setOf<String>()) }
+    var selectedDates by remember { mutableStateOf(setOf<String>()) }
 
     var museumExpanded by remember { mutableStateOf(false) }
     
     // Feedback state
     var saveFeedback by remember { mutableStateOf<String?>(null) }
+    var isFeedbackError by remember { mutableStateOf(false) }
 
     // Backup Import Launcher
     val importLauncher = rememberLauncherForActivityResult(
@@ -176,11 +178,14 @@ private fun GeneralTab(
                     if (!jsonString.isNullOrBlank()) {
                         configManager.importConfig(context, jsonString)
                         saveFeedback = "Backup restored successfully!"
+                        isFeedbackError = false
                     } else {
                         saveFeedback = "Failed to read backup file (empty)."
+                        isFeedbackError = true
                     }
                 } catch (e: Exception) {
                     saveFeedback = "Import failed: ${e.message}"
+                    isFeedbackError = true
                 } finally {
                     delay(4000)
                     saveFeedback = null
@@ -204,6 +209,7 @@ private fun GeneralTab(
             restCycleChecks   = g.restCycleChecks.toString()
             restCycleDuration = g.restCycleDuration
             selectedDays      = g.preferredDays.toSet()
+            selectedDates     = g.preferredDates.toSet()
         }
     }
 
@@ -286,6 +292,49 @@ private fun GeneralTab(
                                 },
                                 label = { Text(day) }
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Preferred Dates", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = {
+                            val calendar = Calendar.getInstance()
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    val date = LocalDate.of(year, month + 1, dayOfMonth)
+                                    selectedDates = selectedDates + date.toString()
+                                },
+                                calendar.get(Calendar.YEAR),
+                                calendar.get(Calendar.MONTH),
+                                calendar.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }) {
+                            Icon(Icons.Default.CalendarMonth, contentDescription = "Add Date")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        selectedDates.sorted().forEach { dateIso ->
+                            InputChip(
+                                selected = true,
+                                onClick = { selectedDates = selectedDates - dateIso },
+                                label = { Text(dateIso) },
+                                trailingIcon = { Icon(Icons.Default.Close, null, Modifier.size(16.dp)) }
+                            )
+                        }
+                        if (selectedDates.isEmpty()) {
+                            Text("No specific dates selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -457,8 +506,10 @@ private fun GeneralTab(
                                         }
                                         context.startActivity(Intent.createChooser(shareIntent, "Save Backup"))
                                         saveFeedback = "Export dialog opened."
+                                        isFeedbackError = false
                                     } catch (e: Exception) {
                                         saveFeedback = "Export failed: ${e.message}"
+                                        isFeedbackError = true
                                     } finally {
                                         delay(3000)
                                         saveFeedback = null
@@ -480,6 +531,34 @@ private fun GeneralTab(
             Button(
                 onClick = {
                     scope.launch {
+                        // ENHANCEMENT: Strict Validation for Booking Mode
+                        if (mode == "booking") {
+                            if (selectedDays.isEmpty() && selectedDates.isEmpty()) {
+                                saveFeedback = "Booking Mode requires at least one Day or Date selection."
+                                isFeedbackError = true
+                                delay(3000)
+                                saveFeedback = null
+                                return@launch
+                            }
+
+                            // Contradiction Check: If both are selected, specific dates must match one of the chosen days.
+                            // User requirement: "date selected and day if not matched should not proceed"
+                            if (selectedDays.isNotEmpty() && selectedDates.isNotEmpty()) {
+                                val invalidDates = selectedDates.filter { iso ->
+                                    val date = LocalDate.parse(iso)
+                                    val dayOfWeek = date.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
+                                    dayOfWeek !in selectedDays
+                                }
+                                if (invalidDates.isNotEmpty()) {
+                                    saveFeedback = "Contradiction: Date ${invalidDates.first()} is not a ${selectedDays.joinToString("/")}"
+                                    isFeedbackError = true
+                                    delay(4000)
+                                    saveFeedback = null
+                                    return@launch
+                                }
+                            }
+                        }
+
                         fun formatDuration(input: String, default: String): String {
                             val trimmed = input.trim()
                             if (trimmed.isEmpty()) return default
@@ -491,6 +570,7 @@ private fun GeneralTab(
                             mode = mode,
                             strikeTime = strikeTime,
                             preferredDays = selectedDays.toList(),
+                            preferredDates = selectedDates.toList(),
                             ntfyTopic = ntfyTopic,
                             preferredMuseumSlug = preferredMuseumSlug,
                             checkWindow = formatDuration(checkWindow, Defaults.CHECK_WINDOW),
@@ -505,6 +585,7 @@ private fun GeneralTab(
                         
                         configManager.updateGeneral(newGeneral)
                         saveFeedback = "Settings saved successfully!"
+                        isFeedbackError = false
                         delay(2000)
                         saveFeedback = null
                     }
@@ -516,8 +597,14 @@ private fun GeneralTab(
             
             if (saveFeedback != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Text(text = saveFeedback!!, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Card(colors = CardDefaults.cardColors(
+                    containerColor = if (isFeedbackError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                )) {
+                    Text(
+                        text = saveFeedback!!, 
+                        modifier = Modifier.padding(12.dp), 
+                        color = if (isFeedbackError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
         }

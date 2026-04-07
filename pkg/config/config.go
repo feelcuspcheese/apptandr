@@ -1,3 +1,4 @@
+
 package config
 
 import (
@@ -57,7 +58,7 @@ type ScheduledRun struct {
 	MuseumSlug string    `mapstructure:"museumslug" json:"museumslug"`
 	DropTime   time.Time `mapstructure:"droptime" json:"droptime"`
 	Mode       string    `mapstructure:"mode" json:"mode"`
-    Timezone   string    `mapstructure:"timezone" json:"timezone"` // ✅ add this line
+	Timezone   string    `mapstructure:"timezone" json:"timezone"`
 }
 
 type AppConfig struct {
@@ -65,6 +66,7 @@ type AppConfig struct {
 	ActiveSite        string           `mapstructure:"active_site" json:"active_site"`
 	Mode              string           `mapstructure:"mode" json:"mode"`
 	PreferredDays     []string         `mapstructure:"preferred_days" json:"preferred_days"`
+	PreferredDates    []string         `mapstructure:"preferred_dates" json:"preferred_dates"` // Added for v1.1
 	StrikeTime        string           `mapstructure:"strike_time" json:"strike_time"`
 	CheckWindow       time.Duration    `mapstructure:"check_window" json:"check_window"`
 	CheckInterval     time.Duration    `mapstructure:"check_interval" json:"check_interval"`
@@ -113,6 +115,7 @@ func SaveConfig(path string, cfg *AppConfig) error {
 	viper.Set("active_site", cfg.ActiveSite)
 	viper.Set("mode", cfg.Mode)
 	viper.Set("preferred_days", cfg.PreferredDays)
+	viper.Set("preferred_dates", cfg.PreferredDates) // Added for v1.1
 	viper.Set("strike_time", cfg.StrikeTime)
 	viper.Set("check_window", cfg.CheckWindow)
 	viper.Set("check_interval", cfg.CheckInterval)

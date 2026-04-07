@@ -122,6 +122,37 @@ class ConfigManager private constructor(private val context: Context) {
         }
         LogManager.addLog("INFO", "Admin configuration saved: activeSite=${admin.activeSite}")
     }
+
+    /**
+     * Toggles the Master Switch. v1.3 Feature 3.
+     */
+    suspend fun setPaused(paused: Boolean) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedGeneral = current.general.copy(isPaused = paused)
+            prefs.withConfig(current.copy(general = updatedGeneral))
+        }
+        LogManager.addLog("INFO", "Master Switch: ${if (paused) "PAUSED (All schedules disabled)" else "ACTIVE"}")
+    }
+
+    /**
+     * Persists a result to the history list. Keeps only the latest 20 items.
+     * v1.3 Feature 1.
+     */
+    suspend fun addRunResult(result: RunResult) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedHistory = (listOf(result) + current.runHistory).take(20)
+            prefs.withConfig(current.copy(runHistory = updatedHistory))
+        }
+    }
+
+    suspend fun clearHistory() {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            prefs.withConfig(current.copy(runHistory = emptyList()))
+        }
+    }
     
     suspend fun addScheduledRun(run: ScheduledRun) {
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
@@ -155,6 +186,19 @@ class ConfigManager private constructor(private val context: Context) {
             val updatedRuns = current.scheduledRuns.filter { it.id != runId }
             val updated = current.copy(scheduledRuns = updatedRuns)
             prefs.withConfig(updated)
+        }
+    }
+
+    /**
+     * ATOMIC RESCHEDULE (v1.3 Fix):
+     * Replaces the old run with the new one in a single transaction to prevent
+     * losing recurring schedules during app process death.
+     */
+    suspend fun rescheduleRecurringRun(oldId: String, updatedRun: ScheduledRun) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedRuns = current.scheduledRuns.filter { it.id != oldId } + updatedRun
+            prefs.withConfig(current.copy(scheduledRuns = updatedRuns))
         }
     }
     
@@ -242,6 +286,19 @@ class ConfigManager private constructor(private val context: Context) {
         LogManager.addLog("INFO", "Configuration restored from backup. ${validRuns.size} future runs successfully rescheduled.")
     }
     
+    /**
+     * Builds the JSON configuration required by the Go Agent.
+     * 
+     * ENHANCEMENT: Independence / Locking with Safety Net
+     * This method takes preferredDays and preferredDates directly from the [ScheduledRun].
+     * 
+     * SAFETY NET: If the run-specific preferences are empty (legacy schedules or 
+     * old backups), it falls back to the global general settings to prevent empty-search failure.
+     *
+     * LEAK PROOF FIX:
+     * - mode is pulled from run.mode (not config.general.mode)
+     * - preferredslug is pulled from run.museumSlug (not config.general.preferredMuseumSlug)
+     */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
         val museum = site.museums[run.museumSlug] ?: return null
@@ -255,6 +312,10 @@ class ConfigManager private constructor(private val context: Context) {
         val password = credential?.password ?: ""
         val email    = credential?.email    ?: ""
 
+        // Safety Net: Determine actual days/dates to match against
+        val finalDays = run.preferredDays.ifEmpty { config.general.preferredDays }
+        val finalDates = run.preferredDates.ifEmpty { config.general.preferredDates }
+
         val requestJson = buildJsonObject {
             put("siteKey",    run.siteKey)
             put("museumSlug", run.museumSlug)
@@ -263,10 +324,15 @@ class ConfigManager private constructor(private val context: Context) {
             put("timezone",   run.timezone)
             put("fullConfig", buildJsonObject {
                 put("active_site",         config.admin.activeSite)
-                put("mode",                config.general.mode)
+                // FIXED: Use run-specific mode
+                put("mode",                run.mode)
                 put("strike_time",         config.general.strikeTime)
+                // Use the run-specific (locked) preferences with fallback
                 put("preferred_days",      buildJsonArray {
-                    config.general.preferredDays.forEach { add(it) }
+                    finalDays.forEach { add(it) }
+                })
+                put("preferred_dates",     buildJsonArray {
+                    finalDates.forEach { add(it) }
                 })
                 put("ntfy_topic",          config.general.ntfyTopic)
                 put("check_window",        config.general.checkWindow)
@@ -310,7 +376,8 @@ class ConfigManager private constructor(private val context: Context) {
                                 put("museumid", museum.museumId)
                             })
                         })
-                        put("preferredslug", config.general.preferredMuseumSlug)
+                        // FIXED: Lock preferredslug to the specific run's museum
+                        put("preferredslug", run.museumSlug)
                     })
                 })
             })

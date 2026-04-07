@@ -7,10 +7,15 @@ import android.content.Intent
 import android.os.Build
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
+import java.time.Instant
 
 /**
  * AlarmScheduler following TECHNICAL_SPEC.md section 6.1.
  * Schedules exact alarms using AlarmManager.setExactAndAllowWhileIdle for precise timing.
+ * 
+ * v1.3 Enhancement: 
+ * - Passes recursion and locked preference data through the Intent.
+ * - Accurate logging of Early Trigger (Pre-warm) vs Target Strike time.
  */
 class AlarmScheduler(private val context: Context) {
     
@@ -36,8 +41,8 @@ class AlarmScheduler(private val context: Context) {
 
     /**
      * Schedule a run at the specified dropTimeMillis minus the pre-warm offset.
-     * This wakes the Android service early, allowing the Go Engine to establish 
-     * TCP/TLS handshakes and spin-wait for the precision microsecond strike.
+     * This ensures the Go Agent is awake and has established TLS connections 
+     * BEFORE the actual strike moment.
      */
     fun scheduleRun(run: ScheduledRun, preWarmOffsetMillis: Long) {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
@@ -48,6 +53,17 @@ class AlarmScheduler(private val context: Context) {
             putExtra("drop_time", run.dropTimeMillis)
             putExtra("mode", run.mode)
             putExtra("timezone", run.timezone)
+            
+            // v1.3 Feature: Pass locked preferred lists
+            putStringArrayListExtra("pref_days", ArrayList(run.preferredDays))
+            putStringArrayListExtra("pref_dates", ArrayList(run.preferredDates))
+            
+            // v1.2 Feature: Pass recursion state
+            putExtra("is_recurring", run.isRecurring)
+            putExtra("remaining_occurrences", run.remainingOccurrences)
+            if (run.endDateMillis != null) {
+                putExtra("end_date_millis", run.endDateMillis)
+            }
         }
         
         val pendingIntent = PendingIntent.getBroadcast(
@@ -59,7 +75,7 @@ class AlarmScheduler(private val context: Context) {
         
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
-        // Calculate the early trigger time. Fallback to immediate execution if the offset pushes it into the past.
+        // Calculate the Early Trigger Time (Pre-warm)
         val triggerTime = if (run.dropTimeMillis - preWarmOffsetMillis < System.currentTimeMillis()) {
             System.currentTimeMillis()
         } else {
@@ -80,10 +96,16 @@ class AlarmScheduler(private val context: Context) {
             )
         }
         
-        // Log alarm scheduled event showing both trigger and execution targets
-        val utcTime = java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString()
-        val triggerUtcTime = java.time.Instant.ofEpochMilli(triggerTime).toString()
-        LogManager.addLog("INFO", "Alarm scheduled for run ${run.id} to trigger early at $triggerUtcTime (target drop time: $utcTime)")
+        // v1.3 Enhanced Logging for Verification
+        val targetUtc = Instant.ofEpochMilli(run.dropTimeMillis).toString()
+        val triggerUtc = Instant.ofEpochMilli(triggerTime).toString()
+        
+        LogManager.addLog("INFO", "Alarm scheduled for run ${run.id}")
+        LogManager.addLog("INFO", ">> Early Trigger (Pre-warm): $triggerUtc")
+        LogManager.addLog("INFO", ">> Target Strike Time: $targetUtc")
+        if (run.isRecurring) {
+            LogManager.addLog("INFO", ">> Mode: Daily Recurring")
+        }
     }
     
     /**
@@ -99,8 +121,6 @@ class AlarmScheduler(private val context: Context) {
         )
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarmManager.cancel(pendingIntent)
-        
-        // Log alarm cancelled event
         LogManager.addLog("INFO", "Alarm cancelled for run $runId")
     }
 }
