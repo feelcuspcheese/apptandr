@@ -250,6 +250,10 @@ class ConfigManager private constructor(private val context: Context) {
      * 
      * SAFETY NET: If the run-specific preferences are empty (legacy schedules or 
      * old backups), it falls back to the global general settings to prevent empty-search failure.
+     *
+     * LEAK PROOF FIX:
+     * - mode is pulled from run.mode (not config.general.mode)
+     * - preferredslug is pulled from run.museumSlug (not config.general.preferredMuseumSlug)
      */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
@@ -276,7 +280,8 @@ class ConfigManager private constructor(private val context: Context) {
             put("timezone",   run.timezone)
             put("fullConfig", buildJsonObject {
                 put("active_site",         config.admin.activeSite)
-                put("mode",                config.general.mode)
+                // FIXED: Use run-specific mode
+                put("mode",                run.mode)
                 put("strike_time",         config.general.strikeTime)
                 // Use the run-specific (locked) preferences with fallback
                 put("preferred_days",      buildJsonArray {
@@ -327,7 +332,8 @@ class ConfigManager private constructor(private val context: Context) {
                                 put("museumid", museum.museumId)
                             })
                         })
-                        put("preferredslug", config.general.preferredMuseumSlug)
+                        // FIXED: Lock preferredslug to the specific run's museum
+                        put("preferredslug", run.museumSlug)
                     })
                 })
             })
