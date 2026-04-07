@@ -10,9 +10,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.booking.bot.MainActivity
-import com.booking.bot.data.ConfigManager
-import com.booking.bot.data.LogManager
-import com.booking.bot.data.ScheduledRun
+import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +37,7 @@ import mobile.MobileAgent
  * 3. Polling Loop: Monitors agent life and handles cleanup on finish or stop.
  * 4. Coroutine Safety: Uses explicit Dispatchers and SupervisorJob for stability.
  * 5. Recursion Rescheduling (v1.2): Handles automatic daily repeating runs.
+ * 6. Feature 1 & 4 (v1.3): History logging and live strike status updates.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -54,6 +53,10 @@ class BookingForegroundService : LifecycleService() {
 
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+        // v1.3 Feature 4: Live Status Flow for UI feedback
+        private val _goStatus = MutableStateFlow("Idle")
+        val goStatus: StateFlow<String> = _goStatus.asStateFlow()
 
         /**
          * Starts the service with the intent containing run details.
@@ -93,8 +96,13 @@ class BookingForegroundService : LifecycleService() {
     private var currentRun: ScheduledRun? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // v1.3 Feature 1 Tracking
+    private var lastRunOutcome = "MISSED"
+    private var lastRunMessage = "No slots found during the check window."
+
     /**
      * Parses JSON logs from the Go agent and routes them to LogManager.
+     * v1.3: Also detects success/failure for the History Feature.
      */
     private fun onGoLog(jsonLog: String) {
         try {
@@ -103,6 +111,15 @@ class BookingForegroundService : LifecycleService() {
             val message = json.optString("message", "")
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
+
+                // Outcome Detection for History (Feature 1)
+                if (message.contains("Confirmed for", ignoreCase = true) || message.contains("Booking successful", ignoreCase = true)) {
+                    lastRunOutcome = "SUCCESS"
+                    lastRunMessage = message
+                } else if (message.contains("FATAL", ignoreCase = true) || message.contains("Booking failed", ignoreCase = true)) {
+                    lastRunOutcome = "FAILED"
+                    lastRunMessage = message
+                }
             }
         } catch (e: Exception) {
             // Fallback for non-JSON or malformed output
@@ -112,8 +129,10 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Updates the persistent notification with status from Go agent.
+     * v1.3: Also updates the live status flow for Dashboard pulse.
      */
     private fun onGoStatus(status: String) {
+        _goStatus.value = status
         updateNotification(status)
     }
 
@@ -170,6 +189,10 @@ class BookingForegroundService : LifecycleService() {
                 return START_NOT_STICKY
             }
 
+            // Reset outcome tracking for this specific run
+            lastRunOutcome = "MISSED"
+            lastRunMessage = "No slots found during the check window."
+
             // High-Priority Execution Start: Acquire WakeLock
             wakeLock?.acquire(RUN_TIMEOUT_MS)
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
@@ -191,13 +214,14 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     currentRun = run
+                    _goStatus.value = "Starting"
                     LogManager.addLog("INFO", "Foreground service active for run ${run.id}")
 
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
 
                     if (agentConfigJson == null) {
                         LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
-                        cleanupAndStop(run.id)
+                        cleanupAndStop(runId)
                         return@launch
                     }
 
@@ -219,7 +243,7 @@ class BookingForegroundService : LifecycleService() {
                     
                     if (!started) {
                         LogManager.addLog("ERROR", "Go agent rejected the start command")
-                        cleanupAndStop(run.id)
+                        cleanupAndStop(runId)
                         return@launch
                     }
 
@@ -240,7 +264,7 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Run ${run.id} finished")
-                    cleanupAndStop(run.id)
+                    cleanupAndStop(runId)
 
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")
@@ -264,6 +288,7 @@ class BookingForegroundService : LifecycleService() {
     private fun stopAgent() {
         serviceScope.launch {
             _isRunning.value = false
+            _goStatus.value = "Idle"
             try {
                 mobileAgent?.stop()
                 mobileAgent = null
@@ -283,10 +308,11 @@ class BookingForegroundService : LifecycleService() {
     }
 
     /**
-     * Final cleanup and v1.2 Recursion handling.
+     * Final cleanup, Recursion handling (v1.2), and History Persistence (v1.3).
      */
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
+        _goStatus.value = "Idle"
         mobileAgent = null
         
         if (wakeLock?.isHeld == true) {
@@ -296,39 +322,58 @@ class BookingForegroundService : LifecycleService() {
         try {
             val configManager = ConfigManager.getInstance(this@BookingForegroundService)
             val config = configManager.configFlow.first()
-            val run = config.scheduledRuns.find { it.id == runId }
+            val run = currentRun ?: config.scheduledRuns.find { it.id == runId }
 
-            if (run != null && run.isRecurring) {
-                val nextDropTime = run.dropTimeMillis + (24 * 60 * 60 * 1000L) // Exact 24h cycle
+            if (run != null) {
+                // v1.3 Feature 1: Persistence to History
+                val site = config.admin.sites[run.siteKey]
+                val museum = site?.museums?.get(run.museumSlug)
                 
-                // Check stop conditions
-                val isExpiredByDate = run.endDateMillis?.let { nextDropTime > it } ?: false
-                val isExpiredByCount = run.remainingOccurrences == 1 // This run was the last one
+                val result = RunResult(
+                    timestamp = System.currentTimeMillis(),
+                    siteName = site?.name ?: run.siteKey,
+                    museumName = museum?.name ?: run.museumSlug,
+                    mode = run.mode,
+                    status = lastRunOutcome,
+                    message = lastRunMessage
+                )
+                configManager.addRunResult(result)
 
-                if (isExpiredByDate || isExpiredByCount) {
-                    configManager.removeScheduledRun(runId)
-                    LogManager.addLog("INFO", "Recurring run $runId limit reached. Purged from schedule.")
+                // v1.2 Recurring Logic
+                if (run.isRecurring) {
+                    val nextDropTime = run.dropTimeMillis + (24 * 60 * 60 * 1000L) // Exact 24h cycle
+                    
+                    // Check stop conditions
+                    val isExpiredByDate = run.endDateMillis?.let { nextDropTime > it } ?: false
+                    val isExpiredByCount = run.remainingOccurrences == 1 // This run was the last one
+
+                    if (isExpiredByDate || isExpiredByCount) {
+                        configManager.removeScheduledRun(runId)
+                        LogManager.addLog("INFO", "Recurring run $runId limit reached. Purged from schedule.")
+                    } else {
+                        // Reschedule for tomorrow with same locked config
+                        val updatedRun = run.copy(
+                            dropTimeMillis = nextDropTime,
+                            remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
+                        )
+                        
+                        configManager.removeScheduledRun(runId)
+                        configManager.addScheduledRun(updatedRun)
+                        
+                        // Re-register system alarm
+                        val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
+                        AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
+                        
+                        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
+                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
+                    }
                 } else {
-                    // Reschedule for tomorrow with same locked config
-                    val updatedRun = run.copy(
-                        dropTimeMillis = nextDropTime,
-                        remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
-                    )
-                    
+                    // One-time run cleanup
                     configManager.removeScheduledRun(runId)
-                    configManager.addScheduledRun(updatedRun)
-                    
-                    // Re-register system alarm
-                    val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
-                    AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
-                    
-                    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
-                    LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
+                    LogManager.addLog("INFO", "Run $runId removed from schedule (one-time completion)")
                 }
             } else {
-                // One-time run cleanup
                 configManager.removeScheduledRun(runId)
-                LogManager.addLog("INFO", "Run $runId removed from schedule (one-time completion)")
             }
         } catch (e: Exception) {
             LogManager.addLog("ERROR", "Failed cleanup/reschedule for $runId: ${e.message}")
