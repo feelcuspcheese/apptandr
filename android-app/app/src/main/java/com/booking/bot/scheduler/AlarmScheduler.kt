@@ -7,12 +7,15 @@ import android.content.Intent
 import android.os.Build
 import com.booking.bot.data.LogManager
 import com.booking.bot.data.ScheduledRun
+import java.time.Instant
 
 /**
  * AlarmScheduler following TECHNICAL_SPEC.md section 6.1.
  * Schedules exact alarms using AlarmManager.setExactAndAllowWhileIdle for precise timing.
  * 
- * v1.3 Enhancement: Passes recursion and locked preference data through the Intent.
+ * v1.3 Enhancement: 
+ * - Passes recursion and locked preference data through the Intent.
+ * - Accurate logging of Early Trigger (Pre-warm) vs Target Strike time.
  */
 class AlarmScheduler(private val context: Context) {
     
@@ -38,6 +41,8 @@ class AlarmScheduler(private val context: Context) {
 
     /**
      * Schedule a run at the specified dropTimeMillis minus the pre-warm offset.
+     * This ensures the Go Agent is awake and has established TLS connections 
+     * BEFORE the actual strike moment.
      */
     fun scheduleRun(run: ScheduledRun, preWarmOffsetMillis: Long) {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
@@ -70,6 +75,7 @@ class AlarmScheduler(private val context: Context) {
         
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
+        // Calculate the Early Trigger Time (Pre-warm)
         val triggerTime = if (run.dropTimeMillis - preWarmOffsetMillis < System.currentTimeMillis()) {
             System.currentTimeMillis()
         } else {
@@ -90,8 +96,16 @@ class AlarmScheduler(private val context: Context) {
             )
         }
         
-        val utcTime = java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString()
-        LogManager.addLog("INFO", "Alarm set for run ${run.id} (Target: $utcTime). Recurring: ${run.isRecurring}")
+        // v1.3 Enhanced Logging for Verification
+        val targetUtc = Instant.ofEpochMilli(run.dropTimeMillis).toString()
+        val triggerUtc = Instant.ofEpochMilli(triggerTime).toString()
+        
+        LogManager.addLog("INFO", "Alarm scheduled for run ${run.id}")
+        LogManager.addLog("INFO", ">> Early Trigger (Pre-warm): $triggerUtc")
+        LogManager.addLog("INFO", ">> Target Strike Time: $targetUtc")
+        if (run.isRecurring) {
+            LogManager.addLog("INFO", ">> Mode: Daily Recurring")
+        }
     }
     
     /**
