@@ -1,5 +1,8 @@
+
 package com.booking.bot.ui.screens
 
+import android.app.DatePickerDialog as AndroidDatePickerDialog
+import android.app.TimePickerDialog as AndroidTimePickerDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,16 +18,20 @@ import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
-import android.app.DatePickerDialog as AndroidDatePickerDialog
-import android.app.TimePickerDialog as AndroidTimePickerDialog
 
 /**
  * ScheduleScreen following TECHNICAL_SPEC.md section 5.3.
+ * 
+ * v1.1 Enhancements:
+ * - Independent configuration locking (Preferred Days/Dates per run).
+ * - Intuitive calendar date selection for specific overrides.
+ * - Strict validation for booking mode consistency.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ScheduleScreen(
     configManager: ConfigManager,
@@ -40,6 +47,11 @@ fun ScheduleScreen(
     var selectedMode by remember { mutableStateOf(config?.general?.mode ?: "alert") }
     var selectedDateTime by remember { mutableStateOf<Long?>(null) }
     var selectedTimezone by remember { mutableStateOf(java.util.TimeZone.getDefault().id) }
+
+    // Run-specific overrides (Independence Locking)
+    val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    var runPreferredDays by remember { mutableStateOf(setOf<String>()) }
+    var runPreferredDates by remember { mutableStateOf(setOf<String>()) }
 
     var siteExpanded by remember { mutableStateOf(false) }
     var museumExpanded by remember { mutableStateOf(false) }
@@ -59,7 +71,11 @@ fun ScheduleScreen(
             if (selectedSiteKey !in cfg.admin.sites.keys) {
                 selectedSiteKey = cfg.admin.activeSite
             }
-            selectedMode = cfg.general.mode
+            if (runPreferredDays.isEmpty() && runPreferredDates.isEmpty()) {
+                selectedMode = cfg.general.mode
+                runPreferredDays = cfg.general.preferredDays.toSet()
+                runPreferredDates = cfg.general.preferredDates.toSet()
+            }
         }
     }
 
@@ -174,6 +190,79 @@ fun ScheduleScreen(
             }
         }
 
+        // Mode Dropdown
+        Card {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Select Mode", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                ExposedDropdownMenuBox(expanded = modeExpanded, onExpandedChange = { modeExpanded = it }) {
+                    OutlinedTextField(
+                        value = selectedMode.replaceFirstChar { it.uppercase() }, onValueChange = {}, readOnly = true,
+                        label = { Text("Mode") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                    )
+                    ExposedDropdownMenu(expanded = modeExpanded, onDismissRequest = { modeExpanded = false }) {
+                        listOf("alert", "booking").forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(mode.replaceFirstChar { it.uppercase() }) },
+                                onClick = { selectedMode = mode; modeExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Execution Preferences (Independent Locking)
+        Card {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Execution Preferences", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text("Preferred Days", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    allDays.forEach { day ->
+                        FilterChip(
+                            selected = day in runPreferredDays,
+                            onClick = {
+                                runPreferredDays = if (day in runPreferredDays) runPreferredDays - day else runPreferredDays + day
+                            },
+                            label = { Text(day) }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Preferred Dates", style = MaterialTheme.typography.bodySmall)
+                    IconButton(onClick = {
+                        val cal = Calendar.getInstance()
+                        AndroidDatePickerDialog(context, { _, y, m, d ->
+                            val date = LocalDate.of(y, m + 1, d)
+                            runPreferredDates = runPreferredDates + date.toString()
+                        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+                    }) {
+                        Icon(Icons.Default.CalendarMonth, "Add Date", modifier = Modifier.size(20.dp))
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    runPreferredDates.sorted().forEach { dateIso ->
+                        InputChip(
+                            selected = true,
+                            onClick = { runPreferredDates = runPreferredDates - dateIso },
+                            label = { Text(dateIso) },
+                            trailingIcon = { Icon(Icons.Default.Close, null, Modifier.size(14.dp)) }
+                        )
+                    }
+                }
+            }
+        }
+
         // Credential Dropdown
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -204,30 +293,6 @@ fun ScheduleScreen(
                             DropdownMenuItem(
                                 text = { Text("${cred.label} (${cred.username})") },
                                 onClick = { selectedCredentialId = cred.id; credentialExpanded = false }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Mode Dropdown
-        Card {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Select Mode", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                ExposedDropdownMenuBox(expanded = modeExpanded, onExpandedChange = { modeExpanded = it }) {
-                    OutlinedTextField(
-                        value = selectedMode.replaceFirstChar { it.uppercase() }, onValueChange = {}, readOnly = true,
-                        label = { Text("Mode") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
-                    )
-                    ExposedDropdownMenu(expanded = modeExpanded, onDismissRequest = { modeExpanded = false }) {
-                        listOf("alert", "booking").forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(mode.replaceFirstChar { it.uppercase() }) },
-                                onClick = { selectedMode = mode; modeExpanded = false }
                             )
                         }
                     }
@@ -268,10 +333,10 @@ fun ScheduleScreen(
             }
         }
 
-        // Date/Time Picker
+        // Date/Time Picker (Trigger Time)
         Card {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Select Date & Time", style = MaterialTheme.typography.titleMedium)
+                Text("Select Alarm Trigger Time", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 val dateTimeText = selectedDateTime?.let {
                     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it))
@@ -298,44 +363,40 @@ fun ScheduleScreen(
                 val runMuseumSlug = selectedMuseumSlug
                 val runDateTime = selectedDateTime
                 val runTimezone = selectedTimezone
+                
                 when {
                     runMuseumSlug.isNullOrEmpty() -> {
                         feedbackMessage = "Please select a museum"; feedbackSuccess = false
                     }
+                    selectedMode == "booking" && runPreferredDays.isEmpty() && runPreferredDates.isEmpty() -> {
+                        feedbackMessage = "Booking Mode requires at least one Day or Date selection."; feedbackSuccess = false
+                    }
+                    selectedMode == "booking" && runPreferredDays.isNotEmpty() && runPreferredDates.isNotEmpty() -> {
+                        val invalid = runPreferredDates.filter { iso ->
+                            val d = LocalDate.parse(iso)
+                            val dayStr = d.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
+                            dayStr !in runPreferredDays
+                        }
+                        if (invalid.isNotEmpty()) {
+                            feedbackMessage = "Contradiction: Date ${invalid.first()} is not a ${runPreferredDays.joinToString("/")}"; feedbackSuccess = false
+                        } else {
+                            // Proceed to final check
+                            processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates) { msg, success ->
+                                feedbackMessage = msg; feedbackSuccess = success
+                                if (success) selectedDateTime = null
+                            }
+                        }
+                    }
                     runDateTime == null -> {
-                        feedbackMessage = "Please select a date and time"; feedbackSuccess = false
+                        feedbackMessage = "Please select a trigger date and time"; feedbackSuccess = false
                     }
                     runDateTime <= System.currentTimeMillis() -> {
-                        feedbackMessage = "Please select a future date and time"; feedbackSuccess = false
+                        feedbackMessage = "Please select a future trigger time"; feedbackSuccess = false
                     }
                     else -> {
-                        scope.launch {
-                            try {
-                                val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
-                                val run = ScheduledRun(
-                                    id = UUID.randomUUID().toString(),
-                                    siteKey = runSiteKey,
-                                    museumSlug = runMuseumSlug,
-                                    credentialId = selectedCredentialId,
-                                    dropTimeMillis = utcMillis,
-                                    mode = selectedMode,
-                                    timezone = runTimezone
-                                )
-                                configManager.addScheduledRun(run)
-                                val offsetMillis = AlarmScheduler.parseDurationToMillis(config?.general?.preWarmOffset ?: "30s")
-                                AlarmScheduler(context).scheduleRun(run, offsetMillis)
-                                feedbackMessage = "Run scheduled successfully!"
-                                feedbackSuccess = true
-                                selectedDateTime = null
-                            } catch (e: IllegalArgumentException) {
-                                feedbackMessage = "Validation failed: ${e.message}"
-                                feedbackSuccess = false
-                                LogManager.addLog("ERROR", "Schedule validation failed: ${e.message}")
-                            } catch (e: Exception) {
-                                feedbackMessage = "Failed to schedule: ${e.message}"
-                                feedbackSuccess = false
-                                LogManager.addLog("ERROR", "Schedule failed: ${e.message}")
-                            }
+                        processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates) { msg, success ->
+                            feedbackMessage = msg; feedbackSuccess = success
+                            if (success) selectedDateTime = null
                         }
                     }
                 }
@@ -402,6 +463,47 @@ fun ScheduleScreen(
     }
 }
 
+private fun processScheduling(
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context,
+    config: AppConfig?,
+    configManager: ConfigManager,
+    runDateTime: Long?,
+    runTimezone: String,
+    runSiteKey: String,
+    runMuseumSlug: String?,
+    selectedCredentialId: String?,
+    selectedMode: String,
+    runPreferredDays: Set<String>,
+    runPreferredDates: Set<String>,
+    onResult: (String, Boolean) -> Unit
+) {
+    if (runDateTime == null || runMuseumSlug == null) return
+    scope.launch {
+        try {
+            val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
+            val run = ScheduledRun(
+                id = UUID.randomUUID().toString(),
+                siteKey = runSiteKey,
+                museumSlug = runMuseumSlug,
+                credentialId = selectedCredentialId,
+                dropTimeMillis = utcMillis,
+                mode = selectedMode,
+                preferredDays = runPreferredDays.toList(),
+                preferredDates = runPreferredDates.toList(),
+                timezone = runTimezone
+            )
+            configManager.addScheduledRun(run)
+            val offsetMillis = AlarmScheduler.parseDurationToMillis(config?.general?.preWarmOffset ?: "30s")
+            AlarmScheduler(context).scheduleRun(run, offsetMillis)
+            onResult("Run scheduled successfully!", true)
+        } catch (e: Exception) {
+            onResult("Failed to schedule: ${e.message}", false)
+            LogManager.addLog("ERROR", "Schedule failed: ${e.message}")
+        }
+    }
+}
+
 private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): Long {
     val deviceCalendar = Calendar.getInstance().apply {
         timeInMillis = localDateTimeMillis
@@ -428,7 +530,7 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(museum?.name ?: run.museumSlug, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     "${run.siteKey.uppercase()} • ${run.mode.uppercase()}",
@@ -441,7 +543,13 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
                     }.format(Date(run.dropTimeMillis)),
                     style = MaterialTheme.typography.bodySmall
                 )
-                credential?.let { Text("Using: ${it.label}", style = MaterialTheme.typography.bodySmall) }
+                if (run.preferredDays.isNotEmpty() || run.preferredDates.isNotEmpty()) {
+                    Text(
+                        "Pref: ${run.preferredDays.joinToString(", ")} ${run.preferredDates.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
         }
