@@ -1,4 +1,3 @@
-
 package com.booking.bot.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -111,7 +110,7 @@ fun DashboardScreen(
                                     }
 
                                     if (museumSlug.isEmpty()) {
-                                        actionFeedback = "No museum configured."
+                                        actionFeedback = "No museum configured. Please configure in Admin Config."
                                         actionSuccess = false
                                         isStarting = false
                                         return@launch
@@ -126,7 +125,7 @@ fun DashboardScreen(
                                     if (!isStarting) return@launch
 
                                     val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
-                                    val dropTimeMillis = System.currentTimeMillis() + 1000 // Trigger almost immediately after countdown
+                                    val dropTimeMillis = System.currentTimeMillis() + 1000 
                                     val timezone = java.util.TimeZone.getDefault().id
 
                                     // LEAK-PROOF FIX: Explicitly snapshot global preferences into the run object
@@ -139,21 +138,21 @@ fun DashboardScreen(
                                         mode = currentConfig.general.mode,
                                         preferredDays = currentConfig.general.preferredDays,
                                         preferredDates = currentConfig.general.preferredDates,
-                                        timezone = timezone
+                                        timezone = timezone,
+                                        isRecurring = false // Start Now is always one-time
                                     )
 
-                                    LogManager.addLog("INFO", "Start Now triggered: museum=$museumSlug, mode=${run.mode}")
+                                    LogManager.addLog("INFO", "Start Now run created: id=${run.id}, museum=$museumSlug")
 
                                     configManager.addScheduledRun(run)
                                     val offsetMillis = AlarmScheduler.parseDurationToMillis(currentConfig.general.preWarmOffset)
                                     
-                                    // Forces immediate service start via alarm logic
                                     AlarmScheduler(context).scheduleRun(run, offsetMillis)
 
-                                    actionFeedback = "Agent starting now..."
+                                    actionFeedback = "Agent scheduled to start."
                                     actionSuccess = true
                                 } catch (e: Exception) {
-                                    actionFeedback = "Failed to start: ${e.message}"
+                                    actionFeedback = "Failed to schedule: ${e.message}"
                                     actionSuccess = false
                                 } finally {
                                     isStarting = false
@@ -165,7 +164,7 @@ fun DashboardScreen(
                         if (isStarting) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("${countdown}s")
+                            Text("Starting in ${countdown}s")
                         } else {
                             Text("Start Now")
                         }
@@ -178,14 +177,14 @@ fun DashboardScreen(
                                     if (isStarting) {
                                         isStarting = false
                                         countdownJobState.value?.cancel()
-                                        actionFeedback = "Cancelled start."
+                                        actionFeedback = "Start cancelled."
                                     } else {
                                         BookingForegroundService.stop(context)
                                         actionFeedback = "Stopping agent..."
                                     }
                                     actionSuccess = true
                                 } catch (e: Exception) {
-                                    actionFeedback = "Error: ${e.message}"
+                                    actionFeedback = "Failed: ${e.message}"
                                     actionSuccess = false
                                 }
                             }
@@ -261,7 +260,7 @@ fun DashboardScreen(
                         val site = cfg.admin.sites[nextRun.siteKey]
                         val museum = site?.museums?.get(nextRun.museumSlug)
                         Text(
-                            text = "${museum?.name ?: nextRun.museumSlug} • ${nextRun.mode.uppercase()}",
+                            text = "${museum?.name ?: nextRun.museumSlug} • ${nextRun.mode.uppercase()}${if (nextRun.isRecurring) " (Recurring)" else ""}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
