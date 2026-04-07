@@ -602,7 +602,9 @@ private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): L
 private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit) {
     val site = config?.admin?.sites?.get(run.siteKey)
     val museum = site?.museums?.get(run.museumSlug)
+    // v1.3 Hygiene: Variable 'credential' is now correctly used for UI display
     val credential = run.credentialId?.let { id -> site?.credentials?.find { it.id == id } }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -629,6 +631,16 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                
+                // FIXED: Usage of 'credential' variable to show which card is locked to this run
+                credential?.let {
+                    Text(
+                        "Card: ${it.label}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+
                 if (run.isRecurring && run.remainingOccurrences > 0) {
                     Text(
                         "Cycles left: ${run.remainingOccurrences}",
