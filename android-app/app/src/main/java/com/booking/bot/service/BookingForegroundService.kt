@@ -1,3 +1,4 @@
+
 package com.booking.bot.service
 
 import android.app.NotificationChannel
@@ -113,10 +114,15 @@ class BookingForegroundService : LifecycleService() {
                 LogManager.addLog(level, message)
 
                 // Outcome Detection for History (Feature 1)
-                if (message.contains("Confirmed for", ignoreCase = true) || message.contains("Booking successful", ignoreCase = true)) {
+                // We check for both Booking Success AND Alert Success keywords
+                if (message.contains("Confirmed for", ignoreCase = true) || 
+                    message.contains("Booking successful", ignoreCase = true) ||
+                    message.contains("Notification sent", ignoreCase = true)) {
                     lastRunOutcome = "SUCCESS"
                     lastRunMessage = message
-                } else if (message.contains("FATAL", ignoreCase = true) || message.contains("Booking failed", ignoreCase = true)) {
+                } else if (message.contains("FATAL", ignoreCase = true) || 
+                           message.contains("Booking failed", ignoreCase = true) ||
+                           message.contains("Error sending ntfy", ignoreCase = true)) {
                     lastRunOutcome = "FAILED"
                     lastRunMessage = message
                 }
@@ -221,7 +227,7 @@ class BookingForegroundService : LifecycleService() {
 
                     if (agentConfigJson == null) {
                         LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
-                        cleanupAndStop(runId)
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
