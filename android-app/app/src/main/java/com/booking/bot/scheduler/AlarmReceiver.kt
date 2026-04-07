@@ -14,45 +14,45 @@ import kotlinx.coroutines.launch
 
 /**
  * AlarmReceiver following TECHNICAL_SPEC.md section 6.2.
- * BroadcastReceiver that triggers when a scheduled alarm fires.
  * 
  * v1.3 Enhancement: 
- * - Master Switch Logic: Checks if schedules are paused before starting the service.
+ * - Master Switch Logic: Verifies pause state.
+ * - Recursion & Preference Extraction: Reconstructs the full locked ScheduledRun.
  */
 class AlarmReceiver : BroadcastReceiver() {
     
     override fun onReceive(context: Context, intent: Intent) {
         val runId = intent.getStringExtra("run_id") ?: return
-        val siteKey = intent.getStringExtra("site_key") ?: return
-        val museumSlug = intent.getStringExtra("museum_slug") ?: return
-        val credentialId = intent.getStringExtra("credential_id")
-        val dropTime = intent.getLongExtra("drop_time", 0)
-        val mode = intent.getStringExtra("mode") ?: "alert"
-        val timezone = intent.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id
         
         val run = ScheduledRun(
             id = runId,
-            siteKey = siteKey,
-            museumSlug = museumSlug,
-            credentialId = credentialId,
-            dropTimeMillis = dropTime,
-            mode = mode,
-            timezone = timezone
+            siteKey = intent.getStringExtra("site_key") ?: return,
+            museumSlug = intent.getStringExtra("museum_slug") ?: return,
+            credentialId = intent.getStringExtra("credential_id"),
+            dropTimeMillis = intent.getLongExtra("drop_time", 0),
+            mode = intent.getStringExtra("mode") ?: "alert",
+            timezone = intent.getStringExtra("timezone") ?: java.util.TimeZone.getDefault().id,
+            // v1.3 Extraction of locked preferences
+            preferredDays = intent.getStringArrayListExtra("pref_days") ?: emptyList(),
+            preferredDates = intent.getStringArrayListExtra("pref_dates") ?: emptyList(),
+            // v1.2 Extraction of recursion logic
+            isRecurring = intent.getBooleanExtra("is_recurring", false),
+            remainingOccurrences = intent.getIntExtra("remaining_occurrences", 0),
+            endDateMillis = if (intent.hasExtra("end_date_millis")) intent.getLongExtra("end_date_millis", 0) else null
         )
 
-        // Feature 3: Master Switch Verification
-        // We perform this check here to prevent the Foreground Service from even starting if paused.
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val configManager = ConfigManager.getInstance(context)
                 val config = configManager.configFlow.first()
                 
+                // Feature 3: Master Switch check
                 if (config.general.isPaused) {
-                    LogManager.addLog("INFO", "Master Switch is PAUSED. Skipping run $runId (${run.museumSlug})")
+                    LogManager.addLog("INFO", "System PAUSED. Skipping run $runId")
                     return@launch
                 }
 
-                LogManager.addLog("INFO", "Alarm triggered for run $runId. Starting service.")
+                LogManager.addLog("INFO", "Alarm triggered for run $runId. Waking Go agent.")
                 BookingForegroundService.start(context, run)
             } catch (e: Exception) {
                 LogManager.addLog("ERROR", "AlarmReceiver processing error: ${e.message}")
