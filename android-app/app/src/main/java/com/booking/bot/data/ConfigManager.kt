@@ -122,6 +122,37 @@ class ConfigManager private constructor(private val context: Context) {
         }
         LogManager.addLog("INFO", "Admin configuration saved: activeSite=${admin.activeSite}")
     }
+
+    /**
+     * Toggles the Master Switch. v1.3 Feature 3.
+     */
+    suspend fun setPaused(paused: Boolean) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedGeneral = current.general.copy(isPaused = paused)
+            prefs.withConfig(current.copy(general = updatedGeneral))
+        }
+        LogManager.addLog("INFO", "Master Switch: ${if (paused) "PAUSED (All schedules disabled)" else "ACTIVE"}")
+    }
+
+    /**
+     * Persists a result to the history list. Keeps only the latest 20 items.
+     * v1.3 Feature 1.
+     */
+    suspend fun addRunResult(result: RunResult) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val updatedHistory = (listOf(result) + current.runHistory).take(20)
+            prefs.withConfig(current.copy(runHistory = updatedHistory))
+        }
+    }
+
+    suspend fun clearHistory() {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            prefs.withConfig(current.copy(runHistory = emptyList()))
+        }
+    }
     
     suspend fun addScheduledRun(run: ScheduledRun) {
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
