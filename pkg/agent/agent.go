@@ -1,3 +1,4 @@
+
 package agent
 
 import (
@@ -251,7 +252,10 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 
 /**
  * checkAvailability handles the actual data fetching and action triggering.
- * FIXED: Resolved 'declared and not used: err' by consolidating month-scan loop errors.
+ * 
+ * v1.1 Update:
+ * Implements dual-matching logic. Booking is triggered if the found date
+ * matches EITHER a preferred recurring day OR a specific preferred calendar date.
  */
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
 	startDate := dropTime
@@ -272,7 +276,6 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		dateStr := targetDate.Format("2006-01-02")
 		a.log("Scanning %s - Month %d (param: %s)...", site.Name, i+1, dateStr)
 
-		// FIXED: err is handled explicitly here
 		avails, _, fetchErr := scraperInst.FetchForDateWithBody(ctx, dateStr)
 		if fetchErr != nil {
 			a.log("Error fetching %s: %v", dateStr, fetchErr)
@@ -334,39 +337,60 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 	} else if mode == "booking" {
 		bookerInst := booker.NewBooker(client, site, museum, a.stateManager, a.logger)
 		for _, av := range newAvails {
-			for _, prefDay := range a.config.PreferredDays {
-				if isDayOfWeek(av.Date, prefDay) {
-					a.log("Attempting to book %s", av.Date)
-					
-					// FIXED: booking error handled with Fatal logic
-					if bookErr := bookerInst.Book(ctx, av); bookErr != nil {
-						errMsg := bookErr.Error()
-						
-						// Fatal Error (Limit or Bad Creds) -> Exit Agent
-						if strings.Contains(errMsg, "FATAL") {
-							a.log("CRITICAL FAILURE: %v. Shutting down.", errMsg)
-							title := fmt.Sprintf("%s - %s - AGENT STOPPED", site.Name, museum.Name)
-							_ = ntfy.SendNotification(title, errMsg, notifier.PriorityHigh, nil)
-							if a.notifyFunc != nil { a.notifyFunc(title, errMsg) }
-							return true, bookErr
-						}
+			
+			// MATCHING LOGIC (v1.1)
+			matchFound := false
 
-						// Transient error: Log and keep checking others
-						a.log("Booking error for %s: %v", av.Date, bookErr)
-						continue
-					}
-					
-					// Success path
-					successTitle := fmt.Sprintf("%s - Booking SUCCESS", site.Name)
-					successMsg := fmt.Sprintf("Confirmed for %s (%s)", av.Date, museum.Name)
-					_ = ntfy.SendNotification(successTitle, successMsg, notifier.PriorityUrgent, nil)
-					if a.notifyFunc != nil { a.notifyFunc(successTitle, successMsg) }
-					a.log("Booking successful for %s", av.Date)
-					return true, nil 
+			// 1. Check Specific Calendar Dates (High Priority)
+			for _, prefDate := range a.config.PreferredDates {
+				if av.Date == prefDate {
+					a.log("MATCH: Specific Date found - %s", av.Date)
+					matchFound = true
+					break
 				}
 			}
+
+			// 2. Check Recurring Days of Week
+			if !matchFound {
+				for _, prefDay := range a.config.PreferredDays {
+					if isDayOfWeek(av.Date, prefDay) {
+						a.log("MATCH: Preferred Day (%s) found - %s", prefDay, av.Date)
+						matchFound = true
+						break
+					}
+				}
+			}
+
+			if matchFound {
+				a.log("Attempting to book %s", av.Date)
+				
+				if bookErr := bookerInst.Book(ctx, av); bookErr != nil {
+					errMsg := bookErr.Error()
+					
+					// Fatal Error (Limit or Bad Creds) -> Exit Agent
+					if strings.Contains(errMsg, "FATAL") {
+						a.log("CRITICAL FAILURE: %v. Shutting down.", errMsg)
+						title := fmt.Sprintf("%s - %s - AGENT STOPPED", site.Name, museum.Name)
+						_ = ntfy.SendNotification(title, errMsg, notifier.PriorityHigh, nil)
+						if a.notifyFunc != nil { a.notifyFunc(title, errMsg) }
+						return true, bookErr
+					}
+
+					// Transient error: Log and keep checking others
+					a.log("Booking error for %s: %v", av.Date, bookErr)
+					continue
+				}
+				
+				// Success path
+				successTitle := fmt.Sprintf("%s - Booking SUCCESS", site.Name)
+				successMsg := fmt.Sprintf("Confirmed for %s (%s)", av.Date, museum.Name)
+				_ = ntfy.SendNotification(successTitle, successMsg, notifier.PriorityUrgent, nil)
+				if a.notifyFunc != nil { a.notifyFunc(successTitle, successMsg) }
+				a.log("Booking successful for %s", av.Date)
+				return true, nil 
+			}
 		}
-		a.log("No preferred day matches among availabilities")
+		a.log("No preferred day or date matches among availabilities")
 	}
 	return false, nil
 }
