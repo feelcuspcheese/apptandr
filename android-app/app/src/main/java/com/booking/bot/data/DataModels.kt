@@ -6,19 +6,11 @@ import java.util.UUID
 
 /**
  * Data models following TECHNICAL_SPEC.md section 3.
- * All models use @Serializable for JSON persistence in DataStore.
  * 
- * Version 1.1 Enhancements:
- * - Added preferredDates to GeneralSettings.
- * - Added preferredDays and preferredDates to ScheduledRun for per-run independence.
+ * Version 1.2 Enhancements:
+ * - Added Recursion fields (isRecurring, occurrences, stopDate).
  */
 
-/**
- * Museum data class (section 3.2)
- * @param name Display name shown in UI dropdowns
- * @param slug Unique identifier (used as key in maps, stored in preferences)
- * @param museumId Actual ID used in the library's API endpoint
- */
 @Serializable
 data class Museum(
     val name: String,
@@ -26,16 +18,6 @@ data class Museum(
     val museumId: String
 )
 
-/**
- * CredentialSet data class (section 3.3)
- * Represents a single library card + PIN + email combination.
- * Multiple credential sets can exist per site with one marked as default.
- * @param id UUID-based unique identifier
- * @param label User-friendly name (e.g., "Main Card")
- * @param username Library card number
- * @param password PIN
- * @param email Email address for notifications
- */
 @Serializable
 data class CredentialSet(
     val id: String = UUID.randomUUID().toString(),
@@ -45,19 +27,6 @@ data class CredentialSet(
     var email: String
 )
 
-/**
- * SiteConfig data class (section 3.4)
- * Configuration for a single booking site (e.g., SPL, KCLS).
- * @param name Display name (e.g., "SPL")
- * @param baseUrl Base URL for the site (e.g., "https://spl.libcal.com")
- * @param availabilityEndpoint API endpoint for availability checks
- * @param digital Whether to book digital passes
- * @param physical Whether to book physical passes
- * @param location Location parameter for API calls
- * @param museums Map of slug -> Museum for this site
- * @param credentials List of CredentialSet for this site
- * @param defaultCredentialId ID of the default credential (must exist in credentials or be null)
- */
 @Serializable
 data class SiteConfig(
     val name: String,
@@ -71,12 +40,6 @@ data class SiteConfig(
     var defaultCredentialId: String? = null
 )
 
-/**
- * AdminConfig data class (section 3.5)
- * Site-specific configuration including multiple sites and their settings.
- * @param activeSite Currently selected site key (e.g., "spl")
- * @param sites Map of site key -> SiteConfig
- */
 @Serializable
 data class AdminConfig(
     var activeSite: String = "spl",
@@ -100,16 +63,6 @@ data class AdminConfig(
     )
 )
 
-/**
- * GeneralSettings data class (section 3.6)
- * User-configurable general settings for the booking agent.
- * @param mode "alert" or "booking"
- * @param strikeTime Time when appointments drop (HH:MM format)
- * @param preferredDays List of days to prefer (e.g., ["Monday", "Wednesday", "Friday"])
- * @param preferredDates List of specific ISO dates to prefer (e.g., ["2024-12-25"])
- * @param ntfyTopic Topic name for ntfy.sh notifications
- * @param preferredMuseumSlug Slug of the preferred museum (stored, not displayed name)
- */
 @Serializable
 data class GeneralSettings(
     var mode: String = "alert",
@@ -129,22 +82,10 @@ data class GeneralSettings(
 )
 
 /**
- * ScheduledRun data class (section 3.7)
- * Represents a scheduled booking run at a specific time.
+ * ScheduledRun represents the Snapshotted configuration.
  * 
- * independence update:
- * Each run now stores its own preferredDays and preferredDates. 
- * If these are provided, they override the global GeneralSettings at execution time.
- * 
- * @param id UUID-based unique identifier
- * @param siteKey Key of the site in admin.sites
- * @param museumSlug Slug of the museum in that site's museums
- * @param credentialId ID of the credential to use (null = use site's default)
- * @param dropTimeMillis Absolute time in milliseconds since epoch (UTC)
- * @param mode "alert" or "booking"
- * @param preferredDays Specific days for this run (Locked Configuration)
- * @param preferredDates Specific dates for this run (Locked Configuration)
- * @param timezone IANA timezone ID (e.g., "America/Los_Angeles")
+ * @param remainingOccurrences If > 0, the service will reschedule for tomorrow.
+ * @param endDateMillis If set, recurring runs will stop after this absolute time.
  */
 @Serializable
 data class ScheduledRun(
@@ -156,16 +97,13 @@ data class ScheduledRun(
     val mode: String,
     val preferredDays: List<String> = emptyList(),
     val preferredDates: List<String> = emptyList(),
-    val timezone: String = java.util.TimeZone.getDefault().id
+    val timezone: String = java.util.TimeZone.getDefault().id,
+    // Recurring Fields
+    val isRecurring: Boolean = false,
+    val remainingOccurrences: Int = 0, // 0 means infinite or controlled by endDate
+    val endDateMillis: Long? = null
 )
 
-/**
- * AppConfig data class (section 3.8)
- * Single source of truth for all app configuration, stored in DataStore.
- * @param general General settings
- * @param admin Admin/site-specific configuration
- * @param scheduledRuns List of scheduled runs
- */
 @Serializable
 data class AppConfig(
     val general: GeneralSettings = GeneralSettings(),
@@ -173,13 +111,6 @@ data class AppConfig(
     val scheduledRuns: List<ScheduledRun> = emptyList()
 )
 
-/**
- * LogEntry data class (section 7)
- * Represents a single log entry.
- * @param timestamp Timestamp in milliseconds since epoch
- * @param level Log level (INFO, WARN, ERROR, etc.)
- * @param message Log message
- */
 @Serializable
 data class LogEntry(
     val timestamp: Long,
