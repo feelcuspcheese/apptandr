@@ -1,4 +1,3 @@
-
 package com.booking.bot.data
 
 import android.content.Context
@@ -246,10 +245,11 @@ class ConfigManager private constructor(private val context: Context) {
     /**
      * Builds the JSON configuration required by the Go Agent.
      * 
-     * ENHANCEMENT: Independence / Locking
-     * This method now takes preferredDays and preferredDates directly from the [ScheduledRun].
-     * This ensures that the agent executes with the specific preferences chosen at the 
-     * time of scheduling, regardless of subsequent changes to global settings.
+     * ENHANCEMENT: Independence / Locking with Safety Net
+     * This method takes preferredDays and preferredDates directly from the [ScheduledRun].
+     * 
+     * SAFETY NET: If the run-specific preferences are empty (legacy schedules or 
+     * old backups), it falls back to the global general settings to prevent empty-search failure.
      */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
@@ -264,6 +264,10 @@ class ConfigManager private constructor(private val context: Context) {
         val password = credential?.password ?: ""
         val email    = credential?.email    ?: ""
 
+        // Safety Net: Determine actual days/dates to match against
+        val finalDays = run.preferredDays.ifEmpty { config.general.preferredDays }
+        val finalDates = run.preferredDates.ifEmpty { config.general.preferredDates }
+
         val requestJson = buildJsonObject {
             put("siteKey",    run.siteKey)
             put("museumSlug", run.museumSlug)
@@ -274,12 +278,12 @@ class ConfigManager private constructor(private val context: Context) {
                 put("active_site",         config.admin.activeSite)
                 put("mode",                config.general.mode)
                 put("strike_time",         config.general.strikeTime)
-                // Use the run-specific (locked) preferences
+                // Use the run-specific (locked) preferences with fallback
                 put("preferred_days",      buildJsonArray {
-                    run.preferredDays.forEach { add(it) }
+                    finalDays.forEach { add(it) }
                 })
                 put("preferred_dates",     buildJsonArray {
-                    run.preferredDates.forEach { add(it) }
+                    finalDates.forEach { add(it) }
                 })
                 put("ntfy_topic",          config.general.ntfyTopic)
                 put("check_window",        config.general.checkWindow)
