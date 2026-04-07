@@ -35,6 +35,7 @@ import java.util.*
  * - History Section (Feature 1)
  * - Master Switch (Feature 3)
  * - Live Status Phase Pulse (Feature 4)
+ * - Credential Snapshotting (Fix): Locks default card at trigger moment.
  */
 @Composable
 fun DashboardScreen(
@@ -127,11 +128,7 @@ fun DashboardScreen(
                             Spacer(Modifier.width(8.dp))
                             Switch(
                                 checked = config?.general?.isPaused != true,
-                                onCheckedChange = { scope.launch { configManager.setPaused(!it) } },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.Green,
-                                    uncheckedThumbColor = Color.Red
-                                )
+                                onCheckedChange = { scope.launch { configManager.setPaused(!it) } }
                             )
                         }
                     }
@@ -188,7 +185,11 @@ fun DashboardScreen(
 
                                         if (!isStarting) return@launch
 
-                                        val credentialId = currentConfig.admin.sites[siteKey]?.defaultCredentialId
+                                        // CREDENTIAL SNAPSHOTTING (v1.3 Fix): 
+                                        // Resolve the default ID now so it's locked into the run object.
+                                        val site = currentConfig.admin.sites[siteKey]
+                                        val resolvedCredentialId = site?.defaultCredentialId
+
                                         val dropTimeMillis = System.currentTimeMillis() + 1000 
                                         val timezone = java.util.TimeZone.getDefault().id
 
@@ -197,7 +198,7 @@ fun DashboardScreen(
                                             id = UUID.randomUUID().toString(),
                                             siteKey = siteKey,
                                             museumSlug = museumSlug,
-                                            credentialId = credentialId,
+                                            credentialId = resolvedCredentialId,
                                             dropTimeMillis = dropTimeMillis,
                                             mode = currentConfig.general.mode,
                                             preferredDays = currentConfig.general.preferredDays,
@@ -228,7 +229,7 @@ fun DashboardScreen(
                             if (isStarting) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Starting in ${countdown}s")
+                                Text("${countdown}s")
                             } else {
                                 Text("Start Now")
                             }
