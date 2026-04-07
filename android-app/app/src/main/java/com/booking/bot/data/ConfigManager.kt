@@ -1,3 +1,4 @@
+
 package com.booking.bot.data
 
 import android.content.Context
@@ -242,6 +243,14 @@ class ConfigManager private constructor(private val context: Context) {
         LogManager.addLog("INFO", "Configuration restored from backup. ${validRuns.size} future runs successfully rescheduled.")
     }
     
+    /**
+     * Builds the JSON configuration required by the Go Agent.
+     * 
+     * ENHANCEMENT: Independence / Locking
+     * This method now takes preferredDays and preferredDates directly from the [ScheduledRun].
+     * This ensures that the agent executes with the specific preferences chosen at the 
+     * time of scheduling, regardless of subsequent changes to global settings.
+     */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
         val museum = site.museums[run.museumSlug] ?: return null
@@ -265,8 +274,12 @@ class ConfigManager private constructor(private val context: Context) {
                 put("active_site",         config.admin.activeSite)
                 put("mode",                config.general.mode)
                 put("strike_time",         config.general.strikeTime)
+                // Use the run-specific (locked) preferences
                 put("preferred_days",      buildJsonArray {
-                    config.general.preferredDays.forEach { add(it) }
+                    run.preferredDays.forEach { add(it) }
+                })
+                put("preferred_dates",     buildJsonArray {
+                    run.preferredDates.forEach { add(it) }
                 })
                 put("ntfy_topic",          config.general.ntfyTopic)
                 put("check_window",        config.general.checkWindow)
