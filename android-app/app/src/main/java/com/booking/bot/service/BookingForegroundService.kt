@@ -29,14 +29,6 @@ import mobile.MobileAgent
 /**
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
- * 
- * Gold Standard Audit Enhancements:
- * 1. WakeLock: Deep Doze protection.
- * 2. Native Alerts: System drawer feedback.
- * 3. Polling Loop: Agent lifecycle management.
- * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
- * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
- * 6. Pre-flight Test Mode (v1.4): Verifies library credentials on BiblioCommons.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -73,9 +65,6 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
-        /**
-         * v1.4 Feature 1: Starts the service in a one-off test mode.
-         */
         fun startTest(context: Context, siteKey: String, credentialId: String) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = TEST_ACTION
@@ -245,9 +234,6 @@ class BookingForegroundService : LifecycleService() {
         return START_STICKY
     }
 
-    /**
-     * v1.4 Feature 1: Performs a library portal login test.
-     */
     private fun handleCredentialTest(intent: Intent) {
         val siteKey = intent.getStringExtra("site_key") ?: return
         val credId = intent.getStringExtra("credential_id") ?: return
@@ -268,12 +254,14 @@ class BookingForegroundService : LifecycleService() {
                 mobileAgent?.setLogCallback { LogManager.addLog("INFO", it) }
                 mobileAgent?.setStatusCallback { status ->
                     _goStatus.value = status
+                    // v1.4 FIX: Ensure the final VERIFIED status is captured reliably
                     if (status.contains("VERIFIED", ignoreCase = true)) {
                         testResult = "VERIFIED"
                     }
                 }
 
                 mobileAgent?.start(testJson)
+                // Wait for the agent to finish its short verification run
                 while (mobileAgent?.isRunning() == true) { delay(500) }
 
                 configManager.updateCredentialVerification(siteKey, credId, testResult)
@@ -382,12 +370,14 @@ class BookingForegroundService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL_ID, "Booking Agent Service", NotificationManager.IMPORTANCE_LOW))
-            nm.createNotificationChannel(NotificationChannel(ALERT_CHANNEL_ID, "Booking Agent Alerts", NotificationManager.IMPORTANCE_HIGH))
+            nm.createNotificationChannel(ALERT_CHANNEL_ID, "Booking Agent Alerts", NotificationManager.IMPORTANCE_HIGH))
         }
     }
 
     private fun createNotification(status: String): android.app.Notification {
-        val stopIntent = Intent(this, BookingForegroundService::class.java).apply { action = STOP_ACTION }
+        val stopIntent = Intent(this, BookingForegroundService::class.java).apply {
+            action = STOP_ACTION
+        }
         val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Booking Agent Active")
