@@ -22,6 +22,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val jsonDecoder = Json { ignoreUnknownKeys = true }
@@ -153,7 +154,30 @@ class ConfigManager private constructor(private val context: Context) {
             prefs.withConfig(current.copy(runHistory = emptyList()))
         }
     }
+
+    /**
+     * Updates the verification status of a credential set.
+     * v1.4 Feature 1.
+     */
+    suspend fun updateCredentialVerification(siteKey: String, credentialId: String, status: String) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val site = current.admin.sites[siteKey] ?: return@updateData prefs
+            val updatedCredentials = site.credentials.map { cred ->
+                if (cred.id == credentialId) {
+                    cred.copy(verificationStatus = status, lastVerifiedMillis = System.currentTimeMillis())
+                } else cred
+            }
+            val updatedSite = site.copy(credentials = updatedCredentials)
+            val updatedAdmin = current.admin.copy(sites = current.admin.sites + (siteKey to updatedSite))
+            prefs.withConfig(current.copy(admin = updatedAdmin))
+        }
+    }
     
+    /**
+     * Adds a scheduled run to the DataStore.
+     * v1.4: Integrated Atomic Duplicate Protection within the update transaction.
+     */
     suspend fun addScheduledRun(run: ScheduledRun) {
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
         if (run.museumSlug.isBlank()) throw IllegalArgumentException("Museum slug cannot be blank")
@@ -161,21 +185,31 @@ class ConfigManager private constructor(private val context: Context) {
         if (run.mode !in listOf("alert", "booking")) throw IllegalArgumentException("Mode must be 'alert' or 'booking'")
         if (run.timezone.isBlank()) throw IllegalArgumentException("Timezone cannot be blank")
 
-        val config = configFlow.first()
-        val site = config.admin.sites[run.siteKey] ?: throw IllegalArgumentException("Site not found: ${run.siteKey}")
+        val configSnapshot = configFlow.first()
+        val site = configSnapshot.admin.sites[run.siteKey] ?: throw IllegalArgumentException("Site not found: ${run.siteKey}")
         if (run.museumSlug !in site.museums.keys) throw IllegalArgumentException("Museum not found: ${run.museumSlug}")
         if (run.credentialId != null && run.credentialId !in site.credentials.map { it.id }) {
             throw IllegalArgumentException("Credential not found: ${run.credentialId}")
         }
 
-        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}, dropTime=${run.dropTimeMillis}, mode=${run.mode}, timezone=${run.timezone}")
-        
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
+            
+            // v1.4 Feature 3: Atomic Duplicate Check
+            val isDuplicate = current.scheduledRuns.any {
+                it.siteKey == run.siteKey &&
+                it.museumSlug == run.museumSlug &&
+                it.dropTimeMillis == run.dropTimeMillis
+            }
+            if (isDuplicate) {
+                throw IllegalStateException("Conflict: This museum is already scheduled for this exact time.")
+            }
+
             val updatedRuns = current.scheduledRuns + run
-            val updated = current.copy(scheduledRuns = updatedRuns)
-            prefs.withConfig(updated)
+            prefs.withConfig(current.copy(scheduledRuns = updatedRuns))
         }
+        
+        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}")
     }
     
     suspend fun removeScheduledRun(runId: String) {
@@ -285,19 +319,33 @@ class ConfigManager private constructor(private val context: Context) {
         
         LogManager.addLog("INFO", "Configuration restored from backup. ${validRuns.size} future runs successfully rescheduled.")
     }
+
+    /**
+     * Builds a specialized JSON for testing library login on BiblioCommons.
+     * v1.4 Feature 1.
+     */
+    fun buildTestConfig(siteKey: String, credentialId: String, config: AppConfig): String? {
+        val site = config.admin.sites[siteKey] ?: return null
+        val credential = site.credentials.find { it.id == credentialId } ?: return null
+
+        val loginUrl = if (siteKey.lowercase() == "spl") {
+            "https://seattle.bibliocommons.com/user/login?destination=%2Fdashboard%2Fuser_dashboard"
+        } else {
+            "https://kcls.bibliocommons.com/user/login?destination=https%3A%2F%2Fkcls.org"
+        }
+
+        return buildJsonObject {
+            put("type", "credential_test")
+            put("siteKey", siteKey)
+            put("credentialId", credentialId)
+            put("loginUrl", loginUrl)
+            put("username", credential.username)
+            put("password", credential.password)
+        }.toString()
+    }
     
     /**
      * Builds the JSON configuration required by the Go Agent.
-     * 
-     * ENHANCEMENT: Independence / Locking with Safety Net
-     * This method takes preferredDays and preferredDates directly from the [ScheduledRun].
-     * 
-     * SAFETY NET: If the run-specific preferences are empty (legacy schedules or 
-     * old backups), it falls back to the global general settings to prevent empty-search failure.
-     *
-     * LEAK PROOF FIX:
-     * - mode is pulled from run.mode (not config.general.mode)
-     * - preferredslug is pulled from run.museumSlug (not config.general.preferredMuseumSlug)
      */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
@@ -319,7 +367,7 @@ class ConfigManager private constructor(private val context: Context) {
         val requestJson = buildJsonObject {
             put("siteKey",    run.siteKey)
             put("museumSlug", run.museumSlug)
-            put("dropTime",   java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString())
+            put("dropTime",   Instant.ofEpochMilli(run.dropTimeMillis).toString())
             put("mode",       run.mode)
             put("timezone",   run.timezone)
             put("fullConfig", buildJsonObject {

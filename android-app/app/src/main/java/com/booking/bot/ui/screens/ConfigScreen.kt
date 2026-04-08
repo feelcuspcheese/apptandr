@@ -1,4 +1,3 @@
-
 package com.booking.bot.ui.screens
 
 import android.app.DatePickerDialog
@@ -16,9 +15,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.booking.bot.data.*
+import com.booking.bot.service.BookingForegroundService
 import com.booking.bot.ui.components.MuseumEditDialog
 import com.booking.bot.ui.components.CredentialEditDialog
 import com.booking.bot.ui.components.BulkImportDialog
@@ -26,17 +28,17 @@ import com.booking.bot.ui.components.SiteEditDialog
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.Calendar
+import java.util.*
 
 /**
  * ConfigScreen following TECHNICAL_SPEC.md section 5.2.
  * PIN-protected admin configuration screen with General and Sites tabs.
  * 
- * v1.1 Enhancements:
- * - Added Preferred Dates (Calendar selection).
- * - Strict validation for Booking Mode (Contradiction check).
+ * v1.1 Enhancements: Preferred Dates & Contradiction check.
+ * v1.4 Enhancements: Pre-flight check UI (Test Login button and status).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -542,7 +544,6 @@ private fun GeneralTab(
                             }
 
                             // Contradiction Check: If both are selected, specific dates must match one of the chosen days.
-                            // User requirement: "date selected and day if not matched should not proceed"
                             if (selectedDays.isNotEmpty() && selectedDates.isNotEmpty()) {
                                 val invalidDates = selectedDates.filter { iso ->
                                     val date = LocalDate.parse(iso)
@@ -617,6 +618,7 @@ private fun SitesTab(
     configManager: ConfigManager,
     config: AppConfig?
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
     val activeSite = config?.admin?.activeSite ?: "spl"
@@ -823,10 +825,41 @@ private fun SitesTab(
                     credentials.forEach { cred ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
-                                Text(cred.label, style = MaterialTheme.typography.bodyLarge)
+                                Text(cred.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Status Icon based on verification result
+                                    val statusIcon = when (cred.verificationStatus) {
+                                        "VERIFIED" -> Icons.Default.CheckCircle
+                                        "FAILED" -> Icons.Default.Error
+                                        else -> Icons.Default.History
+                                    }
+                                    val statusColor = when (cred.verificationStatus) {
+                                        "VERIFIED" -> Color(0xFF4CAF50)
+                                        "FAILED" -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.outline
+                                    }
+                                    Icon(statusIcon, null, Modifier.size(14.dp), tint = statusColor)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = cred.verificationStatus,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = statusColor
+                                    )
+                                    if (cred.lastVerifiedMillis > 0) {
+                                        val timeStr = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(cred.lastVerifiedMillis))
+                                        Text(" • $timeStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                    }
+                                }
                                 Text("${cred.username} ••••••", style = MaterialTheme.typography.bodySmall)
                             }
                             Row {
+                                // v1.4 Pre-flight Test Button
+                                IconButton(onClick = {
+                                    BookingForegroundService.startTest(context, selectedSiteKey, cred.id)
+                                }) { 
+                                    Icon(Icons.Default.LibraryAddCheck, "Test Login", tint = MaterialTheme.colorScheme.primary) 
+                                }
+
                                 IconButton(onClick = {
                                     scope.launch {
                                         val currentConfig = config ?: return@launch
