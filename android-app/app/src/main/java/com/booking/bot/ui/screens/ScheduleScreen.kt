@@ -2,6 +2,7 @@ package com.booking.bot.ui.screens
 
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.app.TimePickerDialog as AndroidTimePickerDialog
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -12,9 +13,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
@@ -27,13 +31,9 @@ import java.util.*
 /**
  * ScheduleScreen following TECHNICAL_SPEC.md section 5.3.
  * 
- * v1.1 Enhancements:
- * - Independent configuration locking (Preferred Days/Dates per run).
- * - Intuitive calendar date selection for specific overrides.
- * - Strict validation for booking mode consistency.
- * 
- * v1.2 Enhancement:
- * - Recurring Schedule (Daily Loop) options.
+ * v1.1 Enhancements: Independent locking & Contradiction check.
+ * v1.2 Enhancements: Recurring Schedule options.
+ * v1.4 Enhancements: Smart Grouping (Headers) & Duplicate Run Protection.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -429,7 +429,7 @@ fun ScheduleScreen(
             }
         }
 
-        // Schedule Button
+        // Schedule Button with Duplicate Protection
         Button(
             onClick = {
                 val runSiteKey = selectedSiteKey
@@ -495,44 +495,88 @@ fun ScheduleScreen(
             }
         }
 
-        // Scheduled Runs List
-        Text("Scheduled Runs", style = MaterialTheme.typography.titleLarge)
+        // --- Smart Grouped List (Headers) ---
+        Text("Active Schedules", style = MaterialTheme.typography.titleLarge)
 
         config?.scheduledRuns?.let { runs ->
-            val sortedRuns = runs.sortedBy { it.dropTimeMillis }
-            if (sortedRuns.isEmpty()) {
+            if (runs.isEmpty()) {
                 Text("No scheduled runs", style = MaterialTheme.typography.bodyMedium)
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    sortedRuns.forEach { run ->
-                        var showDeleteDialog by remember { mutableStateOf(false) }
-                        RunItem(run = run, config = config, onDelete = { showDeleteDialog = true })
-                        if (showDeleteDialog) {
-                            AlertDialog(
-                                onDismissRequest = { showDeleteDialog = false },
-                                title = { Text("Delete Scheduled Run") },
-                                text = {
-                                    val museumName = config?.admin?.sites?.get(run.siteKey)?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
-                                    Text("Delete scheduled run for $museumName?")
-                                },
-                                confirmButton = {
-                                    Button(onClick = {
-                                        scope.launch {
-                                            configManager.removeScheduledRun(run.id)
-                                            AlarmScheduler(context).cancelRun(run.id)
-                                        }
-                                        showDeleteDialog = false
-                                    }) { Text("Delete") }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-                                }
-                            )
-                        }
-                    }
+                val sortedRuns = runs.sortedBy { it.dropTimeMillis }
+                val now = LocalDate.now()
+                val tomorrow = now.plusDays(1)
+
+                val todayRuns = sortedRuns.filter { 
+                    Instant.ofEpochMilli(it.dropTimeMillis).atZone(ZoneId.systemDefault()).toLocalDate() == now 
+                }
+                val tomorrowRuns = sortedRuns.filter { 
+                    Instant.ofEpochMilli(it.dropTimeMillis).atZone(ZoneId.systemDefault()).toLocalDate() == tomorrow 
+                }
+                val laterRuns = sortedRuns.filter { 
+                    Instant.ofEpochMilli(it.dropTimeMillis).atZone(ZoneId.systemDefault()).toLocalDate() > tomorrow 
+                }
+
+                if (todayRuns.isNotEmpty()) {
+                    ScheduleHeader("Triggering Today")
+                    todayRuns.forEach { run -> RunListItem(run, config, configManager, scope, context) }
+                }
+                if (tomorrowRuns.isNotEmpty()) {
+                    ScheduleHeader("Triggering Tomorrow")
+                    tomorrowRuns.forEach { run -> RunListItem(run, config, configManager, scope, context) }
+                }
+                if (laterRuns.isNotEmpty()) {
+                    ScheduleHeader("Upcoming")
+                    laterRuns.forEach { run -> RunListItem(run, config, configManager, scope, context) }
                 }
             }
         } ?: Text("Loading...")
+    }
+}
+
+@Composable
+private fun ScheduleHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.secondary,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp)
+    )
+}
+
+@Composable
+private fun RunListItem(
+    run: ScheduledRun, 
+    config: AppConfig?, 
+    configManager: ConfigManager, 
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    RunItem(run = run, config = config, onDelete = { showDeleteDialog = true })
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Scheduled Run") },
+            text = {
+                val museumName = config?.admin?.sites?.get(run.siteKey)?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
+                Text("Delete scheduled run for $museumName?")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        configManager.removeScheduledRun(run.id)
+                        AlarmScheduler(context).cancelRun(run.id)
+                    }
+                    showDeleteDialog = false
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -558,6 +602,19 @@ private fun processScheduling(
     scope.launch {
         try {
             val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
+
+            // v1.4 Feature 3: Duplicate Run Protection
+            val isDuplicate = config?.scheduledRuns?.any {
+                it.siteKey == runSiteKey &&
+                it.museumSlug == runMuseumSlug &&
+                it.dropTimeMillis == utcMillis
+            } ?: false
+
+            if (isDuplicate) {
+                onResult("Conflict: This museum is already scheduled for this exact time.", false)
+                return@launch
+            }
+
             val run = ScheduledRun(
                 id = UUID.randomUUID().toString(),
                 siteKey = runSiteKey,
@@ -602,17 +659,16 @@ private fun convertToUtcMillis(localDateTimeMillis: Long, timezoneId: String): L
 private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit) {
     val site = config?.admin?.sites?.get(run.siteKey)
     val museum = site?.museums?.get(run.museumSlug)
-    // v1.3 Hygiene: Variable 'credential' is now correctly used for UI display
     val credential = run.credentialId?.let { id -> site?.credentials?.find { it.id == id } }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(museum?.name ?: run.museumSlug, style = MaterialTheme.typography.bodyLarge)
+                Text(museum?.name ?: run.museumSlug, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 Text(
                     "${run.siteKey.uppercase()} • ${run.mode.uppercase()}${if (run.isRecurring) " • Daily Loop" else ""}",
                     style = MaterialTheme.typography.bodySmall,
@@ -632,7 +688,6 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
                     )
                 }
                 
-                // FIXED: Usage of 'credential' variable to show which card is locked to this run
                 credential?.let {
                     Text(
                         "Card: ${it.label}",
