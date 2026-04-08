@@ -22,6 +22,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val jsonDecoder = Json { ignoreUnknownKeys = true }
@@ -201,7 +202,7 @@ class ConfigManager private constructor(private val context: Context) {
                 it.dropTimeMillis == run.dropTimeMillis
             }
             if (isDuplicate) {
-                throw IllegalStateException("Conflict: This run is already scheduled for this exact time.")
+                throw IllegalStateException("Conflict: This museum is already scheduled for this exact time.")
             }
 
             val updatedRuns = current.scheduledRuns + run
@@ -366,7 +367,7 @@ class ConfigManager private constructor(private val context: Context) {
         val requestJson = buildJsonObject {
             put("siteKey",    run.siteKey)
             put("museumSlug", run.museumSlug)
-            put("dropTime",   java.time.Instant.ofEpochMilli(run.dropTimeMillis).toString())
+            put("dropTime",   Instant.ofEpochMilli(run.dropTimeMillis).toString())
             put("mode",       run.mode)
             put("timezone",   run.timezone)
             put("fullConfig", buildJsonObject {
