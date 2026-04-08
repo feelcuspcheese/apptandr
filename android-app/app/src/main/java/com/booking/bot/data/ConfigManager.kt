@@ -153,6 +153,25 @@ class ConfigManager private constructor(private val context: Context) {
             prefs.withConfig(current.copy(runHistory = emptyList()))
         }
     }
+
+    /**
+     * Updates the verification status of a credential set.
+     * v1.4 Feature 1.
+     */
+    suspend fun updateCredentialVerification(siteKey: String, credentialId: String, status: String) {
+        context.dataStore.updateData { prefs ->
+            val current = prefs.toAppConfig()
+            val site = current.admin.sites[siteKey] ?: return@updateData prefs
+            val updatedCredentials = site.credentials.map { cred ->
+                if (cred.id == credentialId) {
+                    cred.copy(verificationStatus = status, lastVerifiedMillis = System.currentTimeMillis())
+                } else cred
+            }
+            val updatedSite = site.copy(credentials = updatedCredentials)
+            val updatedAdmin = current.admin.copy(sites = current.admin.sites + (siteKey to updatedSite))
+            prefs.withConfig(current.copy(admin = updatedAdmin))
+        }
+    }
     
     suspend fun addScheduledRun(run: ScheduledRun) {
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
@@ -284,6 +303,30 @@ class ConfigManager private constructor(private val context: Context) {
         }
         
         LogManager.addLog("INFO", "Configuration restored from backup. ${validRuns.size} future runs successfully rescheduled.")
+    }
+
+    /**
+     * Builds a specialized JSON for testing library login on BiblioCommons.
+     * v1.4 Feature 1.
+     */
+    fun buildTestConfig(siteKey: String, credentialId: String, config: AppConfig): String? {
+        val site = config.admin.sites[siteKey] ?: return null
+        val credential = site.credentials.find { it.id == credentialId } ?: return null
+
+        val loginUrl = if (siteKey.lowercase() == "spl") {
+            "https://seattle.bibliocommons.com/user/login?destination=%2Fdashboard%2Fuser_dashboard"
+        } else {
+            "https://kcls.bibliocommons.com/user/login?destination=https%3A%2F%2Fkcls.org"
+        }
+
+        return buildJsonObject {
+            put("type", "credential_test")
+            put("siteKey", siteKey)
+            put("credentialId", credentialId)
+            put("loginUrl", loginUrl)
+            put("username", credential.username)
+            put("password", credential.password)
+        }.toString()
     }
     
     /**
