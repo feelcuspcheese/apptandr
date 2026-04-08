@@ -173,6 +173,10 @@ class ConfigManager private constructor(private val context: Context) {
         }
     }
     
+    /**
+     * Adds a scheduled run to the DataStore.
+     * v1.4: Integrated Atomic Duplicate Protection within the update transaction.
+     */
     suspend fun addScheduledRun(run: ScheduledRun) {
         if (run.siteKey.isBlank()) throw IllegalArgumentException("Site key cannot be blank")
         if (run.museumSlug.isBlank()) throw IllegalArgumentException("Museum slug cannot be blank")
@@ -180,21 +184,31 @@ class ConfigManager private constructor(private val context: Context) {
         if (run.mode !in listOf("alert", "booking")) throw IllegalArgumentException("Mode must be 'alert' or 'booking'")
         if (run.timezone.isBlank()) throw IllegalArgumentException("Timezone cannot be blank")
 
-        val config = configFlow.first()
-        val site = config.admin.sites[run.siteKey] ?: throw IllegalArgumentException("Site not found: ${run.siteKey}")
+        val configSnapshot = configFlow.first()
+        val site = configSnapshot.admin.sites[run.siteKey] ?: throw IllegalArgumentException("Site not found: ${run.siteKey}")
         if (run.museumSlug !in site.museums.keys) throw IllegalArgumentException("Museum not found: ${run.museumSlug}")
         if (run.credentialId != null && run.credentialId !in site.credentials.map { it.id }) {
             throw IllegalArgumentException("Credential not found: ${run.credentialId}")
         }
 
-        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}, dropTime=${run.dropTimeMillis}, mode=${run.mode}, timezone=${run.timezone}")
-        
         context.dataStore.updateData { prefs ->
             val current = prefs.toAppConfig()
+            
+            // v1.4 Feature 3: Atomic Duplicate Check
+            val isDuplicate = current.scheduledRuns.any {
+                it.siteKey == run.siteKey &&
+                it.museumSlug == run.museumSlug &&
+                it.dropTimeMillis == run.dropTimeMillis
+            }
+            if (isDuplicate) {
+                throw IllegalStateException("Conflict: This run is already scheduled for this exact time.")
+            }
+
             val updatedRuns = current.scheduledRuns + run
-            val updated = current.copy(scheduledRuns = updatedRuns)
-            prefs.withConfig(updated)
+            prefs.withConfig(current.copy(scheduledRuns = updatedRuns))
         }
+        
+        LogManager.addLog("INFO", "Scheduled run added: id=${run.id}, site=${run.siteKey}, museum=${run.museumSlug}")
     }
     
     suspend fun removeScheduledRun(runId: String) {
@@ -331,16 +345,6 @@ class ConfigManager private constructor(private val context: Context) {
     
     /**
      * Builds the JSON configuration required by the Go Agent.
-     * 
-     * ENHANCEMENT: Independence / Locking with Safety Net
-     * This method takes preferredDays and preferredDates directly from the [ScheduledRun].
-     * 
-     * SAFETY NET: If the run-specific preferences are empty (legacy schedules or 
-     * old backups), it falls back to the global general settings to prevent empty-search failure.
-     *
-     * LEAK PROOF FIX:
-     * - mode is pulled from run.mode (not config.general.mode)
-     * - preferredslug is pulled from run.museumSlug (not config.general.preferredMuseumSlug)
      */
     fun buildAgentConfig(run: ScheduledRun, config: AppConfig): String? {
         val site = config.admin.sites[run.siteKey] ?: return null
