@@ -2,7 +2,6 @@ package com.booking.bot.ui.screens
 
 import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.app.TimePickerDialog as AndroidTimePickerDialog
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -23,6 +21,7 @@ import com.booking.bot.data.*
 import com.booking.bot.scheduler.AlarmScheduler
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -603,7 +602,7 @@ private fun processScheduling(
         try {
             val utcMillis = convertToUtcMillis(runDateTime, runTimezone)
 
-            // v1.4 Feature 3: Duplicate Run Protection
+            // v1.4 Feature 3: Atomic Duplicate Run Protection
             val isDuplicate = config?.scheduledRuns?.any {
                 it.siteKey == runSiteKey &&
                 it.museumSlug == runMuseumSlug &&
