@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.collections.ArrayList
 
 import mobile.MobileAgent
 
@@ -65,6 +66,11 @@ class BookingForegroundService : LifecycleService() {
                 putExtra("drop_time", run.dropTimeMillis)
                 putExtra("mode", run.mode)
                 putExtra("timezone", run.timezone)
+                putStringArrayListExtra("pref_days", ArrayList(run.preferredDays))
+                putStringArrayListExtra("pref_dates", ArrayList(run.preferredDates))
+                putExtra("is_recurring", run.isRecurring)
+                putExtra("remaining_occurrences", run.remainingOccurrences)
+                run.endDateMillis?.let { putExtra("end_date_millis", it) }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
