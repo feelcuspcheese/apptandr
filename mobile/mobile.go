@@ -1,3 +1,4 @@
+
 package mobile
 
 import (
@@ -42,16 +43,27 @@ func NewMobileAgent() *MobileAgent {
 
 /**
  * Start initializes the Go Agent.
- * v1.3: Wires the internal phase status (Striking, Pre-warming) to the Android callback.
+ * v1.4 Update: Added support for Credential Verification (type: credential_test).
  */
 func (m *MobileAgent) Start(configJSON string) bool {
 	m.mu.Lock()
 	if m.mobileRunning {
 		m.mu.Unlock()
-		m.fireLog("WARN", "Agent already running")
+		m.fireLog("WARN", "Agent already busy")
 		return false
 	}
 
+	// First pass: Check if this is a test or a real run
+	var baseReq struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &baseReq)
+
+	if baseReq.Type == "credential_test" {
+		return m.startCredentialTest(configJSON)
+	}
+
+	// Otherwise, proceed with standard Scheduled Run logic
 	type AppConfigStr struct {
 		Sites             map[string]config.Site `json:"sites"`
 		ActiveSite        string                 `json:"active_site"`
@@ -134,7 +146,6 @@ func (m *MobileAgent) Start(configJSON string) bool {
 	m.mobileRunning = true
 	m.agentInst = agent.NewAgent(&cfg, logger)
 
-	// Feature 4: Bridge Sub-status updates from Agent to Android
 	m.agentInst.SetStatusFunc(func(status string) {
 		m.fireStatus(status)
 	})
@@ -149,6 +160,49 @@ func (m *MobileAgent) Start(configJSON string) bool {
 		m.fireStatus("Initializing")
 		_ = m.agentInst.Start(runID)
 		m.fireStatus("Stopped")
+
+		m.mu.Lock()
+		m.mobileRunning = false
+		m.mu.Unlock()
+	}()
+
+	return true
+}
+
+/**
+ * v1.4 Feature 1: Internal helper to start a credential verification test.
+ */
+func (m *MobileAgent) startCredentialTest(configJSON string) bool {
+	var testReq struct {
+		SiteKey      string `json:"siteKey"`
+		CredentialId string `json:"credentialId"`
+		LoginUrl     string `json:"loginUrl"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &testReq); err != nil {
+		m.mu.Unlock()
+		return false
+	}
+
+	logger := logrus.New()
+	logger.AddHook(&androidHook{m: m})
+
+	m.mobileRunning = true
+	m.agentInst = agent.NewAgent(&config.AppConfig{}, logger)
+	m.mu.Unlock()
+
+	go func() {
+		m.fireStatus("Verifying Credentials...")
+		// Call new test method in agent
+		success := m.agentInst.RunCredentialTest(testReq.LoginUrl, testReq.Username, testReq.Password)
+		
+		if success {
+			m.fireStatus("VERIFIED")
+		} else {
+			m.fireStatus("FAILED")
+		}
 
 		m.mu.Lock()
 		m.mobileRunning = false
