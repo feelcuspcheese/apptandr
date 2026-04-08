@@ -36,6 +36,7 @@ func VerifyBiblioCommons(logger *logrus.Logger, loginUrl, username, password str
 		logger.Errorf("Tester: GET login page failed: %v", err)
 		return false
 	}
+	// FIXED: defer Close() ONLY after verifying resp is not nil
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
@@ -68,14 +69,14 @@ func VerifyBiblioCommons(logger *logrus.Logger, loginUrl, username, password str
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	req.Header.Set("Referer", loginUrl)
 
-	resp, err = client.Do(req)
+	postResp, err := client.Do(req)
 	if err != nil {
 		logger.Errorf("Tester: POST login failed: %v", err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer postResp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(postResp.Body)
 	bodyStr := string(body)
 
 	// 3. Evaluate Results
