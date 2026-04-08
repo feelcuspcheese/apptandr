@@ -2,7 +2,6 @@ package tester
 
 import (
 	"agent/pkg/httpclient"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
