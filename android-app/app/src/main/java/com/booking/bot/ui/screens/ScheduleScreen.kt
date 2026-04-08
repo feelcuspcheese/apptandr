@@ -633,7 +633,7 @@ private fun processScheduling(
             AlarmScheduler(context).scheduleRun(run, offsetMillis)
             onResult("Run scheduled successfully!", true)
         } catch (e: Exception) {
-            onResult("Failed to schedule: ${e.message}", false)
+            onResult(e.message ?: "Failed to schedule", false)
             LogManager.addLog("ERROR", "Schedule failed: ${e.message}")
         }
     }
