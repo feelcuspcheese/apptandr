@@ -8,6 +8,7 @@ import (
 	"agent/pkg/parser"
 	"agent/pkg/scraper"
 	"agent/pkg/state"
+	"agent/pkg/tester" // New Import
 	"context"
 	"fmt"
 	"math/rand"
@@ -28,7 +29,7 @@ type Agent struct {
 	running      bool
 	logCh        chan string
 	notifyFunc   func(title, message string) // Bridge to Android Native Notifications
-	statusFunc   func(status string)         // v1.3: Bridge for Live Phase Updates (Pre-warm/Strike)
+	statusFunc   func(status string)         // v1.3: Bridge for Live Phase Updates
 	wg           sync.WaitGroup
 	mu           sync.RWMutex
 	currentRunID string
@@ -50,7 +51,7 @@ func (a *Agent) SetNotifyFunc(f func(title, message string)) {
 	a.notifyFunc = f
 }
 
-// SetStatusFunc allows the Android UI to receive live phase updates (v1.3 Feature 4)
+// SetStatusFunc allows the Android UI to receive live phase updates
 func (a *Agent) SetStatusFunc(f func(status string)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -63,7 +64,6 @@ func (a *Agent) GetCurrentRunID() string   { a.mu.RLock(); defer a.mu.RUnlock();
 
 /**
  * Start initializes the agent for a specific run ID.
- * Implements TECHNICAL_SPEC.md requirements for non-blocking start and lifecycle management.
  */
 func (a *Agent) Start(runID string) error {
 	a.mu.Lock()
@@ -75,7 +75,6 @@ func (a *Agent) Start(runID string) error {
 	a.currentRunID = runID
 	a.mu.Unlock()
 
-	// Find the run in the config
 	var run *config.ScheduledRun
 	for _, r := range a.config.ScheduledRuns {
 		if r.ID == runID {
@@ -91,7 +90,6 @@ func (a *Agent) Start(runID string) error {
 		return fmt.Errorf("scheduled run %s not found", runID)
 	}
 
-	// Create a per-run done channel
 	doneCh := make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancelFunc = cancel
@@ -107,13 +105,20 @@ func (a *Agent) Start(runID string) error {
 		a.mu.Unlock()
 	}()
 
-	// Wait for completion or stop signal
 	select {
 	case <-doneCh:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+/**
+ * RunCredentialTest delegates the verification to the specialized tester package.
+ * v1.4 Feature 1: Health check for library card/PIN.
+ */
+func (a *Agent) RunCredentialTest(loginUrl, username, password string) bool {
+	return tester.VerifyBiblioCommons(a.logger, loginUrl, username, password)
 }
 
 func (a *Agent) Stop() {
@@ -130,7 +135,6 @@ func (a *Agent) Stop() {
  */
 func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 	defer func() {
-		// Clean up the run from the scheduled list on finish
 		a.removeRun(run.ID)
 	}()
 
@@ -204,8 +208,6 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 	// Strike Window Start
 	a.updateStatus("STRIKING")
 	deadline := time.Now().Add(a.config.CheckWindow)
-	a.log("Check window started, deadline: %v", deadline)
-
 	ntfy := notifier.NewNtfy(a.config.NtfyTopic)
 	checksCount := 0
 
@@ -245,7 +247,7 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 			return
 		}
 
-		// Rest cycle logic (mimicking human behavior for long windows)
+		// Rest cycle logic
 		if a.config.CheckWindow > 1*time.Minute && checksCount >= a.config.RestCycleChecks {
 			a.log("Resting for %v (human mimic)", a.config.RestCycleDuration)
 			a.updateStatus("Resting (Mimicry)")
@@ -262,7 +264,7 @@ func (a *Agent) run(ctx context.Context, run *config.ScheduledRun) {
 }
 
 /**
- * updateStatus triggers the JNI callback to update the Android Dashboard (v1.3 Feature 4).
+ * updateStatus triggers the JNI callback to update the Android Dashboard.
  */
 func (a *Agent) updateStatus(status string) {
 	a.mu.RLock()
@@ -275,7 +277,6 @@ func (a *Agent) updateStatus(status string) {
 
 /**
  * checkAvailability handles the actual data fetching and action triggering.
- * v1.1 Update: Implements dual-matching logic for recurring days and specific dates.
  */
 func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scraper, ntfy *notifier.Ntfy, site config.Site, museum config.Museum, client *httpclient.Client, dropTime time.Time, mode string) (bool, error) {
 	startDate := dropTime
@@ -302,9 +303,6 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 		if fetchErr != nil {
 			a.log("Error fetching %s: %v", dateStr, fetchErr)
 			continue
-		}
-		if len(avails) == 0 {
-			a.log("No availabilities found for %s", dateStr)
 		}
 		allAvails = append(allAvails, avails...)
 		
@@ -365,7 +363,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 			
 			matchFound := false
 
-			// 1. Check Specific Calendar Dates (High Priority)
+			// 1. Check Specific Calendar Dates
 			for _, prefDate := range a.config.PreferredDates {
 				if av.Date == prefDate {
 					a.log("MATCH: Specific Date found - %s", av.Date)
@@ -374,7 +372,7 @@ func (a *Agent) checkAvailability(ctx context.Context, scraperInst *scraper.Scra
 				}
 			}
 
-			// 2. Check Recurring Days of Week (Fallback)
+			// 2. Check Recurring Days of Week
 			if !matchFound {
 				for _, prefDay := range a.config.PreferredDays {
 					if isDayOfWeek(av.Date, prefDay) {
