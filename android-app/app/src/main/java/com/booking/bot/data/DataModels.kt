@@ -8,12 +8,9 @@ import java.util.UUID
  * All models use @Serializable for JSON persistence in DataStore.
  * 
  * Version 1.4 Enhancements:
- * - Added verificationStatus and lastVerifiedMillis to CredentialSet (Pre-flight check).
+ * - Added verificationStatus and lastVerifiedMillis to CredentialSet.
  */
 
-/**
- * Museum data class (section 3.2)
- */
 @Serializable
 data class Museum(
     val name: String,
@@ -21,12 +18,6 @@ data class Museum(
     val museumId: String
 )
 
-/**
- * CredentialSet data class (section 3.3)
- * Represents a single library card + PIN + email combination.
- * 
- * @param verificationStatus "UNTESTED", "VERIFIED", or "FAILED"
- */
 @Serializable
 data class CredentialSet(
     val id: String = UUID.randomUUID().toString(),
@@ -34,14 +25,10 @@ data class CredentialSet(
     var username: String,
     var password: String,
     var email: String,
-    // v1.4 Pre-flight check results
     val verificationStatus: String = "UNTESTED",
     val lastVerifiedMillis: Long = 0L
 )
 
-/**
- * SiteConfig data class (section 3.4)
- */
 @Serializable
 data class SiteConfig(
     val name: String,
@@ -55,9 +42,6 @@ data class SiteConfig(
     var defaultCredentialId: String? = null
 )
 
-/**
- * AdminConfig data class (section 3.5)
- */
 @Serializable
 data class AdminConfig(
     var activeSite: String = "spl",
@@ -81,9 +65,6 @@ data class AdminConfig(
     )
 )
 
-/**
- * GeneralSettings data class (section 3.6)
- */
 @Serializable
 data class GeneralSettings(
     var mode: String = "alert",
@@ -103,9 +84,6 @@ data class GeneralSettings(
     var isPaused: Boolean = false
 )
 
-/**
- * RunResult represents the outcome of a finished agent execution.
- */
 @Serializable
 data class RunResult(
     val id: String = UUID.randomUUID().toString(),
@@ -113,13 +91,10 @@ data class RunResult(
     val siteName: String,
     val museumName: String,
     val mode: String,
-    val status: String, // "SUCCESS", "FAILED", "MISSED"
+    val status: String,
     val message: String
 )
 
-/**
- * ScheduledRun represents the Snapshotted configuration.
- */
 @Serializable
 data class ScheduledRun(
     val id: String = UUID.randomUUID().toString(),
@@ -136,9 +111,6 @@ data class ScheduledRun(
     val endDateMillis: Long? = null
 )
 
-/**
- * AppConfig data class (section 3.8)
- */
 @Serializable
 data class AppConfig(
     val general: GeneralSettings = GeneralSettings(),
@@ -147,9 +119,6 @@ data class AppConfig(
     val runHistory: List<RunResult> = emptyList()
 )
 
-/**
- * LogEntry data class (section 7)
- */
 @Serializable
 data class LogEntry(
     val timestamp: Long,
