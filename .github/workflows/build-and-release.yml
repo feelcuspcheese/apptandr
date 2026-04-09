@@ -31,12 +31,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v2
+        with:
+          ndk-version: '25.2.9519653'
+          api-level: 33
+          build-tools: '33.0.2'
+
       - name: Install gomobile and gobind
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          # Ensure gobind is in path before init
           export PATH=$PATH:$(go env GOPATH)/bin
           gomobile init
 
@@ -46,27 +52,32 @@ jobs:
           go mod tidy
           go mod download
 
-      - name: Build Go AAR (Adhering to Tech Spec Section 8)
+      - name: Build Go AAR (16KB page attempt)
         run: |
-          # Output path matches the app module's libs folder
           mkdir -p android-app/app/libs
-          
-          # Using module path 'agent/mobile' as go.mod is in the root
+
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GOARCH=arm64
+          export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
+
           gomobile bind \
             -target=android \
             -androidapi 23 \
             -v \
+            -ldflags='-linkmode=external' \
             -o android-app/app/libs/booking.aar \
             agent/mobile
-        env:
-          GO111MODULE: on
-          CGO_ENABLED: 1
+
+      - name: Verify 16KB alignment in AAR
+        run: |
+          unzip -o android-app/app/libs/booking.aar -d aar_extract
+          find aar_extract -name "*.so" -exec readelf -l {} \; | grep Align
 
       - name: Build Android APK (Debuggable)
         run: |
           cd android-app
           chmod +x gradlew
-          # CHANGED: assembleDebug automatically signs the APK with a debug certificate
           ./gradlew assembleDebug -Pandroid.suppressUnsupportedCompileSdk=35
 
       - name: Create Release
@@ -74,7 +85,6 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
-            # CHANGED: Path pointed to debug folder
             android-app/app/build/outputs/apk/debug/*.apk
             android-app/app/libs/booking.aar
           generate_release_notes: true
