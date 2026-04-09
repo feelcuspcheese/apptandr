@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24' # 1.25 is not yet released; 1.24 is the current latest.
+          go-version: '1.24'
           cache: true
 
       - name: Set up Java
@@ -36,7 +36,6 @@ jobs:
       - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
         with:
-          # NDK r27b is required for native 16KB page alignment support
           ndk-version: '27.1.12297006' 
           api-level: 35
           build-tools: '35.0.0'
@@ -46,40 +45,40 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          # Initialize with explicit NDK path to avoid CI detection issues
           $(go env GOPATH)/bin/gomobile init
 
       - name: Fix Go Dependencies
         run: |
-          go get golang.org/x/mobile/bind
           go mod tidy
 
       - name: Build Go AAR (16KB page alignment - ARM64 only)
         run: |
           mkdir -p android-app/app/libs
           
-          # Force 16KB alignment via Linker flags
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GOARCH=arm64
+          # Alignment flags
           export CGO_LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
           
+          # Removed the "./" prefix from the package path to fix "no exported names"
           gomobile bind \
             -target=android/arm64 \
             -androidapi 23 \
             -v \
             -ldflags="-s -w" \
             -o android-app/app/libs/booking.aar \
-            ./agent/mobile
+            agent/mobile
 
       - name: Verify 16KB alignment in AAR
         run: |
           unzip -o android-app/app/libs/booking.aar -d aar_extract
-          # Look for 0x4000 (16384) in the Elf program headers
           find aar_extract -name "*.so" -exec readelf -lW {} \; | grep "0x4000" || (echo "Alignment check failed" && exit 1)
 
       - name: Build Android APK
         run: |
           cd android-app
           chmod +x gradlew
-          # Ensure Gradle uses the local AAR and targets the correct arch
           ./gradlew assembleDebug
 
       - name: Create Release
