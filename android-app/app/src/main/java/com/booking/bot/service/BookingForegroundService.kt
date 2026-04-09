@@ -34,13 +34,14 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * Deep Audit Enhancements:
+ * Deep Audit Enhancements (v1.1 - v1.5):
  * 1. WakeLock: Deep Doze protection.
- * 2. Native Alerts: System drawer feedback with Calendar Integration (v1.5).
+ * 2. Native Alerts: System drawer feedback with Calendar Integration.
  * 3. Polling Loop: Agent lifecycle management.
- * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
- * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
- * 6. Pre-flight Test Mode (v1.4): Verifies library credentials on BiblioCommons.
+ * 4. DST-Aware Rescheduling: Preserves intended wall-clock time for recurring runs.
+ * 5. Atomic Rescheduling: Prevents schedule loss during app process death.
+ * 6. Pre-flight Test Mode: Verifies library credentials on BiblioCommons.
+ * 7. Friendly Calendar Logic: Maps IDs to friendly museum names in event titles.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -62,6 +63,9 @@ class BookingForegroundService : LifecycleService() {
         private val _goStatus = MutableStateFlow("Idle")
         val goStatus: StateFlow<String> = _goStatus.asStateFlow()
 
+        /**
+         * Starts the service with the intent containing run details.
+         */
         fun start(context: Context, run: ScheduledRun) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 putExtra("run_id", run.id)
@@ -84,6 +88,9 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
+        /**
+         * v1.4 Feature 1: Starts the service in a one-off test mode.
+         */
         fun startTest(context: Context, siteKey: String, credentialId: String) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = TEST_ACTION
@@ -97,6 +104,9 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
+        /**
+         * Sends a stop intent to the running service.
+         */
         fun stop(context: Context) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = STOP_ACTION
@@ -105,17 +115,21 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
+    // Required imports used here: CoroutineScope, Dispatchers, SupervisorJob
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private var mobileAgent: MobileAgent? = null
     private var currentRun: ScheduledRun? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var resolvedMuseumName = "" // v1.5 Friendly name cache for Calendar
 
+    // v1.3 Feature 1 Tracking
     private var lastRunOutcome = "MISSED"
     private var lastRunMessage = "No slots found during the check window."
 
     /**
      * Parses JSON logs from the Go agent and routes them to LogManager.
+     * v1.3/v1.5: Also detects success/failure for the History Feature and Calendar dates.
      */
     private fun onGoLog(jsonLog: String) {
         try {
@@ -124,27 +138,39 @@ class BookingForegroundService : LifecycleService() {
             val message = json.optString("message", "")
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
+
+                // Outcome Detection for History (Feature 1)
                 if (message.contains("Confirmed for", ignoreCase = true) || 
                     message.contains("Booking successful", ignoreCase = true) ||
                     message.contains("Notification sent", ignoreCase = true)) {
                     lastRunOutcome = "SUCCESS"
                     lastRunMessage = message
                 } else if (message.contains("FATAL", ignoreCase = true) || 
-                           message.contains("Booking failed", ignoreCase = true)) {
+                           message.contains("Booking failed", ignoreCase = true) ||
+                           message.contains("Error sending ntfy", ignoreCase = true)) {
                     lastRunOutcome = "FAILED"
                     lastRunMessage = message
                 }
             }
         } catch (e: Exception) {
+            // Fallback for non-JSON or malformed output
             LogManager.addLog("INFO", jsonLog)
         }
     }
 
+    /**
+     * Updates the persistent notification with status from Go agent.
+     * v1.3: Also updates the live status flow for Dashboard pulse.
+     */
     private fun onGoStatus(status: String) {
         _goStatus.value = status
         updateNotification(status)
     }
 
+    /**
+     * Helper to extract date from Go success log for Calendar intents.
+     * Message format: "Confirmed for YYYY-MM-DD ..."
+     */
     private fun extractDateMillis(message: String): Long {
         return try {
             val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
@@ -156,6 +182,10 @@ class BookingForegroundService : LifecycleService() {
         } catch (e: Exception) { -1L }
     }
 
+    /**
+     * Triggers a native system notification for matches or fatal errors.
+     * v1.5 Enhancement: Adds "Add to Calendar" button with friendly museum name.
+     */
     private fun showNativeAlert(title: String, message: String) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -174,6 +204,7 @@ class BookingForegroundService : LifecycleService() {
             .setOngoing(false)   
             .setDefaults(NotificationCompat.DEFAULT_ALL)
 
+        // v1.5 Feature: Add Calendar Intent button on SUCCESS with friendly title
         if (title.contains("SUCCESS", ignoreCase = true)) {
             val dateMillis = extractDateMillis(message)
             if (dateMillis != -1L) {
@@ -186,8 +217,8 @@ class BookingForegroundService : LifecycleService() {
                 val calIntent = Intent(Intent.ACTION_INSERT).apply {
                     data = CalendarContract.Events.CONTENT_URI
                     putExtra(CalendarContract.Events.TITLE, calTitle)
-                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
-                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // 9am
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // 5pm
                     putExtra(CalendarContract.Events.ALL_DAY, true)
                     putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
                 }
@@ -203,6 +234,8 @@ class BookingForegroundService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
+
+        // PowerManager used for WakeLock management (Deep Doze protection)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
     }
@@ -222,75 +255,105 @@ class BookingForegroundService : LifecycleService() {
             }
 
             val runId = it.getStringExtra("run_id") ?: return START_NOT_STICKY
+
+            // Concurrency Check (CG-04)
             if (mobileAgent?.isRunning() == true) {
                 LogManager.addLog("WARN", "Run $runId ignored – agent already busy")
                 return START_NOT_STICKY
             }
 
+            // Reset outcome tracking for this specific run
             lastRunOutcome = "MISSED"
             lastRunMessage = "No slots found during the check window."
 
+            // High-Priority Execution Start: Acquire WakeLock
             wakeLock?.acquire(RUN_TIMEOUT_MS)
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
             _isRunning.value = true
 
+            // Required import: launch
             serviceScope.launch {
                 try {
                     val configManager = ConfigManager.getInstance(this@BookingForegroundService)
                     val config = configManager.configFlow.first()
+                    
+                    // Retrieve full run object to access locked configurations and recursion settings
                     val run = config.scheduledRuns.find { it.id == runId }
 
                     if (run == null) {
-                        LogManager.addLog("ERROR", "Scheduled run $runId not found")
+                        LogManager.addLog("ERROR", "Scheduled run $runId not found in DataStore")
                         cleanupAndStop(runId)
                         return@launch
                     }
 
                     currentRun = run
+                    // v1.5: Resolve friendly museum name for the Calendar logic
                     resolvedMuseumName = config.admin.sites[run.siteKey]?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                     
                     _goStatus.value = "Starting"
+                    LogManager.addLog("INFO", "Foreground service active for run ${run.id}")
 
                     val agentConfigJson = configManager.buildAgentConfig(run, config)
+
                     if (agentConfigJson == null) {
-                        LogManager.addLog("ERROR", "Failed to build agent config")
-                        cleanupAndStop(runId)
+                        LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
                     mobileAgent = MobileAgent()
-                    mobileAgent?.setLogCallback { onGoLog(it) }
-                    mobileAgent?.setStatusCallback { onGoStatus(it) }
-                    mobileAgent?.setNotifyCallback { t, m -> showNativeAlert(t, m) }
 
+                    mobileAgent?.setLogCallback { jsonLog: String ->
+                        onGoLog(jsonLog)
+                    }
+                    mobileAgent?.setStatusCallback { status: String ->
+                        onGoStatus(status)
+                    }
+                    // Setup the bridge for native alerts
+                    mobileAgent?.setNotifyCallback { title: String, message: String ->
+                        showNativeAlert(title, message)
+                    }
+
+                    LogManager.addLog("INFO", "Attempting to start Go agent")
                     val started = mobileAgent?.start(agentConfigJson) ?: false
+                    
                     if (!started) {
-                        LogManager.addLog("ERROR", "Go agent rejected start command")
-                        cleanupAndStop(runId)
+                        LogManager.addLog("ERROR", "Go agent rejected the start command")
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
+                    LogManager.addLog("INFO", "Go agent is now active")
+                    updateNotification("Running...")
+
+                    // Polling loop for agent completion (CG-02)
                     val startTime = System.currentTimeMillis()
                     while (mobileAgent?.isRunning() == true) {
                         delay(1000)
-                        if (System.currentTimeMillis() - startTime > RUN_TIMEOUT_MS) {
-                            LogManager.addLog("WARN", "Run timed out after 10m")
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed > RUN_TIMEOUT_MS) {
+                            LogManager.addLog("WARN", "Run timed out after 10m – forcing cleanup")
                             mobileAgent?.stop()
                             break
                         }
                     }
 
-                    cleanupAndStop(runId)
+                    LogManager.addLog("INFO", "Run ${run.id} finished")
+                    cleanupAndStop(run.id)
 
                 } catch (e: Exception) {
-                    LogManager.addLog("ERROR", "Service Error: ${e.message}")
+                    LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")
                     cleanupAndStop(runId)
                 }
             }
         }
+
         return START_STICKY
     }
 
+    /**
+     * v1.4 Feature 1: Performs a library portal login test.
+     */
     private fun handleCredentialTest(intent: Intent) {
         val siteKey = intent.getStringExtra("site_key") ?: return
         val credId = intent.getStringExtra("credential_id") ?: return
@@ -335,6 +398,9 @@ class BookingForegroundService : LifecycleService() {
         super.onDestroy()
     }
 
+    /**
+     * Manual stop triggered by user from Dashboard or Notification.
+     */
     private fun stopAgent() {
         serviceScope.launch {
             _isRunning.value = false
@@ -342,13 +408,14 @@ class BookingForegroundService : LifecycleService() {
             try {
                 mobileAgent?.stop()
                 mobileAgent = null
-                LogManager.addLog("INFO", "Agent stopped manually")
+                LogManager.addLog("INFO", "Agent stopped manually by user")
             } catch (e: Exception) {
-                LogManager.addLog("ERROR", "Manual stop error: ${e.message}")
+                LogManager.addLog("ERROR", "Error during manual stop: ${e.message}")
             } finally {
                 if (wakeLock?.isHeld == true) wakeLock?.release()
                 currentRun?.let { run ->
                     ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
+                    LogManager.addLog("INFO", "Run ${run.id} purged from schedule")
                 }
                 currentRun = null
                 stopSelf()
@@ -356,11 +423,17 @@ class BookingForegroundService : LifecycleService() {
         }
     }
 
+    /**
+     * Final cleanup, Recursion handling (v1.2), and History Persistence (v1.3).
+     */
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
         _goStatus.value = "Idle"
         mobileAgent = null
-        if (wakeLock?.isHeld == true) { wakeLock?.release() }
+        
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
 
         try {
             val configManager = ConfigManager.getInstance(this@BookingForegroundService)
@@ -368,53 +441,65 @@ class BookingForegroundService : LifecycleService() {
             val run = currentRun ?: config.scheduledRuns.find { it.id == runId }
 
             if (run != null) {
+                // v1.3 Feature 1: Persistence to History
                 val site = config.admin.sites[run.siteKey]
                 val museumName = site?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                 
-                configManager.addRunResult(RunResult(
+                val result = RunResult(
                     timestamp = System.currentTimeMillis(),
                     siteName = site?.name ?: run.siteKey,
                     museumName = museumName,
                     mode = run.mode,
                     status = lastRunOutcome,
                     message = lastRunMessage
-                ))
+                )
+                configManager.addRunResult(result)
 
+                // v1.2 Recurring Logic
                 if (run.isRecurring) {
+                    // DST-AWARE RESCHEDULING (v1.3 Fix):
+                    // Use Calendar arithmetic to add exactly 1 day instead of raw milliseconds.
                     val calendar = Calendar.getInstance().apply {
                         timeInMillis = run.dropTimeMillis
                         add(Calendar.DAY_OF_YEAR, 1)
                     }
                     val nextDropTime = calendar.timeInMillis
                     
+                    // Check stop conditions
                     val isExpiredByDate = run.endDateMillis?.let { nextDropTime > it } ?: false
-                    val isExpiredByCount = run.remainingOccurrences == 1 
+                    val isExpiredByCount = run.remainingOccurrences == 1 // This run was the last one
 
                     if (isExpiredByDate || isExpiredByCount) {
                         configManager.removeScheduledRun(runId)
-                        LogManager.addLog("INFO", "Recurring run $runId limit reached.")
+                        LogManager.addLog("INFO", "Recurring run $runId limit reached. Purged from schedule.")
                     } else {
+                        // Reschedule for tomorrow with same locked config
                         val updatedRun = run.copy(
                             dropTimeMillis = nextDropTime,
                             remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
                         )
+                        
+                        // ATOMIC TRANSACTION (v1.3 Fix):
+                        // Single DataStore write to prevent schedule loss.
                         configManager.rescheduleRecurringRun(runId, updatedRun)
                         
+                        // Re-register system alarm
                         val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
                         AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
                         
-                        val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
-                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeStr")
+                        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
+                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
                     }
                 } else {
+                    // One-time run cleanup
                     configManager.removeScheduledRun(runId)
-                    LogManager.addLog("INFO", "Run $runId complete.")
+                    LogManager.addLog("INFO", "Run $runId removed from schedule (one-time completion)")
                 }
             } else {
                 configManager.removeScheduledRun(runId)
             }
         } catch (e: Exception) {
-            LogManager.addLog("ERROR", "Cleanup error: ${e.message}")
+            LogManager.addLog("ERROR", "Failed cleanup/reschedule for $runId: ${e.message}")
         } finally {
             currentRun = null
             stopSelf()
@@ -425,18 +510,25 @@ class BookingForegroundService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             
+            // 1. Channel for ongoing service status
             val serviceChannel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 "Booking Agent Service",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply { description = "Status monitoring for active runs" }
             nm.createNotificationChannel(serviceChannel)
 
+            // 2. Channel for high-priority alerts
             val alertChannel = NotificationChannel(
                 ALERT_CHANNEL_ID,
                 "Booking Agent Alerts",
                 NotificationManager.IMPORTANCE_HIGH
-            )
+            ).apply {
+                description = "Notifications for found slots and booking results"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
             nm.createNotificationChannel(alertChannel)
         }
     }
@@ -445,7 +537,10 @@ class BookingForegroundService : LifecycleService() {
         val stopIntent = Intent(this, BookingForegroundService::class.java).apply {
             action = STOP_ACTION
         }
-        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val stopPendingIntent = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Booking Agent Active")
             .setContentText(status)
