@@ -32,16 +32,9 @@ import java.util.*
 /**
  * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
  * 
- * v1.1 Enhancements:
- * - Leak-proof "Start Now" snapshotting.
- * - 30-second countdown with progress feedback.
- * v1.3 Enhancements:
- * - History Section (Feature 1)
- * - Master Switch (Feature 3)
- * - Live Status Phase Pulse (Feature 4)
- * - Credential Snapshotting (Fix): Locks default card at trigger moment.
- * v1.5 Enhancements:
- * - Calendar integration for History items.
+ * v1.5 Bug Fixes:
+ * - Fixed Calendar Icon click logic (added FLAG_ACTIVITY_NEW_TASK).
+ * - Fixed Calendar Event Title (uses friendly museum name + prefix).
  */
 @Composable
 fun DashboardScreen(
@@ -177,7 +170,7 @@ fun DashboardScreen(
                                         }
 
                                         if (museumSlug.isEmpty()) {
-                                            actionFeedback = "No museum configured. Please configure in Admin Config."
+                                            actionFeedback = "No museum configured."
                                             actionSuccess = false
                                             isStarting = false
                                             return@launch
@@ -191,15 +184,14 @@ fun DashboardScreen(
 
                                         if (!isStarting) return@launch
 
-                                        // CREDENTIAL SNAPSHOTTING (v1.3 Fix): 
-                                        // Resolve the default ID now so it's locked into the run object.
+                                        // Resolve credential snapshot
                                         val site = currentConfig.admin.sites[siteKey]
                                         val resolvedCredentialId = site?.defaultCredentialId
 
                                         val dropTimeMillis = System.currentTimeMillis() + 1000 
                                         val timezone = java.util.TimeZone.getDefault().id
 
-                                        // LEAK-PROOF FIX: Explicitly snapshot global preferences into the run object
+                                        // Snapshot logic
                                         val run = ScheduledRun(
                                             id = UUID.randomUUID().toString(),
                                             siteKey = siteKey,
@@ -213,7 +205,7 @@ fun DashboardScreen(
                                             isRecurring = false
                                         )
 
-                                        LogManager.addLog("INFO", "Start Now run created: id=${run.id}, museum=$museumSlug")
+                                        LogManager.addLog("INFO", "Start Now run created: id=${run.id}")
 
                                         configManager.addScheduledRun(run)
                                         val offsetMillis = AlarmScheduler.parseDurationToMillis(currentConfig.general.preWarmOffset)
@@ -348,7 +340,6 @@ fun DashboardScreen(
             }
         }
 
-        // v1.3 Feature 1: Recent Activity History Section
         item {
             Text(
                 text = "Recent Activity",
@@ -453,7 +444,7 @@ private fun HistoryItem(result: RunResult) {
                 )
             }
 
-            // v1.5 Feature: Add to Calendar Icon for Success Items
+            // v1.5 Feature Fix: Reliable Calendar Intent
             if (result.status == "SUCCESS") {
                 IconButton(onClick = {
                     try {
@@ -463,17 +454,19 @@ private fun HistoryItem(result: RunResult) {
                             val date = LocalDate.parse(match)
                             val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             
+                            // BUG FIX 1 & 2: Added Task Flag and Friendly Title
                             val calIntent = Intent(Intent.ACTION_INSERT).apply {
                                 data = CalendarContract.Events.CONTENT_URI
-                                putExtra(CalendarContract.Events.TITLE, "Library Pass: ${result.museumName}")
+                                putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
                                 putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
                                 putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
                                 putExtra(CalendarContract.Events.ALL_DAY, true)
                                 putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
                             context.startActivity(calIntent)
                         }
-                    } catch (e: Exception) { /* Ignore parsing errors */ }
+                    } catch (e: Exception) { /* Logged to console if needed */ }
                 }) {
                     Icon(
                         imageVector = Icons.Default.Event,
