@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
+import android.provider.CalendarContract
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import com.booking.bot.MainActivity
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -38,6 +41,7 @@ import mobile.MobileAgent
  * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
  * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
  * 6. Pre-flight Test Mode (v1.4): Verifies library credentials on BiblioCommons.
+ * 7. Calendar Integration (v1.5): Manual intent for success reminders.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -136,13 +140,28 @@ class BookingForegroundService : LifecycleService() {
         updateNotification(status)
     }
 
+    /**
+     * Helper to extract ISO date from success message and convert to millis.
+     * Message format: "Confirmed for YYYY-MM-DD ..."
+     */
+    private fun extractDateMillis(message: String): Long {
+        return try {
+            val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
+            val match = regex.find(message)?.value
+            if (match != null) {
+                val date = LocalDate.parse(match)
+                date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            } else -1L
+        } catch (e: Exception) { -1L }
+    }
+
     private fun showNativeAlert(title: String, message: String) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(message)
@@ -153,10 +172,26 @@ class BookingForegroundService : LifecycleService() {
             .setAutoCancel(true) 
             .setOngoing(false)   
             .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .build()
+
+        // v1.5 Feature: Add Calendar Button to Success Notification
+        if (title.contains("SUCCESS", ignoreCase = true)) {
+            val dateMillis = extractDateMillis(message)
+            if (dateMillis != -1L) {
+                val calIntent = Intent(Intent.ACTION_INSERT).apply {
+                    data = CalendarContract.Events.CONTENT_URI
+                    putExtra(CalendarContract.Events.TITLE, "Library Pass: ${currentRun?.museumSlug ?: "Appointment"}")
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Suggest 9am
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // Suggest until 5pm
+                    putExtra(CalendarContract.Events.ALL_DAY, true)
+                    putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
+                }
+                val calPi = PendingIntent.getActivity(this, 1, calIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                builder.addAction(android.R.drawable.ic_menu_my_calendar, "Add to Calendar", calPi)
+            }
+        }
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(System.currentTimeMillis().toInt(), notification)
+        nm.notify(System.currentTimeMillis().toInt(), builder.build())
     }
 
     override fun onCreate() {
