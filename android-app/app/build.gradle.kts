@@ -79,9 +79,9 @@ android {
     }
 
     // Explicit native library handling for Android 16
-    androidResources {
-        generateLocaleConfig = false
-    }
+//    androidResources {
+//        generateLocaleConfig = false
+//    }
 }
 
 dependencies {
