@@ -61,14 +61,14 @@ jobs:
           export GOARCH=arm64
           export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
 
+          # Note: Removed -arch=arm64. gomobile uses GOARCH from the environment.
           gomobile bind \
-            -target=android \
-            -androidapi 23 \
-            -v \
-            -arch=arm64 \
-            -ldflags='-linkmode=external -s -w' \
-            -o android-app/app/libs/booking.aar \
-            agent/mobile
+          -target=android/arm64 \
+          -androidapi 23 \
+          -v \
+          -ldflags="-s -w" \
+          -o android-app/app/libs/booking.aar \
+          agent/mobile
 
       - name: Verify 16KB alignment in AAR
         run: |
