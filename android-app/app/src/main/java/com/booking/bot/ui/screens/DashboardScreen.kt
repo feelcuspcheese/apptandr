@@ -1,3 +1,4 @@
+
 package com.booking.bot.ui.screens
 
 import android.content.Intent
@@ -44,7 +45,7 @@ import java.util.*
  * - Friendly Calendar Title (Museum Name vs ID).
  * - Fixed Calendar Icon click logic (Intent Flag update).
  * v1.6 Fix (Android 16 Compatibility):
- * - Robust Calendar Intent resolution using MIME types and explicit error logging.
+ * - Robust Calendar Intent resolution using CORRECT dir/event MIME type to bypass permission limits.
  */
 @Composable
 fun DashboardScreen(
@@ -456,7 +457,7 @@ private fun HistoryItem(result: RunResult) {
                 )
             }
 
-            // v1.6 Fix: Robust Calendar Intent for Success cases
+            // v1.6 Fix: Strict MIME Type declaration for Android 16 Intent Resolution
             if (result.status == "SUCCESS") {
                 IconButton(onClick = {
                     try {
@@ -467,9 +468,9 @@ private fun HistoryItem(result: RunResult) {
                             val date = LocalDate.parse(match)
                             val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             
-                            // Using setDataAndType ensures the Android Intent Resolver correctly identifies the Calendar app
+                            // CORRECT MIME TYPE: vnd.android.cursor.dir/event (Directory insertion bypasses READ_CALENDAR limits)
                             val calIntent = Intent(Intent.ACTION_INSERT).apply {
-                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.item/event")
+                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.dir/event")
                                 putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
                                 putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Starts at 9 AM
                                 putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))   // Ends at 5 PM
@@ -479,10 +480,11 @@ private fun HistoryItem(result: RunResult) {
                             }
                             context.startActivity(calIntent)
                         } else {
-                            LogManager.addLog("WARN", "Could not find a valid date in message to add to calendar: ${result.message}")
+                            LogManager.addLog("WARN", "Calendar parse failed: Could not find a valid date in message: ${result.message}")
                         }
                     } catch (e: Exception) {
-                        LogManager.addLog("ERROR", "Failed to open calendar: ${e.message}")
+                        // FIX: Explicitly log intent resolution failures to the LogsScreen instead of failing silently
+                        LogManager.addLog("ERROR", "Failed to launch Calendar App: ${e.message}")
                     }
                 }) {
                     Icon(
