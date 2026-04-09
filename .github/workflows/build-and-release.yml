@@ -52,7 +52,7 @@ jobs:
           go mod tidy
           go mod download
 
-      - name: Build Go AAR (16KB page attempt)
+      - name: Build Go AAR (16KB page attempt #ARM64 only)
         run: |
           mkdir -p android-app/app/libs
 
@@ -65,6 +65,7 @@ jobs:
             -target=android \
             -androidapi 23 \
             -v \
+            -arch=arm64 \
             -ldflags='-linkmode=external -s -w' \
             -o android-app/app/libs/booking.aar \
             agent/mobile
@@ -74,7 +75,7 @@ jobs:
           unzip -o android-app/app/libs/booking.aar -d aar_extract
           find aar_extract -name "*.so" -exec readelf -l {} \; | grep Align
 
-      - name: Build Android APK (Debuggable)
+      - name: Build Android APK (Debuggable #ARM64 only)
         run: |
           cd android-app
           chmod +x gradlew
