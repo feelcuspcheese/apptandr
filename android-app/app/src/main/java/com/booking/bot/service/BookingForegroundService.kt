@@ -38,9 +38,9 @@ import mobile.MobileAgent
  * 1. WakeLock: Deep Doze protection.
  * 2. Native Alerts: System drawer feedback with Calendar Integration.
  * 3. Polling Loop: Agent lifecycle management.
- * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops.
- * 5. Atomic Rescheduling: Prevents data loss during process death.
- * 6. Pre-flight Test Mode: Verifies library credentials on BiblioCommons.
+ * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops (v1.3 Fix).
+ * 5. Atomic Rescheduling: Prevents data loss during process death (v1.3 Fix).
+ * 6. Pre-flight Test Mode (v1.4): Verifies library credentials on BiblioCommons.
  * 7. Calendar Enhancement (v1.5): Adds "Add to Calendar" action with friendly names.
  */
 class BookingForegroundService : LifecycleService() {
@@ -59,13 +59,9 @@ class BookingForegroundService : LifecycleService() {
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
-        // v1.3 Feature 4: Live Status Flow for UI feedback
         private val _goStatus = MutableStateFlow("Idle")
         val goStatus: StateFlow<String> = _goStatus.asStateFlow()
 
-        /**
-         * Starts the service with the intent containing run details.
-         */
         fun start(context: Context, run: ScheduledRun) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 putExtra("run_id", run.id)
@@ -88,9 +84,6 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
-        /**
-         * v1.4 Feature 1: Starts the service in a one-off test mode.
-         */
         fun startTest(context: Context, siteKey: String, credentialId: String) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = TEST_ACTION
@@ -104,9 +97,6 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
-        /**
-         * Sends a stop intent to the running service.
-         */
         fun stop(context: Context) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = STOP_ACTION
@@ -123,7 +113,6 @@ class BookingForegroundService : LifecycleService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var resolvedMuseumName = "" // v1.5 Friendly name cache for Calendar
 
-    // v1.3 Feature 1 Tracking
     private var lastRunOutcome = "MISSED"
     private var lastRunMessage = "No slots found during the check window."
 
@@ -138,16 +127,13 @@ class BookingForegroundService : LifecycleService() {
             val message = json.optString("message", "")
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
-
-                // Outcome Detection for History (Feature 1)
                 if (message.contains("Confirmed for", ignoreCase = true) || 
                     message.contains("Booking successful", ignoreCase = true) ||
                     message.contains("Notification sent", ignoreCase = true)) {
                     lastRunOutcome = "SUCCESS"
                     lastRunMessage = message
                 } else if (message.contains("FATAL", ignoreCase = true) || 
-                           message.contains("Booking failed", ignoreCase = true) ||
-                           message.contains("Error sending ntfy", ignoreCase = true)) {
+                           message.contains("Booking failed", ignoreCase = true)) {
                     lastRunOutcome = "FAILED"
                     lastRunMessage = message
                 }
@@ -160,7 +146,6 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Updates the persistent notification with status from Go agent.
-     * v1.3: Also updates the live status flow for Dashboard pulse.
      */
     private fun onGoStatus(status: String) {
         _goStatus.value = status
@@ -184,7 +169,7 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Triggers a native system notification for matches or fatal errors.
-     * v1.5 Enhancement: Adds "Add to Calendar" button with friendly museum name.
+     * Required import: MainActivity
      */
     private fun showNativeAlert(title: String, message: String) {
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -204,11 +189,11 @@ class BookingForegroundService : LifecycleService() {
             .setOngoing(false)   
             .setDefaults(NotificationCompat.DEFAULT_ALL)
 
-        // v1.5 Feature: Add Calendar Intent button on SUCCESS
+        // v1.5 Feature: Add Calendar Intent button on SUCCESS with friendly title
         if (title.contains("SUCCESS", ignoreCase = true)) {
             val dateMillis = extractDateMillis(message)
             if (dateMillis != -1L) {
-                val friendlyTitle = if (resolvedMuseumName.isNotEmpty()) {
+                val calTitle = if (resolvedMuseumName.isNotEmpty()) {
                     "$resolvedMuseumName Visit : Pass confirmed"
                 } else {
                     "Museum Visit : Pass confirmed"
@@ -216,9 +201,9 @@ class BookingForegroundService : LifecycleService() {
 
                 val calIntent = Intent(Intent.ACTION_INSERT).apply {
                     data = CalendarContract.Events.CONTENT_URI
-                    putExtra(CalendarContract.Events.TITLE, friendlyTitle)
-                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Suggest 9am
-                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // Suggest 5pm
+                    putExtra(CalendarContract.Events.TITLE, calTitle)
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // 9am
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // 5pm
                     putExtra(CalendarContract.Events.ALL_DAY, true)
                     putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
                 }
@@ -287,7 +272,7 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     currentRun = run
-                    // Resolve museum name for the Calendar Intent friendly title
+                    // v1.5: Cache friendly museum name for the Calendar Intent
                     resolvedMuseumName = config.admin.sites[run.siteKey]?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                     
                     _goStatus.value = "Starting"
@@ -297,7 +282,7 @@ class BookingForegroundService : LifecycleService() {
 
                     if (agentConfigJson == null) {
                         LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
-                        cleanupAndStop(runId)
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
@@ -319,7 +304,7 @@ class BookingForegroundService : LifecycleService() {
                     
                     if (!started) {
                         LogManager.addLog("ERROR", "Go agent rejected the start command")
-                        cleanupAndStop(runId)
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
@@ -340,7 +325,7 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Run ${run.id} finished")
-                    cleanupAndStop(runId)
+                    cleanupAndStop(run.id)
 
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")
@@ -425,7 +410,7 @@ class BookingForegroundService : LifecycleService() {
     }
 
     /**
-     * Final cleanup, Recursion handling (v1.2), and History Persistence (v1.3).
+     * Final cleanup and v1.2 Recursion handling.
      */
     private suspend fun cleanupAndStop(runId: String) {
         _isRunning.value = false
@@ -511,25 +496,18 @@ class BookingForegroundService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             
-            // 1. Channel for ongoing service status
             val serviceChannel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 "Booking Agent Service",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Status monitoring for active runs" }
+            )
             nm.createNotificationChannel(serviceChannel)
 
-            // 2. Channel for high-priority alerts
             val alertChannel = NotificationChannel(
                 ALERT_CHANNEL_ID,
                 "Booking Agent Alerts",
                 NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications for found slots and booking results"
-                enableLights(true)
-                enableVibration(true)
-                setShowBadge(true)
-            }
+            )
             nm.createNotificationChannel(alertChannel)
         }
     }
@@ -538,10 +516,7 @@ class BookingForegroundService : LifecycleService() {
         val stopIntent = Intent(this, BookingForegroundService::class.java).apply {
             action = STOP_ACTION
         }
-        val stopPendingIntent = PendingIntent.getService(
-            this, 0, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Booking Agent Active")
             .setContentText(status)
