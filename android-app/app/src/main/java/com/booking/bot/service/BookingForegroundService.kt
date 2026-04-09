@@ -34,14 +34,14 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * Gold Standard Audit Enhancements:
+ * Deep Audit Enhancements (v1.1 - v1.5):
  * 1. WakeLock: Deep Doze protection.
  * 2. Native Alerts: System drawer feedback with Calendar Integration.
  * 3. Polling Loop: Agent lifecycle management.
- * 4. DST-Aware Rescheduling: Uses Calendar arithmetic for 24h loops.
- * 5. Atomic Rescheduling: Prevents data loss during process death.
+ * 4. DST-Aware Rescheduling: Preserves intended wall-clock time for recurring runs.
+ * 5. Atomic Rescheduling: Prevents schedule loss during app process death.
  * 6. Pre-flight Test Mode: Verifies library credentials on BiblioCommons.
- * 7. Calendar Enhancement (v1.5): Adds "Add to Calendar" action with friendly names.
+ * 7. Friendly Calendar Logic: Maps IDs to friendly museum names in event titles.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -129,7 +129,7 @@ class BookingForegroundService : LifecycleService() {
 
     /**
      * Parses JSON logs from the Go agent and routes them to LogManager.
-     * v1.3: Also detects success/failure for the History Feature.
+     * v1.3/v1.5: Also detects success/failure for the History Feature and Calendar dates.
      */
     private fun onGoLog(jsonLog: String) {
         try {
@@ -204,11 +204,11 @@ class BookingForegroundService : LifecycleService() {
             .setOngoing(false)   
             .setDefaults(NotificationCompat.DEFAULT_ALL)
 
-        // v1.5 Feature: Add Calendar Intent button on SUCCESS
+        // v1.5 Feature: Add Calendar Intent button on SUCCESS with friendly title
         if (title.contains("SUCCESS", ignoreCase = true)) {
             val dateMillis = extractDateMillis(message)
             if (dateMillis != -1L) {
-                val friendlyTitle = if (resolvedMuseumName.isNotEmpty()) {
+                val calTitle = if (resolvedMuseumName.isNotEmpty()) {
                     "$resolvedMuseumName Visit : Pass confirmed"
                 } else {
                     "Museum Visit : Pass confirmed"
@@ -216,9 +216,9 @@ class BookingForegroundService : LifecycleService() {
 
                 val calIntent = Intent(Intent.ACTION_INSERT).apply {
                     data = CalendarContract.Events.CONTENT_URI
-                    putExtra(CalendarContract.Events.TITLE, friendlyTitle)
-                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Suggest 9am
-                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // Suggest 5pm
+                    putExtra(CalendarContract.Events.TITLE, calTitle)
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // 9am
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))  // 5pm
                     putExtra(CalendarContract.Events.ALL_DAY, true)
                     putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
                 }
@@ -287,7 +287,7 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     currentRun = run
-                    // Resolve museum name for the Calendar Intent friendly title
+                    // v1.5: Resolve friendly museum name for the Calendar logic
                     resolvedMuseumName = config.admin.sites[run.siteKey]?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                     
                     _goStatus.value = "Starting"
@@ -297,7 +297,7 @@ class BookingForegroundService : LifecycleService() {
 
                     if (agentConfigJson == null) {
                         LogManager.addLog("ERROR", "Failed to build agent config – site/museum not found")
-                        cleanupAndStop(runId)
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
@@ -319,7 +319,7 @@ class BookingForegroundService : LifecycleService() {
                     
                     if (!started) {
                         LogManager.addLog("ERROR", "Go agent rejected the start command")
-                        cleanupAndStop(runId)
+                        cleanupAndStop(run.id)
                         return@launch
                     }
 
@@ -327,7 +327,6 @@ class BookingForegroundService : LifecycleService() {
                     updateNotification("Running...")
 
                     // Polling loop for agent completion (CG-02)
-                    // Required imports: delay
                     val startTime = System.currentTimeMillis()
                     while (mobileAgent?.isRunning() == true) {
                         delay(1000)
@@ -340,7 +339,7 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     LogManager.addLog("INFO", "Run ${run.id} finished")
-                    cleanupAndStop(runId)
+                    cleanupAndStop(run.id)
 
                 } catch (e: Exception) {
                     LogManager.addLog("ERROR", "Service Execution Error: ${e.message}")

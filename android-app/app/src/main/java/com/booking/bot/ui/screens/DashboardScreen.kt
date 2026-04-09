@@ -1,5 +1,7 @@
 package com.booking.bot.ui.screens
 
+import android.content.Intent
+import android.provider.CalendarContract
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +25,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.*
 
 /**
@@ -36,6 +40,11 @@ import java.util.*
  * - Master Switch (Feature 3)
  * - Live Status Phase Pulse (Feature 4)
  * - Credential Snapshotting (Fix): Locks default card at trigger moment.
+ * v1.5 Bug Fixes:
+ * - Friendly Calendar Title (Museum Name vs ID).
+ * - Fixed Calendar Icon click logic (Intent Flag update).
+ * v1.6 Fix (Android 16 Compatibility):
+ * - Robust Calendar Intent resolution using MIME types and explicit error logging.
  */
 @Composable
 fun DashboardScreen(
@@ -401,6 +410,7 @@ fun DashboardScreen(
 
 @Composable
 private fun HistoryItem(result: RunResult) {
+    val context = LocalContext.current
     val timeStr = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(result.timestamp))
     val statusColor = when (result.status) {
         "SUCCESS" -> Color(0xFF4CAF50)
@@ -427,7 +437,7 @@ private fun HistoryItem(result: RunResult) {
                 modifier = Modifier.size(24.dp)
             )
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "${result.museumName} (${result.siteName})",
                     style = MaterialTheme.typography.bodyMedium,
@@ -444,6 +454,43 @@ private fun HistoryItem(result: RunResult) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
+            }
+
+            // v1.6 Fix: Robust Calendar Intent for Success cases
+            if (result.status == "SUCCESS") {
+                IconButton(onClick = {
+                    try {
+                        val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
+                        val match = regex.find(result.message)?.value
+                        
+                        if (match != null) {
+                            val date = LocalDate.parse(match)
+                            val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            
+                            // Using setDataAndType ensures the Android Intent Resolver correctly identifies the Calendar app
+                            val calIntent = Intent(Intent.ACTION_INSERT).apply {
+                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.item/event")
+                                putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
+                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Starts at 9 AM
+                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))   // Ends at 5 PM
+                                putExtra(CalendarContract.Events.ALL_DAY, true)
+                                putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(calIntent)
+                        } else {
+                            LogManager.addLog("WARN", "Could not find a valid date in message to add to calendar: ${result.message}")
+                        }
+                    } catch (e: Exception) {
+                        LogManager.addLog("ERROR", "Failed to open calendar: ${e.message}")
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Event,
+                        contentDescription = "Add to calendar",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

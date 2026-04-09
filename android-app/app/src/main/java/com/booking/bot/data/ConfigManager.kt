@@ -360,9 +360,12 @@ class ConfigManager private constructor(private val context: Context) {
         val password = credential?.password ?: ""
         val email    = credential?.email    ?: ""
 
-        // Safety Net: Determine actual days/dates to match against
-        val finalDays = run.preferredDays.ifEmpty { config.general.preferredDays }
-        val finalDates = run.preferredDates.ifEmpty { config.general.preferredDates }
+        // Safety Net: Determine actual days/dates to match against.
+        // FIX: If the run explicitly defines EITHER days or dates, do not fallback on the other.
+        // Only use global fallback if BOTH are completely empty (e.g., legacy runs or alert mode).
+        val useFallback = run.preferredDays.isEmpty() && run.preferredDates.isEmpty()
+        val finalDays = if (useFallback) config.general.preferredDays else run.preferredDays
+        val finalDates = if (useFallback) config.general.preferredDates else run.preferredDates
 
         val requestJson = buildJsonObject {
             put("siteKey",    run.siteKey)

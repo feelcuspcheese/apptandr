@@ -14,6 +14,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -22,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.24'
           cache: true
 
       - name: Set up Java
@@ -32,57 +34,55 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v2
+        uses: android-actions/setup-android@v3
         with:
-          ndk-version: '25.2.9519653'
-          api-level: 33
-          build-tools: '33.0.2'
+          ndk-version: '27.1.12297006' 
+          api-level: 35
+          build-tools: '35.0.0'
 
       - name: Install gomobile and gobind
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          export PATH=$PATH:$(go env GOPATH)/bin
-          gomobile init
+          $(go env GOPATH)/bin/gomobile init
 
       - name: Fix Go Dependencies
         run: |
-          go get golang.org/x/mobile/bind
           go mod tidy
-          go mod download
 
-      - name: Build Go AAR (16KB page attempt #ARM64 only)
+      - name: Build Go AAR (16KB page alignment - ARM64 only)
         run: |
           mkdir -p android-app/app/libs
-
+          
           export CGO_ENABLED=1
           export GOOS=android
           export GOARCH=arm64
-          export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
-
+          # Alignment flags
+          export CGO_LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+          
+          # Removed the "./" prefix from the package path to fix "no exported names"
           gomobile bind \
-            -target=android \
+            -target=android/arm64 \
             -androidapi 23 \
             -v \
-            -arch=arm64 \
-            -ldflags='-linkmode=external -s -w' \
+            -ldflags="-s -w" \
             -o android-app/app/libs/booking.aar \
             agent/mobile
 
       - name: Verify 16KB alignment in AAR
         run: |
           unzip -o android-app/app/libs/booking.aar -d aar_extract
-          find aar_extract -name "*.so" -exec readelf -l {} \; | grep Align
+          find aar_extract -name "*.so" -exec readelf -lW {} \; | grep "0x4000" || (echo "Alignment check failed" && exit 1)
 
-      - name: Build Android APK (Debuggable #ARM64 only)
+      - name: Build Android APK
         run: |
           cd android-app
           chmod +x gradlew
-          ./gradlew assembleDebug -Pandroid.suppressUnsupportedCompileSdk=35
+          ./gradlew assembleDebug
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
           files: |
