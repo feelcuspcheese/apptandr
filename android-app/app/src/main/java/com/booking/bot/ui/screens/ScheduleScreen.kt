@@ -1,3 +1,4 @@
+
 package com.booking.bot.ui.screens
 
 import android.app.DatePickerDialog as AndroidDatePickerDialog
@@ -33,6 +34,7 @@ import java.util.*
  * v1.1 Enhancements: Independent locking & Contradiction check.
  * v1.2 Enhancements: Recurring Schedule options.
  * v1.4 Enhancements: Smart Grouping (Headers) & Duplicate Run Protection.
+ * v1.6 Enhancements: Explicit Schedule Override Lock & Fallback Fix.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -55,6 +57,7 @@ fun ScheduleScreen(
     val allDays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     var runPreferredDays by remember { mutableStateOf(setOf<String>()) }
     var runPreferredDates by remember { mutableStateOf(setOf<String>()) }
+    var isInitialized by remember { mutableStateOf(false) }
 
     // Recurring State (v1.2)
     var isRecurring by remember { mutableStateOf(false) }
@@ -75,15 +78,21 @@ fun ScheduleScreen(
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
     var feedbackSuccess by remember { mutableStateOf(false) }
 
+    // FIX: Lock overrides from background config emits once initialised
     LaunchedEffect(config) {
         config?.let { cfg ->
-            if (selectedSiteKey !in cfg.admin.sites.keys) {
-                selectedSiteKey = cfg.admin.activeSite
-            }
-            if (runPreferredDays.isEmpty() && runPreferredDates.isEmpty()) {
+            if (!isInitialized) {
+                if (selectedSiteKey !in cfg.admin.sites.keys) {
+                    selectedSiteKey = cfg.admin.activeSite
+                }
                 selectedMode = cfg.general.mode
                 runPreferredDays = cfg.general.preferredDays.toSet()
                 runPreferredDates = cfg.general.preferredDates.toSet()
+                isInitialized = true
+            } else {
+                if (selectedSiteKey !in cfg.admin.sites.keys) {
+                    selectedSiteKey = cfg.admin.activeSite
+                }
             }
         }
     }
@@ -428,7 +437,7 @@ fun ScheduleScreen(
             }
         }
 
-        // Schedule Button with Duplicate Protection
+        // Schedule Button with Duplicate Protection & Validation
         Button(
             onClick = {
                 val runSiteKey = selectedSiteKey
@@ -441,17 +450,16 @@ fun ScheduleScreen(
                     runMuseumSlug.isNullOrEmpty() -> {
                         feedbackMessage = "Please select a museum"; feedbackSuccess = false
                     }
-                    selectedMode == "booking" && runPreferredDays.isEmpty() && runPreferredDates.isEmpty() -> {
-                        feedbackMessage = "Booking Mode requires at least one Day or Date selection."; feedbackSuccess = false
-                    }
                     selectedMode == "booking" && runPreferredDays.isNotEmpty() && runPreferredDates.isNotEmpty() -> {
+                        // FIX: Explicitly check for contradictions if the user selected BOTH a Day and a specific Date
                         val invalid = runPreferredDates.filter { iso ->
                             val d = LocalDate.parse(iso)
                             val dayStr = d.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
                             dayStr !in runPreferredDays
                         }
                         if (invalid.isNotEmpty()) {
-                            feedbackMessage = "Contradiction: Date ${invalid.first()} is not a ${runPreferredDays.joinToString("/")}"; feedbackSuccess = false
+                            feedbackMessage = "Contradiction: Date ${invalid.first()} is not a ${runPreferredDays.joinToString("/")}"
+                            feedbackSuccess = false
                         } else {
                             processScheduling(scope, context, config, configManager, runDateTime, runTimezone, runSiteKey, runMuseumSlug, selectedCredentialId, selectedMode, runPreferredDays, runPreferredDates, isRecurring, limitCount, stopDateMillis) { msg, success ->
                                 feedbackMessage = msg; feedbackSuccess = success
@@ -682,6 +690,12 @@ private fun RunItem(run: ScheduledRun, config: AppConfig?, onDelete: () -> Unit)
                 if (run.preferredDays.isNotEmpty() || run.preferredDates.isNotEmpty()) {
                     Text(
                         "Pref: ${run.preferredDays.joinToString(", ")} ${run.preferredDates.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Text(
+                        "Pref: Uses Global Default Fallback",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
