@@ -32,9 +32,17 @@ import java.util.*
 /**
  * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
  * 
+ * v1.1 Enhancements:
+ * - Leak-proof "Start Now" snapshotting.
+ * - 30-second countdown with progress feedback.
+ * v1.3 Enhancements:
+ * - History Section (Feature 1)
+ * - Master Switch (Feature 3)
+ * - Live Status Phase Pulse (Feature 4)
+ * - Credential Snapshotting (Fix): Locks default card at trigger moment.
  * v1.5 Bug Fixes:
- * - Fixed Calendar Icon click logic (added FLAG_ACTIVITY_NEW_TASK).
- * - Fixed Calendar Event Title (uses friendly museum name + prefix).
+ * - Friendly Calendar Title (Museum Name vs ID).
+ * - Fixed Calendar Icon click logic (Intent Flag update).
  */
 @Composable
 fun DashboardScreen(
@@ -170,7 +178,7 @@ fun DashboardScreen(
                                         }
 
                                         if (museumSlug.isEmpty()) {
-                                            actionFeedback = "No museum configured."
+                                            actionFeedback = "No museum configured. Please configure in Admin Config."
                                             actionSuccess = false
                                             isStarting = false
                                             return@launch
@@ -184,14 +192,15 @@ fun DashboardScreen(
 
                                         if (!isStarting) return@launch
 
-                                        // Resolve credential snapshot
+                                        // CREDENTIAL SNAPSHOTTING (v1.3 Fix): 
+                                        // Resolve the default ID now so it's locked into the run object.
                                         val site = currentConfig.admin.sites[siteKey]
                                         val resolvedCredentialId = site?.defaultCredentialId
 
                                         val dropTimeMillis = System.currentTimeMillis() + 1000 
                                         val timezone = java.util.TimeZone.getDefault().id
 
-                                        // Snapshot logic
+                                        // LEAK-PROOF FIX: Explicitly snapshot global preferences into the run object
                                         val run = ScheduledRun(
                                             id = UUID.randomUUID().toString(),
                                             siteKey = siteKey,
@@ -205,7 +214,7 @@ fun DashboardScreen(
                                             isRecurring = false
                                         )
 
-                                        LogManager.addLog("INFO", "Start Now run created: id=${run.id}")
+                                        LogManager.addLog("INFO", "Start Now run created: id=${run.id}, museum=$museumSlug")
 
                                         configManager.addScheduledRun(run)
                                         val offsetMillis = AlarmScheduler.parseDurationToMillis(currentConfig.general.preWarmOffset)
@@ -340,6 +349,7 @@ fun DashboardScreen(
             }
         }
 
+        // v1.3 Feature 1: Recent Activity History Section
         item {
             Text(
                 text = "Recent Activity",
@@ -444,7 +454,7 @@ private fun HistoryItem(result: RunResult) {
                 )
             }
 
-            // v1.5 Feature Fix: Reliable Calendar Intent
+            // v1.5 Feature Fix: Reliable Calendar Intent with Friendly Naming
             if (result.status == "SUCCESS") {
                 IconButton(onClick = {
                     try {
@@ -454,7 +464,7 @@ private fun HistoryItem(result: RunResult) {
                             val date = LocalDate.parse(match)
                             val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             
-                            // BUG FIX: Added Task Flag and Friendly Title Template
+                            // v1.5 BUG FIX: Added Intent Flag and formatted friendly title
                             val calIntent = Intent(Intent.ACTION_INSERT).apply {
                                 data = CalendarContract.Events.CONTENT_URI
                                 putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
@@ -466,7 +476,7 @@ private fun HistoryItem(result: RunResult) {
                             }
                             context.startActivity(calIntent)
                         }
-                    } catch (e: Exception) { /* Silent fail for malformed results */ }
+                    } catch (e: Exception) { /* Fail silently */ }
                 }) {
                     Icon(
                         imageVector = Icons.Default.Event,
