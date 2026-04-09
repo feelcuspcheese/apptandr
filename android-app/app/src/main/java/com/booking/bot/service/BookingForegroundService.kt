@@ -34,10 +34,10 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * v1.6 Super-Isolation Fix:
- * - Uses unique RequestCodes for PendingIntents to prevent intent bleeding during consecutive runs.
- * - Robust Calendar MIME resolution for Android 16.
- * - Metadata snapshotting for history persistence.
+ * v1.7 Audit Fix:
+ * - Resolved "Last Log Overwrite" bug where generic success logs stripped dates from history.
+ * - Enforced Date-Pattern matching for persistence snapshots.
+ * - Maintained Android 16 Intent resolution and Isolation logic.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -110,6 +110,10 @@ class BookingForegroundService : LifecycleService() {
     private var lastRunOutcome = "MISSED"
     private var lastRunMessage = "No slots found during the check window."
 
+    /**
+     * Parses JSON logs from the Go agent and routes them to LogManager.
+     * v1.7 Fix: Only allow messages containing dates to set the "Success" snapshot message.
+     */
     private fun onGoLog(jsonLog: String) {
         try {
             val json = org.json.JSONObject(jsonLog)
@@ -118,14 +122,25 @@ class BookingForegroundService : LifecycleService() {
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
 
+                val dateRegex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
+                val containsDate = dateRegex.containsMatchIn(message)
+
                 if (message.contains("Confirmed for", ignoreCase = true) || 
-                    message.contains("Booking successful", ignoreCase = true) ||
-                    message.contains("Notification sent", ignoreCase = true)) {
+                    message.contains("Booking successful", ignoreCase = true)) {
+                    
                     lastRunOutcome = "SUCCESS"
-                    lastRunMessage = message 
+                    
+                    // FIX: Only update the message if it actually contains the date.
+                    // This prevents "Booking successful, stopping checks" from overwriting
+                    // the actual date-bearing log.
+                    if (containsDate) {
+                        lastRunMessage = message
+                    } else if (lastRunMessage.contains("No slots") || lastRunMessage.isEmpty()) {
+                        // Fallback if we haven't captured a date-specific message yet
+                        lastRunMessage = message
+                    }
                 } else if (message.contains("FATAL", ignoreCase = true) || 
-                           message.contains("Booking failed", ignoreCase = true) ||
-                           message.contains("Error sending ntfy", ignoreCase = true)) {
+                           message.contains("Booking failed", ignoreCase = true)) {
                     lastRunOutcome = "FAILED"
                     lastRunMessage = message
                 }
@@ -152,7 +167,6 @@ class BookingForegroundService : LifecycleService() {
     }
 
     private fun showNativeAlert(title: String, message: String) {
-        // Unique ID for this specific notification instance
         val notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
 
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -190,7 +204,6 @@ class BookingForegroundService : LifecycleService() {
                     putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
                 }
                 
-                // FIX: Use unique notificationId as RequestCode to prevent consecutive runs from overwriting each other's intents
                 val calPi = PendingIntent.getActivity(this, notificationId, calIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
                 builder.addAction(android.R.drawable.ic_menu_my_calendar, "Add to Calendar", calPi)
             }
@@ -362,7 +375,6 @@ class BookingForegroundService : LifecycleService() {
                 if (wakeLock?.isHeld == true) wakeLock?.release()
                 currentRun?.let { run ->
                     ConfigManager.getInstance(this@BookingForegroundService).removeScheduledRun(run.id)
-                    LogManager.addLog("INFO", "Run ${run.id} purged from schedule")
                 }
                 currentRun = null
                 stopSelf()
@@ -419,13 +431,9 @@ class BookingForegroundService : LifecycleService() {
                         configManager.rescheduleRecurringRun(runId, updatedRun)
                         val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
                         AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
-                        
-                        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
-                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
                     }
                 } else {
                     configManager.removeScheduledRun(runId)
-                    LogManager.addLog("INFO", "Run $runId removed from schedule (completed)")
                 }
             } else {
                 configManager.removeScheduledRun(runId)
