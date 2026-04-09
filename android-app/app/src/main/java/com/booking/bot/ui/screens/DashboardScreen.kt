@@ -450,4 +450,31 @@ private fun HistoryItem(result: RunResult) {
                     try {
                         val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
                         val match = regex.find(result.message)?.value
- 
+                        if (match != null) {
+                            val date = LocalDate.parse(match)
+                            val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            
+                            // BUG FIX: Added Task Flag and Friendly Title Template
+                            val calIntent = Intent(Intent.ACTION_INSERT).apply {
+                                data = CalendarContract.Events.CONTENT_URI
+                                putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
+                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
+                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
+                                putExtra(CalendarContract.Events.ALL_DAY, true)
+                                putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(calIntent)
+                        }
+                    } catch (e: Exception) { /* Silent fail for malformed results */ }
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Event,
+                        contentDescription = "Add to calendar",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
