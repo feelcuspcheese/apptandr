@@ -472,4 +472,87 @@ class BookingForegroundService : LifecycleService() {
 
                     if (isExpiredByDate || isExpiredByCount) {
                         configManager.removeScheduledRun(runId)
-                        LogManager.add
+                        LogManager.addLog("INFO", "Recurring run $runId limit reached. Purged from schedule.")
+                    } else {
+                        // Reschedule for tomorrow with same locked config
+                        val updatedRun = run.copy(
+                            dropTimeMillis = nextDropTime,
+                            remainingOccurrences = if (run.remainingOccurrences > 0) run.remainingOccurrences - 1 else 0
+                        )
+                        
+                        // ATOMIC TRANSACTION (v1.3 Fix):
+                        // Single DataStore write to prevent schedule loss.
+                        configManager.rescheduleRecurringRun(runId, updatedRun)
+                        
+                        // Re-register system alarm
+                        val offset = AlarmScheduler.parseDurationToMillis(config.general.preWarmOffset)
+                        AlarmScheduler(this@BookingForegroundService).scheduleRun(updatedRun, offset)
+                        
+                        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(nextDropTime))
+                        LogManager.addLog("INFO", "Recurring run $runId rescheduled for tomorrow at $timeFormat")
+                    }
+                } else {
+                    // One-time run cleanup
+                    configManager.removeScheduledRun(runId)
+                    LogManager.addLog("INFO", "Run $runId removed from schedule (one-time completion)")
+                }
+            } else {
+                configManager.removeScheduledRun(runId)
+            }
+        } catch (e: Exception) {
+            LogManager.addLog("ERROR", "Failed cleanup/reschedule for $runId: ${e.message}")
+        } finally {
+            currentRun = null
+            stopSelf()
+        }
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // 1. Channel for ongoing service status
+            val serviceChannel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "Booking Agent Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Status monitoring for active runs" }
+            nm.createNotificationChannel(serviceChannel)
+
+            // 2. Channel for high-priority alerts
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "Booking Agent Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for found slots and booking results"
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            nm.createNotificationChannel(alertChannel)
+        }
+    }
+
+    private fun createNotification(status: String): android.app.Notification {
+        val stopIntent = Intent(this, BookingForegroundService::class.java).apply {
+            action = STOP_ACTION
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Booking Agent Active")
+            .setContentText(status)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
+            .build()
+    }
+
+    private fun updateNotification(status: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, createNotification(status))
+    }
+}
