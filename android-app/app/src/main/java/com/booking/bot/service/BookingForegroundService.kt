@@ -34,14 +34,10 @@ import mobile.MobileAgent
  * BookingForegroundService following TECHNICAL_SPEC.md section 6.4.
  * Runs the Go agent as a foreground service with persistent notification.
  * 
- * Deep Audit Enhancements (v1.1 - v1.6):
- * 1. WakeLock: Deep Doze protection.
- * 2. Native Alerts: System drawer feedback with robust Calendar MIME resolution (Android 16).
- * 3. Polling Loop: Agent lifecycle management.
- * 4. DST-Aware Rescheduling: Preserves intended wall-clock time for recurring runs.
- * 5. Atomic Rescheduling: Prevents schedule loss during app process death.
- * 6. Pre-flight Test Mode: Verifies library credentials on BiblioCommons.
- * 7. Snapshot History: Resolves friendly names and confirms dates for Dashboard Recent Activity.
+ * v1.6 Super-Isolation Fix:
+ * - Uses unique RequestCodes for PendingIntents to prevent intent bleeding during consecutive runs.
+ * - Robust Calendar MIME resolution for Android 16.
+ * - Metadata snapshotting for history persistence.
  */
 class BookingForegroundService : LifecycleService() {
 
@@ -53,19 +49,14 @@ class BookingForegroundService : LifecycleService() {
         private const val TEST_ACTION = "com.booking.bot.TEST_CREDENTIALS"
         private const val WAKE_LOCK_TAG = "BookingBot::ExecutionWakeLock"
 
-        // CG-05: Timeout constant - 10 minutes max run time
         private const val RUN_TIMEOUT_MS = 10 * 60 * 1000L
 
         private val _isRunning = MutableStateFlow(false)
         val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
-        // v1.3 Feature 4: Live Status Flow for UI feedback
         private val _goStatus = MutableStateFlow("Idle")
         val goStatus: StateFlow<String> = _goStatus.asStateFlow()
 
-        /**
-         * Starts the service with the intent containing run details.
-         */
         fun start(context: Context, run: ScheduledRun) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 putExtra("run_id", run.id)
@@ -88,9 +79,6 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
-        /**
-         * v1.4 Feature 1: Starts the service in a one-off test mode.
-         */
         fun startTest(context: Context, siteKey: String, credentialId: String) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = TEST_ACTION
@@ -104,9 +92,6 @@ class BookingForegroundService : LifecycleService() {
             }
         }
 
-        /**
-         * Sends a stop intent to the running service.
-         */
         fun stop(context: Context) {
             val intent = Intent(context, BookingForegroundService::class.java).apply {
                 action = STOP_ACTION
@@ -122,13 +107,9 @@ class BookingForegroundService : LifecycleService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var resolvedMuseumName = "" 
 
-    // Snapshot variables for history persistence
     private var lastRunOutcome = "MISSED"
     private var lastRunMessage = "No slots found during the check window."
 
-    /**
-     * Parses JSON logs from the Go agent and routes them to LogManager.
-     */
     private fun onGoLog(jsonLog: String) {
         try {
             val json = org.json.JSONObject(jsonLog)
@@ -137,12 +118,11 @@ class BookingForegroundService : LifecycleService() {
             if (message.isNotEmpty()) {
                 LogManager.addLog(level, message)
 
-                // Outcome Detection and Snapshot Capture
                 if (message.contains("Confirmed for", ignoreCase = true) || 
                     message.contains("Booking successful", ignoreCase = true) ||
                     message.contains("Notification sent", ignoreCase = true)) {
                     lastRunOutcome = "SUCCESS"
-                    lastRunMessage = message // Message contains the confirmed date
+                    lastRunMessage = message 
                 } else if (message.contains("FATAL", ignoreCase = true) || 
                            message.contains("Booking failed", ignoreCase = true) ||
                            message.contains("Error sending ntfy", ignoreCase = true)) {
@@ -171,14 +151,14 @@ class BookingForegroundService : LifecycleService() {
         } catch (e: Exception) { -1L }
     }
 
-    /**
-     * Triggers a native system notification with Calendar integration.
-     */
     private fun showNativeAlert(title: String, message: String) {
+        // Unique ID for this specific notification instance
+        val notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(this, notificationId, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -202,7 +182,6 @@ class BookingForegroundService : LifecycleService() {
                 }
 
                 val calIntent = Intent(Intent.ACTION_INSERT).apply {
-                    // FIX: Android 16 requires explicit dir/event MIME type for ACTION_INSERT from non-Calendar apps
                     setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.dir/event")
                     putExtra(CalendarContract.Events.TITLE, calTitle)
                     putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
@@ -210,13 +189,15 @@ class BookingForegroundService : LifecycleService() {
                     putExtra(CalendarContract.Events.ALL_DAY, true)
                     putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n$message")
                 }
-                val calPi = PendingIntent.getActivity(this, 1, calIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                
+                // FIX: Use unique notificationId as RequestCode to prevent consecutive runs from overwriting each other's intents
+                val calPi = PendingIntent.getActivity(this, notificationId, calIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
                 builder.addAction(android.R.drawable.ic_menu_my_calendar, "Add to Calendar", calPi)
             }
         }
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(System.currentTimeMillis().toInt(), builder.build())
+        nm.notify(notificationId, builder.build())
     }
 
     override fun onCreate() {
@@ -247,7 +228,6 @@ class BookingForegroundService : LifecycleService() {
                 return START_NOT_STICKY
             }
 
-            // Reset outcome tracking for this specific run instance
             lastRunOutcome = "MISSED"
             lastRunMessage = "No slots found during the check window."
 
@@ -269,7 +249,6 @@ class BookingForegroundService : LifecycleService() {
                     }
 
                     currentRun = run
-                    // Resolve friendly museum name for the persistence snapshot
                     resolvedMuseumName = config.admin.sites[run.siteKey]?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                     
                     _goStatus.value = "Starting"
@@ -406,7 +385,6 @@ class BookingForegroundService : LifecycleService() {
             val run = currentRun ?: config.scheduledRuns.find { it.id == runId }
 
             if (run != null) {
-                // v1.6 Fix: Resolve friendly museum and site names at the moment of completion
                 val site = config.admin.sites[run.siteKey]
                 val museumName = site?.museums?.get(run.museumSlug)?.name ?: run.museumSlug
                 
@@ -416,7 +394,7 @@ class BookingForegroundService : LifecycleService() {
                     museumName = museumName,
                     mode = run.mode,
                     status = lastRunOutcome,
-                    message = lastRunMessage // This captures the specific Confirmed Date
+                    message = lastRunMessage 
                 )
                 configManager.addRunResult(result)
 
