@@ -65,7 +65,7 @@ jobs:
             -target=android \
             -androidapi 23 \
             -v \
-            -ldflags='-linkmode=external' \
+            -ldflags='-linkmode=external -s -w' \
             -o android-app/app/libs/booking.aar \
             agent/mobile
 
