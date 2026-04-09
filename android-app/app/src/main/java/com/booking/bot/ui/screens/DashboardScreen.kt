@@ -43,6 +43,8 @@ import java.util.*
  * v1.5 Bug Fixes:
  * - Friendly Calendar Title (Museum Name vs ID).
  * - Fixed Calendar Icon click logic (Intent Flag update).
+ * v1.6 Fix (Android 16 Compatibility):
+ * - Robust Calendar Intent resolution using MIME types and explicit error logging.
  */
 @Composable
 fun DashboardScreen(
@@ -454,29 +456,34 @@ private fun HistoryItem(result: RunResult) {
                 )
             }
 
-            // v1.5 Feature Fix: Reliable Calendar Intent with Friendly Naming
+            // v1.6 Fix: Robust Calendar Intent for Success cases
             if (result.status == "SUCCESS") {
                 IconButton(onClick = {
                     try {
                         val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
                         val match = regex.find(result.message)?.value
+                        
                         if (match != null) {
                             val date = LocalDate.parse(match)
                             val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             
-                            // v1.5 BUG FIX: Added Intent Flag and formatted friendly title
+                            // Using setDataAndType ensures the Android Intent Resolver correctly identifies the Calendar app
                             val calIntent = Intent(Intent.ACTION_INSERT).apply {
-                                data = CalendarContract.Events.CONTENT_URI
+                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.item/event")
                                 putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
-                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
-                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
+                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Starts at 9 AM
+                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))   // Ends at 5 PM
                                 putExtra(CalendarContract.Events.ALL_DAY, true)
                                 putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
                             context.startActivity(calIntent)
+                        } else {
+                            LogManager.addLog("WARN", "Could not find a valid date in message to add to calendar: ${result.message}")
                         }
-                    } catch (e: Exception) { /* Fail silently */ }
+                    } catch (e: Exception) {
+                        LogManager.addLog("ERROR", "Failed to open calendar: ${e.message}")
+                    }
                 }) {
                     Icon(
                         imageVector = Icons.Default.Event,
