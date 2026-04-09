@@ -1,5 +1,7 @@
 package com.booking.bot.ui.screens
 
+import android.content.Intent
+import android.provider.CalendarContract
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +25,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.*
 
 /**
@@ -36,6 +40,8 @@ import java.util.*
  * - Master Switch (Feature 3)
  * - Live Status Phase Pulse (Feature 4)
  * - Credential Snapshotting (Fix): Locks default card at trigger moment.
+ * v1.5 Enhancements:
+ * - Calendar integration for History items.
  */
 @Composable
 fun DashboardScreen(
@@ -401,6 +407,7 @@ fun DashboardScreen(
 
 @Composable
 private fun HistoryItem(result: RunResult) {
+    val context = LocalContext.current
     val timeStr = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(result.timestamp))
     val statusColor = when (result.status) {
         "SUCCESS" -> Color(0xFF4CAF50)
@@ -427,7 +434,7 @@ private fun HistoryItem(result: RunResult) {
                 modifier = Modifier.size(24.dp)
             )
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "${result.museumName} (${result.siteName})",
                     style = MaterialTheme.typography.bodyMedium,
@@ -444,6 +451,36 @@ private fun HistoryItem(result: RunResult) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
+            }
+
+            // v1.5 Feature: Add to Calendar Icon for Success Items
+            if (result.status == "SUCCESS") {
+                IconButton(onClick = {
+                    try {
+                        val regex = "\\d{4}-\\d{2}-\\d{2}".toRegex()
+                        val match = regex.find(result.message)?.value
+                        if (match != null) {
+                            val date = LocalDate.parse(match)
+                            val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            
+                            val calIntent = Intent(Intent.ACTION_INSERT).apply {
+                                data = CalendarContract.Events.CONTENT_URI
+                                putExtra(CalendarContract.Events.TITLE, "Library Pass: ${result.museumName}")
+                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000))
+                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
+                                putExtra(CalendarContract.Events.ALL_DAY, true)
+                                putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
+                            }
+                            context.startActivity(calIntent)
+                        }
+                    } catch (e: Exception) { /* Ignore parsing errors */ }
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Event,
+                        contentDescription = "Add to calendar",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
