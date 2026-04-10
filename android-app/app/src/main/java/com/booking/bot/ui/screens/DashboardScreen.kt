@@ -32,19 +32,12 @@ import java.util.*
 /**
  * DashboardScreen following TECHNICAL_SPEC.md section 5.1.
  * 
- * v1.1 Enhancements:
- * - Leak-proof "Start Now" snapshotting.
- * - 30-second countdown with progress feedback.
- * v1.3 Enhancements:
- * - History Section (Feature 1)
- * - Master Switch (Feature 3)
- * - Live Status Phase Pulse (Feature 4)
- * - Credential Snapshotting (Fix): Locks default card at trigger moment.
- * v1.5 Bug Fixes:
- * - Friendly Calendar Title (Museum Name vs ID).
- * - Fixed Calendar Icon click logic (Intent Flag update).
- * v1.6 Fix (Android 16 Compatibility):
- * - Robust Calendar Intent resolution using MIME types and explicit error logging.
+ * v1.1 - v1.6 Enhancements:
+ * - 30s Countdown feedback for "Start Now".
+ * - Master Switch for global pause.
+ * - History Section (Recent Activity) with isolated snapshots.
+ * - v1.6 Android 16 Fix: Correct MIME type for Calendar Intent directory insertion.
+ * - Snapshot Audit: Handles multiple consecutive runs by plucking dates from historical messages.
  */
 @Composable
 fun DashboardScreen(
@@ -127,7 +120,6 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         
-                        // Feature 3: Master Switch UI
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = if (config?.general?.isPaused == true) "PAUSED" else "ENABLED",
@@ -158,7 +150,7 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = statusColor,
-                        modifier = Modifier.alpha(if (isRunning) pulseAlpha else 1.0f) // Feature 4 pulse
+                        modifier = Modifier.alpha(if (isRunning) pulseAlpha else 1.0f)
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -186,7 +178,6 @@ fun DashboardScreen(
                                             return@launch
                                         }
 
-                                        // Countdown loop (DB-10)
                                         while (countdown > 0) {
                                             delay(1000)
                                             if (isStarting) countdown-- else break
@@ -194,15 +185,12 @@ fun DashboardScreen(
 
                                         if (!isStarting) return@launch
 
-                                        // CREDENTIAL SNAPSHOTTING (v1.3 Fix): 
-                                        // Resolve the default ID now so it's locked into the run object.
                                         val site = currentConfig.admin.sites[siteKey]
                                         val resolvedCredentialId = site?.defaultCredentialId
 
                                         val dropTimeMillis = System.currentTimeMillis() + 1000 
                                         val timezone = java.util.TimeZone.getDefault().id
 
-                                        // LEAK-PROOF FIX: Explicitly snapshot global preferences into the run object
                                         val run = ScheduledRun(
                                             id = UUID.randomUUID().toString(),
                                             siteKey = siteKey,
@@ -351,7 +339,6 @@ fun DashboardScreen(
             }
         }
 
-        // v1.3 Feature 1: Recent Activity History Section
         item {
             Text(
                 text = "Recent Activity",
@@ -456,7 +443,7 @@ private fun HistoryItem(result: RunResult) {
                 )
             }
 
-            // v1.6 Fix: Robust Calendar Intent for Success cases
+            // Snapshot Logic: Plucks the date from THIS specific run's historical message
             if (result.status == "SUCCESS") {
                 IconButton(onClick = {
                     try {
@@ -467,22 +454,26 @@ private fun HistoryItem(result: RunResult) {
                             val date = LocalDate.parse(match)
                             val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             
-                            // Using setDataAndType ensures the Android Intent Resolver correctly identifies the Calendar app
                             val calIntent = Intent(Intent.ACTION_INSERT).apply {
-                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.item/event")
-                                putExtra(CalendarContract.Events.TITLE, "${result.museumName} Visit : Pass confirmed")
-                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) // Starts at 9 AM
-                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))   // Ends at 5 PM
+                                // Explicit MIME type satisfies Android 15/16 strict Intent resolution
+                                setDataAndType(CalendarContract.Events.CONTENT_URI, "vnd.android.cursor.dir/event")
+                                
+                                // Defensive: Use museum name from snapshot, fallback to site name
+                                val displayName = result.museumName.ifEmpty { result.siteName }
+                                putExtra(CalendarContract.Events.TITLE, "$displayName Visit : Pass confirmed")
+                                
+                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, dateMillis + (9 * 60 * 60 * 1000)) 
+                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, dateMillis + (17 * 60 * 60 * 1000))
                                 putExtra(CalendarContract.Events.ALL_DAY, true)
                                 putExtra(CalendarContract.Events.DESCRIPTION, "Auto-booked by Booking Bot.\n${result.message}")
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             }
                             context.startActivity(calIntent)
                         } else {
-                            LogManager.addLog("WARN", "Could not find a valid date in message to add to calendar: ${result.message}")
+                            LogManager.addLog("WARN", "Calendar Error: No date found in history for item at $timeStr")
                         }
                     } catch (e: Exception) {
-                        LogManager.addLog("ERROR", "Failed to open calendar: ${e.message}")
+                        LogManager.addLog("ERROR", "History Calendar Failure: ${e.message}")
                     }
                 }) {
                     Icon(
